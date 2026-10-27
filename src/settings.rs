@@ -9,6 +9,7 @@ use std::{
 pub struct Theme {
     pub name: String,
     pub accent: String,
+    pub trash: String,
     pub background: String,
     pub panel: String,
     pub raised: String,
@@ -22,6 +23,7 @@ impl Default for Theme {
         Self {
             name: "Carbon".into(),
             accent: "#e45a52".into(),
+            trash: "#e3b368".into(),
             background: "#101417".into(),
             panel: "#111518".into(),
             raised: "#1f252a".into(),
@@ -38,6 +40,7 @@ impl Theme {
             "Ember" => Self {
                 name: name.into(),
                 accent: "#cf6156".into(),
+                trash: "#d7a05c".into(),
                 background: "#12100f".into(),
                 panel: "#1b1817".into(),
                 raised: "#25211f".into(),
@@ -49,6 +52,7 @@ impl Theme {
             "Noir" => Self {
                 name: name.into(),
                 accent: "#f07167".into(),
+                trash: "#d0b378".into(),
                 background: "#090c0e".into(),
                 panel: "#12181b".into(),
                 raised: "#1c2529".into(),
@@ -63,6 +67,7 @@ impl Theme {
     pub fn validate(&self) -> Result<(), String> {
         for c in [
             &self.accent,
+            &self.trash,
             &self.background,
             &self.panel,
             &self.raised,
@@ -73,13 +78,21 @@ impl Theme {
             parse_color(c)?;
         }
         if self.radius > 12 {
-            return Err("Радіус має бути від 0 до 12".into());
+            return Err(crate::tr!(
+                "Радіус має бути від 0 до 12",
+                "Corner radius must be between 0 and 12"
+            )
+            .into());
         }
         if contrast(color(&self.text), color(&self.background)) < 4.5
             || contrast(color(&self.text), color(&self.panel)) < 4.5
             || contrast(color(&self.text), color(&self.raised)) < 4.5
         {
-            return Err("Контраст основного тексту має бути не менше 4,5:1".into());
+            return Err(crate::tr!(
+                "Контраст основного тексту має бути не менше 4,5:1",
+                "Main text contrast must be at least 4.5:1"
+            )
+            .into());
         }
         Ok(())
     }
@@ -87,6 +100,8 @@ impl Theme {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Layout {
+    #[serde(default)]
+    pub language: crate::i18n::Language,
     pub categories: bool,
     pub properties: bool,
     pub category_width: f32,
@@ -111,6 +126,7 @@ pub struct Layout {
 impl Default for Layout {
     fn default() -> Self {
         Self {
+            language: crate::i18n::Language::En,
             categories: true,
             properties: true,
             category_width: 220.,
@@ -148,16 +164,22 @@ impl Layout {
             || !(0.5..=2.).contains(&self.motion_speed)
             || self.drive_name.chars().count() > 64
         {
-            return Err(
-                "Неприпустимий розмір панелей, масштаб, швидкість анімацій або назва диска".into(),
-            );
+            return Err(crate::tr!(
+                "Неприпустимий розмір панелей, масштаб, швидкість анімацій або назва диска",
+                "Invalid panel size, scale, animation speed, or drive name"
+            )
+            .into());
         }
         Ok(())
     }
 }
 pub fn parse_color(s: &str) -> Result<Color32, String> {
     if s.len() != 7 || !s.starts_with('#') || !s[1..].bytes().all(|c| c.is_ascii_hexdigit()) {
-        return Err(format!("Неправильний колір {s}: потрібен #RRGGBB"));
+        return Err(crate::tr!(
+            "Неправильний колір {s}: потрібен #RRGGBB",
+            "Invalid color {s}: expected #RRGGBB",
+            s = s
+        ));
     }
     let x = u32::from_str_radix(&s[1..], 16).map_err(|e| e.to_string())?;
     Ok(Color32::from_rgb((x >> 16) as u8, (x >> 8) as u8, x as u8))
@@ -258,6 +280,20 @@ mod tests {
         }
     }
     #[test]
+    fn older_themes_gain_a_valid_trash_color() {
+        let serialized = toml::to_string(&Theme::default()).unwrap();
+        let old = serialized
+            .lines()
+            .filter(|line| !line.starts_with("trash ="))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut loaded: Theme = toml::from_str(&old).unwrap();
+        assert_eq!(loaded.trash, Theme::default().trash);
+        assert!(loaded.validate().is_ok());
+        loaded.trash = "not-a-color".into();
+        assert!(loaded.validate().is_err());
+    }
+    #[test]
     fn invalid_settings_rejected() {
         assert!(parse_color("#gg0000").is_err());
         let t = Theme {
@@ -288,6 +324,7 @@ drive_name = "My SSD"
 "#;
         let mut layout: Layout = toml::from_str(old).unwrap();
         layout.validate().unwrap();
+        assert_eq!(layout.language, crate::i18n::Language::Uk);
         assert_eq!(layout.icon_scale, 1.);
         assert!(layout.animations && layout.motion_speed == 1.);
         assert!(layout.single_click_expand && layout.reuse_scan && !layout.gentle_scan);
@@ -305,6 +342,28 @@ drive_name = "My SSD"
             layout.icon_scale = invalid;
             assert!(layout.validate().is_err());
         }
+    }
+    #[test]
+    fn language_roundtrips_without_losing_other_preferences() {
+        let mut layout = Layout::default();
+        layout.language = crate::i18n::Language::Uk;
+        layout.drive_name = "My SSD".into();
+        layout.compact = true;
+        let dir = std::env::temp_dir().join(format!("disco-language-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("layout.toml");
+        write(&file, &layout).unwrap();
+        assert_eq!(read_layout(&file).unwrap(), layout);
+        layout.language = crate::i18n::Language::En;
+        write(&file, &layout).unwrap();
+        assert_eq!(read_layout(&file).unwrap(), layout);
+        assert!(
+            fs::read_to_string(&file)
+                .unwrap()
+                .contains("language = \"en\"")
+        );
+        assert!(toml::from_str::<Layout>("language = \"unsupported\"").is_err());
+        fs::remove_dir_all(dir).unwrap();
     }
     #[test]
     fn configuration_is_atomic_and_validated() {

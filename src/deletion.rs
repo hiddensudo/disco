@@ -28,23 +28,33 @@ impl Target {
             .iter()
             .any(|p| path == Path::new(p))
         {
-            return Err("Цю системну або домашню папку не можна видалити з disco.".into());
+            return Err(crate::tr!(
+                "Цю системну або домашню папку не можна видалити з disco.",
+                "This system or home folder cannot be deleted from disco."
+            )
+            .into());
         }
         let meta = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
         if !meta.is_dir()
             || meta.file_type().is_symlink()
             || path.canonicalize().map_err(|e| e.to_string())? != path
         {
-            return Err(
-                "Шлях має вказувати безпосередньо на папку, без символічних посилань.".into(),
-            );
+            return Err(crate::tr!(
+                "Шлях має вказувати безпосередньо на папку, без символічних посилань.",
+                "The path must point directly to a folder, without symbolic links."
+            )
+            .into());
         }
         if path
             .parent()
             .and_then(|p| fs::metadata(p).ok())
             .is_none_or(|p| p.dev() != meta.dev())
         {
-            return Err("Корінь підключеного диска не можна перемістити у кошик.".into());
+            return Err(crate::tr!(
+                "Корінь підключеного диска не можна перемістити у кошик.",
+                "The root of a mounted drive cannot be moved to Trash."
+            )
+            .into());
         }
         Ok(Self {
             path: path.to_owned(),
@@ -56,8 +66,9 @@ impl Target {
     pub fn validate(&self) -> Result<(), String> {
         let fresh = Self::capture(&self.path, self.bytes)?;
         if fresh.device != self.device || fresh.inode != self.inode {
-            return Err(format!(
+            return Err(crate::tr!(
                 "Папка змінилася після відкриття підтвердження: {}",
+                "Folder changed after opening confirmation: {}",
                 self.path.display()
             ));
         }

@@ -1,5 +1,6 @@
 name = "Carbon"
 accent = "#e45a52"
+trash = "#e3b368"
 background = "#101417"
 panel = "#111518"
 raised = "#1f252a"

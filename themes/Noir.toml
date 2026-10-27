@@ -1,5 +1,6 @@
 name = "Noir"
 accent = "#f07167"
+trash = "#d0b378"
 background = "#090c0e"
 panel = "#12181b"
 raised = "#1c2529"

@@ -84,7 +84,7 @@ fn validate(s: &SavedScan) -> Result<(), String> {
         .map_err(|e| e.to_string())?
         .as_secs();
     if s.saved_at > now.saturating_add(86_400) {
-        return Err("Неправильна дата знімка".into());
+        return Err(crate::tr!("Неправильна дата знімка", "Invalid snapshot date").into());
     }
     let r = &s.report;
     if !matches!(s.version, 1 | VERSION)
@@ -93,11 +93,15 @@ fn validate(s: &SavedScan) -> Result<(), String> {
         || r.folders.len() > 1_000_000
         || r.largest.len() > 300
     {
-        return Err("Несумісний або неповний знімок сканування".into());
+        return Err(crate::tr!(
+            "Несумісний або неповний знімок сканування",
+            "Incompatible or incomplete scan snapshot"
+        )
+        .into());
     }
     let root = &r.folders[0];
     if root.parent.is_some() || !root.path.is_absolute() {
-        return Err("Неправильний корінь знімка".into());
+        return Err(crate::tr!("Неправильний корінь знімка", "Invalid snapshot root").into());
     }
     let mut sums = vec![(0u64, 0u64); r.folders.len()];
     for (i, f) in r.folders.iter().enumerate() {
@@ -106,33 +110,37 @@ fn validate(s: &SavedScan) -> Result<(), String> {
                 .components()
                 .any(|c| matches!(c, std::path::Component::ParentDir))
         {
-            return Err("Неправильний шлях у знімку".into());
+            return Err(
+                crate::tr!("Неправильний шлях у знімку", "Invalid path in snapshot").into(),
+            );
         }
         if i == 0 {
             continue;
         }
-        let p = f
-            .parent
-            .filter(|p| *p < i)
-            .ok_or("Неправильне дерево знімка")?;
+        let p = f.parent.filter(|p| *p < i).ok_or(crate::tr!(
+            "Неправильне дерево знімка",
+            "Invalid snapshot tree"
+        ))?;
         if f.path.parent() != Some(r.folders[p].path.as_path()) {
-            return Err("Невідповідний батьківський шлях".into());
+            return Err(
+                crate::tr!("Невідповідний батьківський шлях", "Mismatched parent path").into(),
+            );
         }
         sums[p].0 = sums[p]
             .0
             .checked_add(f.bytes)
-            .ok_or("Переповнення розміру")?;
+            .ok_or(crate::tr!("Переповнення розміру", "Size overflow"))?;
         sums[p].1 = sums[p]
             .1
             .checked_add(f.files)
-            .ok_or("Переповнення кількості")?;
+            .ok_or(crate::tr!("Переповнення кількості", "Count overflow"))?;
     }
     if r.folders
         .iter()
         .zip(sums)
         .any(|(f, sum)| sum.0 > f.bytes || sum.1 > f.files)
     {
-        return Err("Неправильні підсумки знімка".into());
+        return Err(crate::tr!("Неправильні підсумки знімка", "Invalid snapshot totals").into());
     }
     if r.largest.iter().any(|f| {
         !f.path.starts_with(&root.path)
@@ -141,7 +149,11 @@ fn validate(s: &SavedScan) -> Result<(), String> {
                 .components()
                 .any(|c| matches!(c, std::path::Component::ParentDir))
     }) {
-        return Err("Неправильний список великих файлів".into());
+        return Err(crate::tr!(
+            "Неправильний список великих файлів",
+            "Invalid large files list"
+        )
+        .into());
     }
     Ok(())
 }
@@ -153,7 +165,10 @@ struct BoundedWriter<W> {
 impl<W: Write> Write for BoundedWriter<W> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         if (buf.len() as u64) > MAX_UNPACKED.saturating_sub(self.bytes) {
-            return Err(std::io::Error::other("Знімок перевищує допустимий розмір"));
+            return Err(std::io::Error::other(crate::tr!(
+                "Знімок перевищує допустимий розмір",
+                "Snapshot exceeds the size limit"
+            )));
         }
         let n = self.inner.write(buf)?;
         self.bytes += n as u64;
@@ -191,7 +206,11 @@ fn load_from(path: &Path) -> Result<Option<SavedScan>, String> {
         Err(e) => return Err(e.to_string()),
     };
     if f.metadata().map_err(|e| e.to_string())?.len() > MAX_COMPRESSED {
-        return Err("Знімок перевищує допустимий розмір".into());
+        return Err(crate::tr!(
+            "Знімок перевищує допустимий розмір",
+            "Snapshot exceeds the size limit"
+        )
+        .into());
     }
     let mut reader = BufReader::new(GzDecoder::new(BufReader::new(f))).take(MAX_UNPACKED + 1);
     let mut prefix = [0; 8];
@@ -205,7 +224,7 @@ fn load_from(path: &Path) -> Result<Option<SavedScan>, String> {
         let mut tail = Vec::new();
         reader.read_to_end(&mut tail).map_err(|e| e.to_string())?;
         if !tail.is_empty() {
-            return Err("Зайві дані у знімку".into());
+            return Err(crate::tr!("Зайві дані у знімку", "Unexpected data in snapshot").into());
         }
         saved
     } else {
@@ -220,7 +239,11 @@ pub fn save(report: &Report) -> Result<u64, String> {
 }
 fn save_to(path: &Path, report: &Report) -> Result<u64, String> {
     if !report.complete || report.folders.is_empty() || report.folders.len() > 1_000_000 {
-        return Err("Частковий скан не замінює попередній знімок".into());
+        return Err(crate::tr!(
+            "Частковий скан не замінює попередній знімок",
+            "A partial scan cannot replace the previous snapshot"
+        )
+        .into());
     }
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -241,7 +264,9 @@ fn write_to(
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| e.to_string())?;
-    let parent = path.parent().ok_or("Немає папки кешу")?;
+    let parent = path
+        .parent()
+        .ok_or(crate::tr!("Немає папки кешу", "Missing cache folder"))?;
     fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     let tmp = parent.join(format!(
         ".scan-{}-{}.tmp",
@@ -274,7 +299,10 @@ fn write_to(
         out.flush()?;
         out.get_ref().sync_all()?;
         if out.get_ref().metadata()?.len() > MAX_COMPRESSED {
-            return Err(std::io::Error::other("Знімок перевищує допустимий розмір"));
+            return Err(std::io::Error::other(crate::tr!(
+                "Знімок перевищує допустимий розмір",
+                "Snapshot exceeds the size limit"
+            )));
         }
         drop(out);
         fs::rename(&tmp, path)?;

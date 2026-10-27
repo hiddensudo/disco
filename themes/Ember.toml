@@ -1,5 +1,6 @@
 name = "Ember"
 accent = "#cf6156"
+trash = "#d7a05c"
 background = "#12100f"
 panel = "#1b1817"
 raised = "#25211f"

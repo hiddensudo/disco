@@ -55,17 +55,17 @@ impl Disco {
                 self.history.can_back() && !self.busy && !self.recycle.busy,
                 &t,
             )
-            .on_hover_text("Назад")
+            .on_hover_text(crate::tr!("Назад", "Back"))
             .clicked()
             {
                 self.history_step(false);
             }
-            ui.heading("Кошик");
+            ui.heading(crate::tr!("Кошик", "Trash"));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add_enabled(
                         !self.recycle.busy && !self.demo,
-                        egui::Button::new("Оновити"),
+                        egui::Button::new(crate::tr!("Оновити", "Refresh")),
                     )
                     .clicked()
                 {
@@ -75,13 +75,14 @@ impl Disco {
         });
         let (bytes, complete) = self.recycle.total();
         ui.label(
-            RichText::new(format!(
+            RichText::new(crate::tr!(
                 "{} елементів · {}{} у кошику",
+                "{} items · {}{} in Trash",
                 self.recycle.items.len(),
                 if complete {
                     ""
                 } else {
-                    "щонайменше "
+                    crate::tr!("щонайменше ", "at least ")
                 },
                 display_size(bytes)
             ))
@@ -93,7 +94,10 @@ impl Disco {
             let enabled = self.bin_actions_enabled();
             let picked = !self.recycle.selected.is_empty();
             if ui
-                .add_enabled(enabled && picked, egui::Button::new("Відновити вибране"))
+                .add_enabled(
+                    enabled && picked,
+                    egui::Button::new(crate::tr!("Відновити вибране", "Restore selected")),
+                )
                 .clicked()
             {
                 self.bin_restore(ui.ctx());
@@ -101,7 +105,10 @@ impl Disco {
             if ui
                 .add_enabled(
                     enabled && picked,
-                    egui::Button::new(RichText::new("Видалити вибране").color(color(&t.accent))),
+                    egui::Button::new(
+                        RichText::new(crate::tr!("Видалити вибране", "Delete selected"))
+                            .color(color(&t.accent)),
+                    ),
                 )
                 .clicked()
             {
@@ -110,23 +117,23 @@ impl Disco {
             if ui
                 .add_enabled(
                     enabled && !self.recycle.items.is_empty(),
-                    egui::Button::new("Спорожнити кошик"),
+                    egui::Button::new(crate::tr!("Спорожнити кошик", "Empty Trash")),
                 )
                 .clicked()
             {
                 self.bin_request_purge(true);
             }
         });
-        if self.recycle.busy || self.recycle.loading {
+        if self.recycle.busy || (self.recycle.loading && !self.recycle.checking) {
             ui.horizontal(|ui| {
                 motion::activity(ui, false, color(&t.accent));
                 ui.label(
                     RichText::new(if self.recycle.busy {
                         self.recycle.notice.as_str()
                     } else if self.recycle.loaded {
-                        "Обчислюємо розміри папок…"
+                        crate::tr!("Обчислюємо розміри папок…", "Calculating folder sizes…")
                     } else {
-                        "Читаємо кошик…"
+                        crate::tr!("Читаємо кошик…", "Reading Trash…")
                     })
                     .size(12.)
                     .color(color(&t.muted)),
@@ -152,7 +159,10 @@ impl Disco {
         ui.add_space(6.);
         ui.add(
             egui::TextEdit::singleline(&mut self.filter)
-                .hint_text("Пошук у кошику за назвою або початковим шляхом…")
+                .hint_text(crate::tr!(
+                    "Пошук у кошику за назвою або початковим шляхом…",
+                    "Search Trash by name or original path…"
+                ))
                 .desired_width(f32::INFINITY),
         );
         ui.add_space(6.);
@@ -184,17 +194,17 @@ impl Disco {
             (
                 Pos2::new(header.left() + 44., header.center().y),
                 Align2::LEFT_CENTER,
-                "Назва / початковий шлях",
+                crate::tr!("Назва / початковий шлях", "Name / original path"),
             ),
             (
                 Pos2::new(size_x, header.center().y),
                 Align2::RIGHT_CENTER,
-                "Розмір",
+                crate::tr!("Розмір", "Size"),
             ),
             (
                 Pos2::new(date_x, header.center().y),
                 Align2::RIGHT_CENTER,
-                "Видалено",
+                crate::tr!("Видалено", "Deleted"),
             ),
         ] {
             ui.painter()
@@ -219,11 +229,11 @@ impl Disco {
         if ids.is_empty() {
             ui.add_space(35.);
             ui.label(if self.recycle.loading && !self.recycle.loaded {
-                "Завантаження…"
+                crate::tr!("Завантаження…", "Loading…")
             } else if self.recycle.items.is_empty() {
-                "Кошик порожній"
+                crate::tr!("Кошик порожній", "Trash is empty")
             } else {
-                "Нічого не знайдено"
+                crate::tr!("Нічого не знайдено", "No results")
             });
             return;
         }
@@ -332,31 +342,40 @@ impl Disco {
         egui::ScrollArea::vertical().id_salt("recycle-inspector").max_height((ui.available_height()-98.).max(50.)).show(ui,|ui|{
             let (r,_)=ui.allocate_exact_size(Vec2::new(ui.available_width(),62.),Sense::hover());
             self.art.paint(ui,23,Rect::from_min_size(r.min+Vec2::new(0.,8.),Vec2::splat(38.)),color(&t.text));
-            ui.painter().text(r.min+Vec2::new(54.,15.),Align2::LEFT_TOP,"Кошик",art::bold(21.),color(&t.text));
+            ui.painter().text(r.min+Vec2::new(54.,15.),Align2::LEFT_TOP,crate::tr!("Кошик", "Trash"),art::bold(21.),color(&t.text));
             if picked.is_empty(){
                 let (bytes,complete)=self.recycle.total();
                 ui.label(RichText::new(format!("{}{}",if complete{""}else{"≥ "},display_size(bytes))).font(art::bold(28.)));
-                ui.label(format!("Елементів: {}",self.recycle.items.len()));ui.add_space(12.);
-                ui.label("Вибери елементи у списку, щоб повернути їх або видалити остаточно.");
+                ui.label(crate::tr!("Елементів: {}", "Items: {}",self.recycle.items.len()));ui.add_space(12.);
+                ui.label(crate::tr!("Вибери елементи у списку, щоб повернути їх або видалити остаточно.", "Select items in the list to restore or delete them permanently."));
             }else{
-                ui.label(RichText::new(format!("Вибрано: {}",picked.len())).strong());ui.add_space(8.);
+                ui.label(RichText::new(crate::tr!("Вибрано: {}", "Selected: {}",picked.len())).strong());ui.add_space(8.);
                 for item in picked.iter().take(1){
                     ui.label(RichText::new(item.entry.name.to_string_lossy()).font(art::bold(18.)));
                     ui.label(RichText::new(item_size(item)).font(art::bold(27.)));ui.add_space(8.);
-                    ui.label(RichText::new("Початкове розташування").size(12.).color(color(&t.muted)));
+                    ui.label(RichText::new(crate::tr!("Початкове розташування", "Original location")).size(12.).color(color(&t.muted)));
                     ui.add(egui::Label::new(item.entry.original_path().to_string_lossy()).wrap());
-                    ui.add_space(8.);ui.label(format!("Видалено: {}",deleted_date(item.entry.time_deleted)));
-                    ui.label(if item.directory{"Тип: папка"}else{"Тип: файл або посилання"});
+                    ui.add_space(8.);ui.label(crate::tr!("Видалено: {}", "Deleted: {}",deleted_date(item.entry.time_deleted)));
+                    ui.label(if item.directory{crate::tr!("Тип: папка", "Type: folder")}else{crate::tr!("Тип: файл або посилання", "Type: file or link")});
                 }
-                if picked.len()>1 {ui.add_space(6.);ui.label(format!("І ще {} елементів",picked.len()-1));}
+                if picked.len()>1 {ui.add_space(6.);ui.label(crate::tr!("І ще {} елементів", "And {} more items",picked.len()-1));}
             }
-            ui.add_space(16.);ui.label(RichText::new("Остаточне видалення звільняє місце на диску. Після нього повернути файли з кошика буде неможливо.").size(12.).color(color(&t.muted)));
+            ui.add_space(16.);ui.label(RichText::new(crate::tr!("Остаточне видалення звільняє місце на диску. Після нього повернути файли з кошика буде неможливо.", "Permanent deletion frees disk space. You will no longer be able to restore these files from Trash.")).size(12.).color(color(&t.muted)));
         });
         let r = Rect::from_min_size(
             Pos2::new(area.left(), area.bottom() - 83.),
             Vec2::new(area.width(), 36.),
         );
-        if visual_button(ui, &self.art, r, 16, "Відновити вибране", enabled, &t).clicked()
+        if visual_button(
+            ui,
+            &self.art,
+            r,
+            16,
+            crate::tr!("Відновити вибране", "Restore selected"),
+            enabled,
+            &t,
+        )
+        .clicked()
         {
             self.bin_restore(ui.ctx());
         }
@@ -368,7 +387,7 @@ impl Disco {
             &self.art,
             r.translate(Vec2::new(0., 47.)),
             23,
-            "Видалити остаточно",
+            crate::tr!("Видалити остаточно", "Delete permanently"),
             enabled,
             &danger,
         )
@@ -391,7 +410,7 @@ fn item_size(i: &recycle::Item) -> String {
             if i.complete_size { "" } else { "≥ " },
             display_size(b)
         ),
-        None => "Рахуємо…".into(),
+        None => crate::tr!("Рахуємо…", "Calculating…").into(),
     }
 }
 fn deleted_date(t: i64) -> String {
@@ -412,12 +431,18 @@ fn purge_dialog(
 ) -> egui::ModalResponse<(egui::Response, egui::Response)> {
     egui::Modal::new(egui::Id::unique("purge-trash-confirmation")).show(ctx, |ui| {
         ui.set_width(500.);
-        ui.heading("Видалити з кошика назавжди?");
+        ui.heading(crate::tr!(
+            "Видалити з кошика назавжди?",
+            "Permanently delete from Trash?"
+        ));
         ui.add_space(8.);
         ui.label(
-            RichText::new("Повернути ці файли з кошика буде неможливо.")
-                .color(color(&t.accent))
-                .strong(),
+            RichText::new(crate::tr!(
+                "Повернути ці файли з кошика буде неможливо.",
+                "You will not be able to restore these files from Trash."
+            ))
+            .color(color(&t.accent))
+            .strong(),
         );
         ui.add_space(10.);
         egui::ScrollArea::vertical()
@@ -433,26 +458,30 @@ fn purge_dialog(
             .iter()
             .fold(0u64, |n, i| n.saturating_add(i.bytes.unwrap_or(0)));
         let complete = targets.iter().all(|i| i.bytes.is_some() && i.complete_size);
-        ui.label(format!(
+        ui.label(crate::tr!(
             "Елементів: {} · {}{}",
+            "Items: {} · {}{}",
             targets.len(),
             if complete {
                 ""
             } else {
-                "щонайменше "
+                crate::tr!("щонайменше ", "at least ")
             },
             display_size(bytes)
         ));
         ui.add_space(16.);
         ui.horizontal(|ui| {
-            let cancel = ui.button("Скасувати");
+            let cancel = ui.button(crate::tr!("Скасувати", "Cancel"));
             if fresh {
                 cancel.request_focus();
             }
             let yes = ui.add_enabled(
                 enabled,
-                egui::Button::new(RichText::new("Видалити остаточно").color(C::WHITE))
-                    .fill(color(&t.accent)),
+                egui::Button::new(
+                    RichText::new(crate::tr!("Видалити остаточно", "Delete permanently"))
+                        .color(C::WHITE),
+                )
+                .fill(color(&t.accent)),
             );
             (cancel, yes)
         })

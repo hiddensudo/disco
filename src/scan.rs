@@ -177,9 +177,10 @@ fn scan_inner(
     let mut yielded = Instant::now();
     let meta = fs::symlink_metadata(root)?;
     if !meta.is_dir() || meta.file_type().is_symlink() {
-        return Err(std::io::Error::other(
+        return Err(std::io::Error::other(crate::tr!(
             "Вибери справжню папку, а не символічне посилання",
-        ));
+            "Choose a real folder, not a symbolic link"
+        )));
     }
     let mut r = Report::default();
     r.folders.push(Folder {
@@ -364,7 +365,10 @@ pub fn duplicates(
         .same_file_system(true)
     {
         if !c.proceed() {
-            return Err(std::io::Error::other("Пошук дублікатів скасовано"));
+            return Err(std::io::Error::other(crate::tr!(
+                "Пошук дублікатів скасовано",
+                "Duplicate search cancelled"
+            )));
         }
         let e = match e {
             Ok(e) => e,
@@ -420,12 +424,15 @@ pub fn duplicates(
                     || before.mtime() as u64 != mtime
                     || before.mtime_nsec() as u64 != nsec
                 {
-                    return Err(std::io::Error::other("Файл змінився"));
+                    return Err(std::io::Error::other(crate::tr!(
+                        "Файл змінився",
+                        "File changed"
+                    )));
                 }
                 let mut h = blake3::Hasher::new();
                 loop {
                     if !c.proceed() {
-                        return Err(std::io::Error::other("Скасовано"));
+                        return Err(std::io::Error::other(crate::tr!("Скасовано", "Cancelled")));
                     }
                     let n = f.read(&mut buf)?;
                     if n == 0 {
@@ -453,7 +460,10 @@ pub fn duplicates(
                     || after.ctime() != before.ctime()
                     || after.ctime_nsec() != before.ctime_nsec()
                 {
-                    return Err(std::io::Error::other("Файл змінився"));
+                    return Err(std::io::Error::other(crate::tr!(
+                        "Файл змінився",
+                        "File changed"
+                    )));
                 }
                 Ok(h.finalize())
             })();
@@ -467,7 +477,10 @@ pub fn duplicates(
         }
     }
     if c.cancel.load(Ordering::Relaxed) {
-        return Err(std::io::Error::other("Пошук дублікатів скасовано"));
+        return Err(std::io::Error::other(crate::tr!(
+            "Пошук дублікатів скасовано",
+            "Duplicate search cancelled"
+        )));
     }
     let mut groups: Vec<_> = hashes.into_values().filter(|v| v.len() > 1).collect();
     groups.sort_by_key(|v| std::cmp::Reverse(v[0].bytes * (v.len() - 1) as u64));
@@ -484,7 +497,13 @@ pub fn disk_space(path: &Path) -> Option<(u64, u64)> {
     Some((s.f_blocks * s.f_frsize, s.f_bavail * s.f_frsize))
 }
 pub fn human(n: u64) -> String {
-    let units = ["Б", "КіБ", "МіБ", "ГіБ", "ТіБ"];
+    let units = [
+        crate::tr!("Б", "B"),
+        crate::tr!("КіБ", "KiB"),
+        crate::tr!("МіБ", "MiB"),
+        crate::tr!("ГіБ", "GiB"),
+        crate::tr!("ТіБ", "TiB"),
+    ];
     let mut x = n as f64;
     let mut i = 0;
     while x >= 1024. && i < 4 {
@@ -492,7 +511,7 @@ pub fn human(n: u64) -> String {
         i += 1;
     }
     if i == 0 {
-        format!("{n} Б")
+        crate::tr!("{n} Б", "{n} B", n = n)
     } else {
         format!("{x:.1} {}", units[i])
     }

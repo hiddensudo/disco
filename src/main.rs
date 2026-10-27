@@ -1,6 +1,7 @@
 mod art;
 mod deletion;
 mod frame_probe;
+mod i18n;
 mod motion;
 mod navigation;
 mod recycle;
@@ -44,12 +45,12 @@ enum Category {
 impl Category {
     fn name(self) -> &'static str {
         match self {
-            Self::All => "Усі папки",
-            Self::Games => "Ігри та моди",
-            Self::Development => "Розробка",
-            Self::Cache => "Кеші",
-            Self::Documents => "Документи",
-            Self::Other => "Інше",
+            Self::All => crate::tr!("Усі папки", "All folders"),
+            Self::Games => crate::tr!("Ігри та моди", "Games & mods"),
+            Self::Development => crate::tr!("Розробка", "Development"),
+            Self::Cache => crate::tr!("Кеші", "Caches"),
+            Self::Documents => crate::tr!("Документи", "Documents"),
+            Self::Other => crate::tr!("Інше", "Other"),
         }
     }
 }
@@ -247,7 +248,7 @@ fn label(p: &Path) -> String {
 }
 fn drive_info(path: &Path) -> (String, String) {
     let Some(m) = fs::metadata(path).ok() else {
-        return ("Диск".into(), String::new());
+        return (crate::tr!("Диск", "Drive").into(), String::new());
     };
     let dev = m.dev();
     let sys = PathBuf::from(format!(
@@ -256,7 +257,7 @@ fn drive_info(path: &Path) -> (String, String) {
         libc::minor(dev)
     ));
     let Ok(sys) = sys.canonicalize() else {
-        return ("Диск".into(), String::new());
+        return (crate::tr!("Диск", "Drive").into(), String::new());
     };
     let mut model = String::new();
     let mut ssd = false;
@@ -286,9 +287,9 @@ fn drive_info(path: &Path) -> (String, String) {
     }
     (
         if ssd {
-            "Системний SSD"
+            crate::tr!("Системний SSD", "System SSD")
         } else {
-            "Системний диск"
+            crate::tr!("Системний диск", "System drive")
         }
         .into(),
         model,
@@ -367,6 +368,7 @@ struct Disco {
     drive_name: String,
     drive_model: String,
     space: Option<(u64, u64)>,
+    space_device: Option<u64>,
     space_at: Instant,
 }
 fn demo_report() -> Report {
@@ -451,10 +453,14 @@ impl Disco {
             }
         }
         let (theme, layout, message) = settings::load();
+        i18n::set_current(layout.language);
         let root = argument("--folder")
             .unwrap_or_else(|| std::env::var("HOME").unwrap_or_else(|_| "/home".into()));
         let (drive_name, drive_model) = if demo {
-            ("Системний SSD".into(), "NVMe SSD · 1 ТБ".into())
+            (
+                crate::tr!("Системний SSD", "System SSD").into(),
+                crate::tr!("NVMe SSD · 1 ТБ", "NVMe SSD · 1 TB").into(),
+            )
         } else {
             drive_info(Path::new(&root))
         };
@@ -554,11 +560,14 @@ impl Disco {
             drive_name,
             drive_model,
             space: None,
+            space_device: None,
             space_at: Instant::now() - Duration::from_secs(10),
         };
-        if demo && s.view == View::Trash {
+        if demo {
             s.recycle = recycle::Bin::demo();
-            s.properties = None;
+            if s.view == View::Trash {
+                s.properties = None;
+            }
         }
         if s.settings_open {
             s.settings_snapshot = Some((s.theme.clone(), s.layout.clone()));
@@ -656,7 +665,11 @@ impl Disco {
         self.restore_requested_root = None;
         let path = PathBuf::from(&self.root);
         if !path.is_absolute() {
-            self.message = "Вкажи абсолютний шлях до папки".into();
+            self.message = crate::tr!(
+                "Вкажи абсолютний шлях до папки",
+                "Enter an absolute folder path"
+            )
+            .into();
             return;
         }
         let path = match path.canonicalize() {
@@ -680,8 +693,9 @@ impl Disco {
             && same_snapshot
             && self.tracker.as_mut().is_some_and(ChangeTracker::is_clean)
         {
-            self.message = format!(
+            self.message = crate::tr!(
                 "Подій змін немає · попередній результат ({} с тому)",
+                "No changes detected · previous result ({} s ago)",
                 self.snapshot_at.map(|t| t.elapsed().as_secs()).unwrap_or(0)
             );
             self.refresh_drive();
@@ -799,11 +813,21 @@ impl Disco {
                             if self.view != View::Trash {
                                 self.view = View::Folders;
                             }
-                            self.message = "Відновлено останній знімок сканування.".into();
+                            self.message = crate::tr!(
+                                "Відновлено останній знімок сканування.",
+                                "Restored the last scan snapshot."
+                            )
+                            .into();
                             self.refresh_drive();
                         }
                         Ok(None) => {}
-                        Err(e) => self.message = format!("Не вдалося відновити скан: {e}"),
+                        Err(e) => {
+                            self.message = crate::tr!(
+                                "Не вдалося відновити скан: {e}",
+                                "Could not restore the scan: {e}",
+                                e = e
+                            )
+                        }
                     }
                 }
                 Event::Finished(r, index, tracker, saved, resolved) => {
@@ -813,8 +837,11 @@ impl Disco {
                         self.automatic_job = false;
                         self.tracker = None;
                         self.restored_snapshot = true;
-                        self.message =
-                            "Оновлення скасовано. Залишено попередній повний скан.".into();
+                        self.message = crate::tr!(
+                            "Оновлення скасовано. Залишено попередній повний скан.",
+                            "Refresh cancelled. Kept the previous complete scan."
+                        )
+                        .into();
                         continue;
                     }
                     if r.complete {
@@ -833,21 +860,30 @@ impl Disco {
                     self.history.clear();
                     self.busy = false;
                     self.message = if r.complete {
-                        format!(
+                        crate::tr!(
                             "Завершено за {:.1} с · пропущено: {} · повторних hardlink: {}",
+                            "Finished in {:.1} s · skipped: {} · duplicate hardlinks: {}",
                             r.elapsed.as_secs_f64(),
                             r.skipped,
                             r.hardlinks
                         ) + if self.tracker.is_some() {
-                            " · перевірка змін активна"
+                            crate::tr!(" · перевірка змін активна", " · change monitoring active")
                         } else {
-                            " · повторний обхід повністю"
+                            crate::tr!(" · повторний обхід повністю", " · full rescan required")
                         }
                     } else {
-                        "Сканування скасовано. Показано частковий результат.".into()
+                        crate::tr!(
+                            "Сканування скасовано. Показано частковий результат.",
+                            "Scan cancelled. Showing partial results."
+                        )
+                        .into()
                     };
                     if let Err(error) = saved {
-                        self.message.push_str(&format!(" · не збережено: {error}"));
+                        self.message.push_str(&crate::tr!(
+                            " · не збережено: {error}",
+                            " · not saved: {error}",
+                            error = error
+                        ));
                     }
                     self.report_revision = self.report_revision.wrapping_add(1);
                     self.index = index;
@@ -864,8 +900,12 @@ impl Disco {
                 }
                 Event::Duplicates(d, n) => {
                     self.busy = false;
-                    self.message =
-                        format!("Знайдено {} груп · пропущено або змінено: {n}", d.len());
+                    self.message = crate::tr!(
+                        "Знайдено {} груп · пропущено або змінено: {n}",
+                        "Found {} groups · skipped or changed: {n}",
+                        d.len(),
+                        n = n
+                    );
                     self.dups = d;
                 }
                 Event::Error(e) => {
@@ -894,15 +934,18 @@ impl Disco {
                     }
                     self.root = root.to_string_lossy().into_owned();
                     self.start_job(false, true, true);
-                    self.message = format!(
+                    self.message = crate::tr!(
                         "У кошику: {} папок. Оновлюємо список. Місце звільниться після спорожнення кошика.",
+                        "Moved {} folders to Trash. Refreshing the list. Empty Trash to free disk space.",
                         result.done.len()
                     );
                 }
                 if let Some(error) = result.error {
-                    self.message = format!(
+                    self.message = crate::tr!(
                         "У кошику: {} папок. Не вдалося завершити: {error}",
-                        result.done.len()
+                        "Moved {} folders to Trash. Could not finish: {error}",
+                        result.done.len(),
+                        error = error
                     );
                 }
             }
@@ -927,7 +970,13 @@ impl Disco {
                 self.confirm_fresh = true;
                 self.confirm = true;
             }
-            Err(e) => self.message = format!("Не можна видалити папку: {e}"),
+            Err(e) => {
+                self.message = crate::tr!(
+                    "Не можна видалити папку: {e}",
+                    "Cannot delete folder: {e}",
+                    e = e
+                )
+            }
         }
     }
     fn confirmation(&mut self, ctx: &egui::Context) {
@@ -946,7 +995,8 @@ impl Disco {
             let targets = std::mem::take(&mut self.delete_targets);
             let (tx, rx) = mpsc::channel();
             self.trash_rx = Some(rx);
-            self.message = "Переміщуємо папку у кошик…".into();
+            self.message =
+                crate::tr!("Переміщуємо папку у кошик…", "Moving folder to Trash…").into();
             let ctx = ctx.clone();
             std::thread::spawn(move || {
                 let _ = tx.send(deletion::move_to_trash(targets));
@@ -1009,10 +1059,10 @@ impl Disco {
             color(&t.muted),
         );
         for (slot, icon, help) in [
-            (0, 21, "Закрити"),
-            (1, 20, "Розгорнути"),
-            (2, 19, "Згорнути"),
-            (3, 7, "Налаштування"),
+            (0, 21, crate::tr!("Закрити", "Close")),
+            (1, 20, crate::tr!("Розгорнути", "Maximize")),
+            (2, 19, crate::tr!("Згорнути", "Minimize")),
+            (3, 7, crate::tr!("Налаштування", "Settings")),
         ] {
             let r = Rect::from_min_size(
                 Pos2::new(rect.right() - 44. * (slot as f32 + 1.), rect.top() + 3.),
@@ -1070,10 +1120,13 @@ impl Disco {
     }
     fn drive_header(&mut self, ui: &mut egui::Ui) {
         if self.space_at.elapsed() > Duration::from_secs(3) {
+            self.space_device = None;
             self.space = if self.demo {
+                self.space_device = Some(0);
                 Some((915 * 1024u64.pow(3), 305 * 1024u64.pow(3)))
             } else {
                 refresh::DiskSample::capture(Path::new(&self.root)).map(|sample| {
+                    self.space_device = Some(sample.device);
                     if !self.busy {
                         self.auto_refresh.observe(sample, Instant::now());
                     }
@@ -1126,7 +1179,10 @@ impl Disco {
                 ui.scope_id().with("choose_drive"),
                 Sense::click(),
             )
-            .on_hover_text("Обрати диск або папку")
+            .on_hover_text(crate::tr!(
+                "Обрати диск або папку",
+                "Choose a drive or folder"
+            ))
             .clicked()
         {
             if let Some(p) = rfd::FileDialog::new()
@@ -1138,7 +1194,11 @@ impl Disco {
             }
         }
         if let Some((total, free)) = self.space {
-            let used = total.saturating_sub(free);
+            let sum = self
+                .space_device
+                .map(|device| self.recycle.summary_for(device));
+            let parts = storage_parts(total, free, sum.map(|s| s.bytes).unwrap_or(0));
+            let used = parts.used;
             let left = rect.left() + 337.;
             let right = rect.right() - 252.;
             let line = Rect::from_min_size(
@@ -1156,22 +1216,161 @@ impl Disco {
                 3,
                 color(&t.accent),
             );
+            let trash_target = line.width() * parts.trash as f32 / total.max(1) as f32;
+            let trash_width = (motion::value(ui, ("disk-trash", &self.root), trash_target, 2.5)
+                * intro)
+                .clamp(0., fill_width);
+            if trash_width > 0. {
+                let amber = Rect::from_min_max(
+                    Pos2::new(line.left() + fill_width - trash_width, line.top()),
+                    Pos2::new(line.left() + fill_width, line.bottom()),
+                );
+                let radius = egui::CornerRadius {
+                    nw: if trash_width >= fill_width { 3 } else { 0 },
+                    sw: if trash_width >= fill_width { 3 } else { 0 },
+                    ne: 3,
+                    se: 3,
+                };
+                ui.painter().rect_filled(amber, radius, color(&t.trash));
+            }
             ui.painter().text(
                 Pos2::new(left, rect.top() + 46.),
                 Align2::LEFT_TOP,
-                format!("{} зайнято", display_size(used)),
+                crate::tr!("{} зайнято", "{} used", display_size(used)),
                 FontId::proportional(14.),
                 color(&t.text),
             );
             ui.painter().text(
                 Pos2::new(right, rect.top() + 46.),
                 Align2::RIGHT_TOP,
-                format!("{} загалом", display_size(total)),
+                crate::tr!("{} загалом", "{} total", display_size(total)),
                 FontId::proportional(14.),
                 color(&t.muted),
             );
+            let measured = sum.filter(|_| self.recycle.loaded);
+            let unavailable = !self.recycle.error.is_empty() && self.recycle.items.is_empty();
+            let caption = if unavailable {
+                crate::tr!("Кошик: недоступно", "Trash: unavailable").to_string()
+            } else if let Some(s) = measured {
+                if s.entries > 0 && s.bytes == 0 && !s.complete {
+                    crate::tr!("У кошику: рахуємо…", "In Trash: calculating…").to_string()
+                } else {
+                    crate::tr!(
+                        "У кошику: {}{}",
+                        "In Trash: {}{}",
+                        if s.complete { "" } else { "≈ " },
+                        display_size(s.bytes)
+                    )
+                }
+            } else {
+                crate::tr!("Кошик: перевіряємо…", "Trash: checking…").to_string()
+            };
+            ui.interact(
+                line.expand(3.),
+                ui.scope_id().with("storage-breakdown"),
+                Sense::hover(),
+            )
+            .on_hover_text(crate::tr!(
+                "Інше зайняте місце: {}\nКошик: {}{}\nВільно: {}",
+                "Other used space: {}\nTrash: {}{}\nFree: {}",
+                display_size(parts.other),
+                if measured.is_some_and(|s| s.complete) {
+                    ""
+                } else {
+                    "≈ "
+                },
+                display_size(parts.trash),
+                display_size(free)
+            ));
+            let font = FontId::proportional(if line.width() < 600. { 12. } else { 14. });
+            let galley = ui.painter().layout_no_wrap(caption, font, color(&t.trash));
+            let legend_width = galley.size().x + 15.;
+            let legend = Rect::from_min_size(
+                Pos2::new(line.center().x - legend_width * 0.5, rect.top() + 46.),
+                Vec2::new(legend_width, 21.),
+            );
+            let response = ui.interact(
+                legend.expand(4.),
+                ui.scope_id().with("trash-usage"),
+                Sense::click(),
+            );
+            ui.painter().circle_filled(
+                Pos2::new(legend.left() + 4., legend.top() + 8.),
+                3.,
+                color(&t.trash),
+            );
+            ui.painter()
+                .galley(legend.min + Vec2::new(15., 0.), galley, color(&t.trash));
+            if response.hovered() {
+                ui.painter().hline(
+                    legend.x_range(),
+                    legend.bottom(),
+                    Stroke::new(1., color(&t.trash).gamma_multiply(0.5)),
+                );
+            }
+            let tooltip = if unavailable {
+                self.recycle.error.clone()
+            } else if let Some(s) = measured {
+                crate::tr!(
+                    "{} {} · {} {}\nПоказано кошик на цьому диску. Він уже входить у зайняте місце.{}\nНатисни, щоб відкрити кошик.",
+                    "{} {} · {} {}\nShowing Trash on this drive. It is already included in used space.{}\nClick to open Trash.",
+                    group_digits(s.files),
+                    plural(
+                        s.files,
+                        crate::tr!("файл", "file"),
+                        crate::tr!("файли", "files"),
+                        crate::tr!("файлів", "files")
+                    ),
+                    group_digits(s.folders),
+                    plural(
+                        s.folders,
+                        crate::tr!("папка", "folder"),
+                        crate::tr!("папки", "folders"),
+                        crate::tr!("папок", "folders")
+                    ),
+                    if s.complete {
+                        ""
+                    } else {
+                        crate::tr!(
+                            " Підрахунок ще триває або частина даних недоступна.",
+                            " Still calculating, or some data is unavailable."
+                        )
+                    }
+                )
+            } else {
+                crate::tr!(
+                    "Підрахунок кошика у фоні. Натисни, щоб відкрити його.",
+                    "Calculating Trash usage in the background. Click to open it."
+                )
+                .into()
+            };
+            if response.on_hover_text(tooltip).clicked() {
+                self.view = View::Trash;
+                self.filter.clear();
+                self.properties = None;
+            }
+            if let Some(s) = measured.filter(|s| s.files > 0 || s.complete) {
+                ui.painter().text(
+                    Pos2::new(rect.right() - 22., rect.top() + 61.),
+                    Align2::RIGHT_CENTER,
+                    crate::tr!(
+                        "{}{} {} у кошику",
+                        "{}{} {} in Trash",
+                        if s.complete { "" } else { "≈ " },
+                        group_digits(s.files),
+                        plural(
+                            s.files,
+                            crate::tr!("файл", "file"),
+                            crate::tr!("файли", "files"),
+                            crate::tr!("файлів", "files")
+                        )
+                    ),
+                    FontId::proportional(12.),
+                    color(&t.trash),
+                );
+            }
             let word = ui.painter().layout_no_wrap(
-                "вільно".into(),
+                crate::tr!("вільно", "free").into(),
                 FontId::proportional(16.),
                 color(&t.text),
             );
@@ -1179,7 +1378,7 @@ impl Disco {
             ui.painter().text(
                 Pos2::new(x, rect.top() + 37.),
                 Align2::RIGHT_CENTER,
-                "вільно",
+                crate::tr!("вільно", "free"),
                 FontId::proportional(16.),
                 color(&t.text),
             );
@@ -1228,14 +1427,20 @@ impl Disco {
                 13,
                 false,
                 self.history.can_back(),
-                "Назад · бічна кнопка миші / Alt+←",
+                crate::tr!(
+                    "Назад · бічна кнопка миші / Alt+←",
+                    "Back · mouse side button / Alt+←"
+                ),
             ),
             (
                 34.,
                 22,
                 true,
                 self.history.can_forward(),
-                "Уперед · бічна кнопка миші / Alt+→",
+                crate::tr!(
+                    "Уперед · бічна кнопка миші / Alt+→",
+                    "Forward · mouse side button / Alt+→"
+                ),
             ),
         ] {
             let r = Rect::from_min_size(rect.min + Vec2::new(offset, 0.), Vec2::new(28., 34.));
@@ -1266,7 +1471,10 @@ impl Disco {
         let home_rect = Rect::from_min_size(rect.min + Vec2::new(68., 0.), Vec2::new(28., 34.));
         let home = ui
             .interact(home_rect, ui.scope_id().with("root_folder"), Sense::click())
-            .on_hover_text("Усі папки · корінь сканування");
+            .on_hover_text(crate::tr!(
+                "Усі папки · корінь сканування",
+                "All folders · scan root"
+            ));
         if home.hovered() {
             ui.painter()
                 .rect_filled(home_rect, t.radius, color(&t.raised));
@@ -1343,7 +1551,7 @@ impl Disco {
         ui.put(
             search,
             egui::TextEdit::singleline(&mut self.filter)
-                .hint_text("Пошук у цій папці…")
+                .hint_text(crate::tr!("Пошук у цій папці…", "Search in this folder…"))
                 .font(FontId::proportional(14.))
                 .margin(egui::Margin {
                     left: 29,
@@ -1364,15 +1572,15 @@ impl Disco {
             scan,
             11,
             if self.report.is_some() {
-                "Оновити"
+                crate::tr!("Оновити", "Refresh")
             } else {
-                "Сканувати"
+                crate::tr!("Сканувати", "Scan")
             },
             !self.busy && self.trash_rx.is_none() && !self.recycle.busy && self.restore_requested_root.is_none(),
             &t,
         )
         .on_hover_text(
-            "Перевірити події змін; знімок до 60 с можна використати повторно. Shift + клік — завжди повний обхід.",
+            crate::tr!("Перевірити події змін; знімок до 60 с можна використати повторно. Shift + клік — завжди повний обхід.", "Check for changes; reuse a snapshot up to 60 s old. Shift + click always runs a full scan."),
         )
         .clicked()
         {
@@ -1386,21 +1594,40 @@ impl Disco {
         {
             ui.add_space(4.);
             let caption = if self.busy {
-                "Оновлюємо дані — поки показано попередній скан.".to_string()
+                crate::tr!(
+                    "Оновлюємо дані — поки показано попередній скан.",
+                    "Refreshing — showing the previous scan for now."
+                )
+                .to_string()
             } else if self.layout.auto_refresh && self.auto_refresh.pending() {
-                "На SSD є зміни — заплановано фонове оновлення.".to_string()
+                crate::tr!(
+                    "На SSD є зміни — заплановано фонове оновлення.",
+                    "SSD usage changed — background refresh scheduled."
+                )
+                .to_string()
             } else if let Some(at) = self.saved_snapshot_at {
-                format!(
+                crate::tr!(
                     "Збережений скан від {}. {}",
+                    "Saved scan from {}. {}",
                     date(std::time::UNIX_EPOCH + Duration::from_secs(at)),
                     if self.layout.auto_refresh {
-                        "Зміни зайнятого місця відстежуються автоматично."
+                        crate::tr!(
+                            "Зміни зайнятого місця відстежуються автоматично.",
+                            "Disk usage changes are monitored automatically."
+                        )
                     } else {
-                        "Для перевірки змін натисни «Оновити»."
+                        crate::tr!(
+                            "Для перевірки змін натисни «Оновити».",
+                            "Click Refresh to check for changes."
+                        )
                     }
                 )
             } else {
-                "Попередній результат — натисни «Оновити» для перевірки змін.".to_string()
+                crate::tr!(
+                    "Попередній результат — натисни «Оновити» для перевірки змін.",
+                    "Previous result — click Refresh to check for changes."
+                )
+                .to_string()
             };
             ui.add(
                 egui::Label::new(RichText::new(caption).size(12.).color(color(&t.muted))).wrap(),
@@ -1415,41 +1642,50 @@ impl Disco {
                     color(&t.accent),
                 );
                 ui.label(if self.duplicate_job {
-                    "Пошук дублікатів"
+                    crate::tr!("Пошук дублікатів", "Finding duplicates")
                 } else {
                     if self.automatic_job {
-                        "Автооновлення"
+                        crate::tr!("Автооновлення", "Auto refresh")
                     } else {
-                        "Сканування"
+                        crate::tr!("Сканування", "Scanning")
                     }
                 });
                 let paused = self.control.pause.load(Ordering::Relaxed);
                 if ui
                     .button(if paused {
-                        "Продовжити"
+                        crate::tr!("Продовжити", "Resume")
                     } else {
-                        "Пауза"
+                        crate::tr!("Пауза", "Pause")
                     })
                     .clicked()
                 {
                     self.control.pause.store(!paused, Ordering::Relaxed);
                 }
-                if ui.button("Скасувати").clicked() {
+                if ui.button(crate::tr!("Скасувати", "Cancel")).clicked() {
                     self.control.cancel.store(true, Ordering::Relaxed);
                 }
                 let mut gentle = self.control.gentle.load(Ordering::Relaxed);
-                if ui.checkbox(&mut gentle, "Бережний режим").changed() {
+                if ui
+                    .checkbox(&mut gentle, crate::tr!("Бережний режим", "Gentle mode"))
+                    .changed()
+                {
                     self.layout.gentle_scan = gentle;
                     self.control.gentle.store(gentle, Ordering::Relaxed);
                 }
                 if let Some(p) = &self.progress {
                     ui.label(
-                        RichText::new(format!("{} · {} записів", display_size(p.bytes), p.entries))
-                            .size(12.)
-                            .color(color(&t.muted)),
+                        RichText::new(crate::tr!(
+                            "{} · {} записів",
+                            "{} · {} entries",
+                            display_size(p.bytes),
+                            p.entries
+                        ))
+                        .size(12.)
+                        .color(color(&t.muted)),
                     )
-                    .on_hover_text(format!(
+                    .on_hover_text(crate::tr!(
                         "{}\nПропущено: {}",
+                        "{}\nSkipped: {}",
                         p.current.display(),
                         p.skipped
                     ));
@@ -1583,7 +1819,7 @@ impl Disco {
                 ui.painter().text(
                     r.min + Vec2::new(64., 18.),
                     Align2::LEFT_TOP,
-                    "Кошик",
+                    crate::tr!("Кошик", "Trash"),
                     art::bold(15. * self.layout.text_scale),
                     color(&t.text),
                 );
@@ -1659,28 +1895,31 @@ impl Disco {
                     ui.add_space(12.);
                     for (k, v) in [
                         (
-                            "Тип",
+                            crate::tr!("Тип", "Type"),
                             if p.is_dir {
-                                "Папка".into()
+                                crate::tr!("Папка", "Folder").into()
                             } else {
-                                "Файл".into()
+                                crate::tr!("Файл", "File").into()
                             },
                         ),
-                        ("Зайнято на диску", display_size(p.bytes)),
                         (
-                            "Елементів",
+                            crate::tr!("Зайнято на диску", "Size on disk"),
+                            display_size(p.bytes),
+                        ),
+                        (
+                            crate::tr!("Елементів", "Items"),
                             p.files.map(group_digits).unwrap_or_else(|| "—".into()),
                         ),
                         (
-                            "Змінено",
+                            crate::tr!("Змінено", "Modified"),
                             p.modified.split(',').next().unwrap_or("—").to_string(),
                         ),
                         (
-                            "Створено",
+                            crate::tr!("Створено", "Created"),
                             p.created.split(',').next().unwrap_or("—").to_string(),
                         ),
-                        ("Власник", p.owner),
-                        ("Доступ", p.permissions),
+                        (crate::tr!("Власник", "Owner"), p.owner),
+                        (crate::tr!("Доступ", "Permissions"), p.permissions),
                     ] {
                         let (r, _) = ui.allocate_exact_size(
                             Vec2::new(ui.available_width(), 25.),
@@ -1724,15 +1963,18 @@ impl Disco {
                     ui.painter().text(
                         r.min + Vec2::new(66., 17.),
                         Align2::LEFT_TOP,
-                        "Властивості",
+                        crate::tr!("Властивості", "Properties"),
                         art::bold(18.),
                         color(&t.text),
                     );
                     ui.add_space(8.);
                     ui.label(
-                        RichText::new("Вибери папку або файл у списку.")
-                            .size(14.)
-                            .color(color(&t.muted)),
+                        RichText::new(crate::tr!(
+                            "Вибери папку або файл у списку.",
+                            "Select a folder or file in the list."
+                        ))
+                        .size(14.)
+                        .color(color(&t.muted)),
                     );
                 }
             });
@@ -1741,7 +1983,16 @@ impl Disco {
                 Pos2::new(action_area.left(), action_area.bottom() - 83.),
                 Vec2::new(action_area.width(), 36.),
             );
-            if visual_button(ui, &self.art, r, 10, "Відкрити в папці", !self.demo, &t).clicked()
+            if visual_button(
+                ui,
+                &self.art,
+                r,
+                10,
+                crate::tr!("Відкрити в папці", "Open in file manager"),
+                !self.demo,
+                &t,
+            )
+            .clicked()
             {
                 open(if p.is_dir {
                     p.path.as_path()
@@ -1759,7 +2010,7 @@ impl Disco {
                     &self.art,
                     r,
                     23,
-                    "Видалити папку",
+                    crate::tr!("Видалити папку", "Delete folder"),
                     !self.demo
                         && !self.busy
                         && self.trash_rx.is_none()
@@ -1767,7 +2018,10 @@ impl Disco {
                         && p.error.is_none(),
                     &danger,
                 )
-                .on_hover_text("Перемістити папку з усім вмістом у кошик після підтвердження")
+                .on_hover_text(crate::tr!(
+                    "Перемістити папку з усім вмістом у кошик після підтвердження",
+                    "Move this folder and all its contents to Trash after confirmation"
+                ))
                 .clicked()
                 {
                     self.request_delete(vec![(p.path, p.bytes)]);
@@ -1776,7 +2030,14 @@ impl Disco {
         }
     }
     fn refresh_drive(&mut self) {
-        let (n, m) = drive_info(Path::new(&self.root));
+        let (n, m) = if self.demo {
+            (
+                crate::tr!("Системний SSD", "System SSD").into(),
+                crate::tr!("NVMe SSD · 1 ТБ", "NVMe SSD · 1 TB").into(),
+            )
+        } else {
+            drive_info(Path::new(&self.root))
+        };
         self.drive_name = n;
         self.drive_model = m;
         self.space_at = Instant::now() - Duration::from_secs(10);
@@ -1888,7 +2149,7 @@ impl Disco {
         ui.painter().text(
             h.min + Vec2::new(15., 17.),
             Align2::LEFT_CENTER,
-            "Назва",
+            crate::tr!("Назва", "Name"),
             FontId::proportional(14.),
             color(&t.text),
         );
@@ -1898,7 +2159,7 @@ impl Disco {
         ui.painter().text(
             Pos2::new(h.right() - count_width - 48., h.center().y),
             Align2::RIGHT_CENTER,
-            "Розмір",
+            crate::tr!("Розмір", "Size"),
             FontId::proportional(14.),
             color(&t.text),
         );
@@ -1946,7 +2207,7 @@ impl Disco {
             ui.painter().text(
                 Pos2::new(h.right() - 9., h.center().y),
                 Align2::RIGHT_CENTER,
-                "Файлів",
+                crate::tr!("Файлів", "Files"),
                 FontId::proportional(12.),
                 color(&t.muted),
             );
@@ -1974,11 +2235,17 @@ impl Disco {
                 center + Vec2::new(0., 0.),
                 Align2::CENTER_CENTER,
                 if self.restore_requested_root.is_some() {
-                    "Відновлюємо останній знімок…"
+                    crate::tr!(
+                        "Відновлюємо останній знімок…",
+                        "Restoring the last snapshot…"
+                    )
                 } else if self.busy {
-                    "Сканування папок…"
+                    crate::tr!("Сканування папок…", "Scanning folders…")
                 } else {
-                    "Обери папку та почни сканування"
+                    crate::tr!(
+                        "Обери папку та почни сканування",
+                        "Choose a folder and start scanning"
+                    )
                 },
                 FontId::proportional(17.),
                 color(&t.muted),
@@ -1987,11 +2254,20 @@ impl Disco {
                 center + Vec2::new(0., 28.),
                 Align2::CENTER_CENTER,
                 if self.restore_requested_root.is_some() {
-                    "Читаємо збережене дерево у фоні, без нового сканування."
+                    crate::tr!(
+                        "Читаємо збережене дерево у фоні, без нового сканування.",
+                        "Loading the saved tree in the background, without a new scan."
+                    )
                 } else if self.busy {
-                    "Збираємо розміри. Прогрес і керування — вгорі."
+                    crate::tr!(
+                        "Збираємо розміри. Прогрес і керування — вгорі.",
+                        "Collecting sizes. Progress and controls are above."
+                    )
                 } else {
-                    "Назва диска зліва зверху відкриває вибір папки"
+                    crate::tr!(
+                        "Назва диска зліва зверху відкриває вибір папки",
+                        "Click the drive name at the top left to choose a folder"
+                    )
                 },
                 FontId::proportional(12.),
                 color(&t.muted),
@@ -2172,11 +2448,14 @@ impl Disco {
         let t = self.theme.clone();
         match self.view {
             View::Files => {
-                ui.heading("Великі файли");
+                ui.heading(crate::tr!("Великі файли", "Large files"));
                 ui.label(
-                    RichText::new("300 найбільших файлів у вибраній області")
-                        .color(color(&t.muted))
-                        .size(12.),
+                    RichText::new(crate::tr!(
+                        "300 найбільших файлів у вибраній області",
+                        "The 300 largest files in the scanned area"
+                    ))
+                    .color(color(&t.muted))
+                    .size(12.),
                 );
                 let files = self
                     .report
@@ -2216,23 +2495,30 @@ impl Disco {
                 });
             }
             View::Cleanup => {
-                ui.heading("Очищення");
+                ui.heading(crate::tr!("Очищення", "Cleanup"));
                 ui.label(
-                    RichText::new(
+                    RichText::new(crate::tr!(
                         "Вибери відомі кеші. Закрий відповідну програму перед очищенням.",
-                    )
+                        "Select known caches. Close the corresponding app before cleanup."
+                    ))
                     .color(color(&t.muted))
                     .size(12.),
                 );
                 ui.label(
-                    RichText::new("Кошик не звільняє місце до його спорожнення.")
-                        .color(color(&t.muted))
-                        .size(12.),
+                    RichText::new(crate::tr!(
+                        "Кошик не звільняє місце до його спорожнення.",
+                        "Trash uses disk space until it is emptied."
+                    ))
+                    .color(color(&t.muted))
+                    .size(12.),
                 );
                 let candidates = self.candidates();
                 if candidates.is_empty() {
                     ui.add_space(20.);
-                    ui.label("Кандидатів немає. Проскануй домашню папку або .cache.");
+                    ui.label(crate::tr!(
+                        "Кандидатів немає. Проскануй домашню папку або .cache.",
+                        "No candidates. Scan your home folder or .cache."
+                    ));
                 }
                 for f in candidates {
                     ui.horizontal(|ui| {
@@ -2254,7 +2540,10 @@ impl Disco {
                             }
                         }
                         ui.label(human(f.bytes));
-                        if ui.small_button("Властивості").clicked() {
+                        if ui
+                            .small_button(crate::tr!("Властивості", "Properties"))
+                            .clicked()
+                        {
                             self.properties = Some(Properties::load(
                                 f.path.clone(),
                                 f.bytes,
@@ -2272,32 +2561,43 @@ impl Disco {
                 }
             }
             View::Duplicates => {
-                ui.heading("Дублікати");
+                ui.heading(crate::tr!("Дублікати", "Duplicates"));
                 ui.label(
-                    RichText::new("Повне порівняння вмісту від 1 МіБ. Окреме читання диска.")
-                        .size(12.)
-                        .color(color(&t.muted)),
+                    RichText::new(crate::tr!(
+                        "Повне порівняння вмісту від 1 МіБ. Окреме читання диска.",
+                        "Full content comparison for files from 1 MiB. Reads the disk separately."
+                    ))
+                    .size(12.)
+                    .color(color(&t.muted)),
                 );
                 if ui
                     .add_enabled(
                         !self.busy && self.trash_rx.is_none() && !self.recycle.busy,
-                        egui::Button::new("Знайти дублікати"),
+                        egui::Button::new(crate::tr!("Знайти дублікати", "Find duplicates")),
                     )
                     .clicked()
                 {
                     self.start(true, true);
                 }
                 ui.label(
-                    RichText::new("Тут лише перегляд. Hardlink не рахується дублікатом.")
-                        .size(12.)
-                        .color(color(&t.muted)),
+                    RichText::new(crate::tr!(
+                        "Тут лише перегляд. Hardlink не рахується дублікатом.",
+                        "Preview only. Hardlinks are not counted as duplicates."
+                    ))
+                    .size(12.)
+                    .color(color(&t.muted)),
                 );
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     for g in &self.dups {
                         ui.add_space(10.);
                         ui.label(
-                            RichText::new(format!("{} копій × {}", g.len(), human(g[0].bytes)))
-                                .strong(),
+                            RichText::new(crate::tr!(
+                                "{} копій × {}",
+                                "{} copies × {}",
+                                g.len(),
+                                human(g[0].bytes)
+                            ))
+                            .strong(),
                         );
                         for f in g {
                             if ui.link(f.path.to_string_lossy()).clicked() {
@@ -2342,11 +2642,11 @@ impl Disco {
             |ui| {
                 ui.menu_button("···", |ui| {
                     for (view, name) in [
-                        (View::Folders, "Усі папки"),
-                        (View::Files, "Великі файли"),
-                        (View::Cleanup, "Очищення"),
-                        (View::Duplicates, "Дублікати"),
-                        (View::Trash, "Кошик"),
+                        (View::Folders, crate::tr!("Усі папки", "All folders")),
+                        (View::Files, crate::tr!("Великі файли", "Large files")),
+                        (View::Cleanup, crate::tr!("Очищення", "Cleanup")),
+                        (View::Duplicates, crate::tr!("Дублікати", "Duplicates")),
+                        (View::Trash, crate::tr!("Кошик", "Trash")),
                     ] {
                         if ui.button(name).clicked() {
                             self.view = view;
@@ -2367,8 +2667,9 @@ impl Disco {
         ui.painter().text(
             r.min + Vec2::new(58., 21.),
             Align2::LEFT_CENTER,
-            format!(
+            crate::tr!(
                 "Вибрано: {} ({} елементів)",
+                "Selected: {} ({} items)",
                 display_size(total),
                 if self.view == View::Trash {
                     self.recycle.selected.len()
@@ -2383,7 +2684,7 @@ impl Disco {
             ui.painter().text(
                 r.min + Vec2::new(390., 21.),
                 Align2::LEFT_CENTER,
-                "ДЕМО",
+                crate::tr!("ДЕМО", "DEMO"),
                 FontId::proportional(11.),
                 color(&t.accent),
             );
@@ -2398,9 +2699,9 @@ impl Disco {
             button,
             10,
             if self.view == View::Trash {
-                "Відновити вибране"
+                crate::tr!("Відновити вибране", "Restore selected")
             } else {
-                "Переглянути вибране"
+                crate::tr!("Переглянути вибране", "Review selected")
             },
             if self.view == View::Trash {
                 !self.recycle.selected.is_empty() && self.bin_actions_enabled()
@@ -2669,11 +2970,11 @@ impl Disco {
                     format!(
                         "disco — {}",
                         if self.settings_page == 0 {
-                            "Оформлення"
+                            crate::tr!("Оформлення", "Appearance")
                         } else if self.settings_page == 1 {
-                            "Інтерфейс"
+                            crate::tr!("Інтерфейс", "Interface")
                         } else {
-                            "Про програму"
+                            crate::tr!("Про програму", "About")
                         }
                     ),
                     art::bold(15.),
@@ -2683,6 +2984,15 @@ impl Disco {
                     head.x_range(),
                     head.bottom(),
                     Stroke::new(1., color(&t.border)),
+                );
+                ui.scope_builder(
+                    egui::UiBuilder::new().max_rect(Rect::from_min_size(Pos2::new(head.right()-300.,head.top()+5.), Vec2::new(245.,30.))),
+                    |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(crate::tr!("Мова", "Language"));
+                            language_picker(ui, &mut layout.language);
+                        });
+                    },
                 );
                 let close = Rect::from_center_size(
                     Pos2::new(head.right() - 22., head.center().y),
@@ -2710,9 +3020,9 @@ impl Disco {
                     Stroke::new(1., color(&t.border)),
                 );
                 for (i, name, icon) in [
-                    (0, "Оформлення", 6),
-                    (1, "Інтерфейс", 7),
-                    (2, "Про програму", 17),
+                    (0, crate::tr!("Оформлення", "Appearance"), 6),
+                    (1, crate::tr!("Інтерфейс", "Interface"), 7),
+                    (2, crate::tr!("Про програму", "About"), 17),
                 ] {
                     let r = Rect::from_min_size(
                         nav.min + Vec2::new(0., 13. + i as f32 * 45.),
@@ -2764,11 +3074,11 @@ impl Disco {
                             .insert(egui::TextStyle::Button, FontId::proportional(13.));
                         ui.label(
                             RichText::new(if self.settings_page == 0 {
-                                "Оформлення"
+                                crate::tr!("Оформлення", "Appearance")
                             } else if self.settings_page == 1 {
-                                "Інтерфейс"
+                                crate::tr!("Інтерфейс", "Interface")
                             } else {
-                                "Про програму"
+                                crate::tr!("Про програму", "About")
                             })
                             .font(art::bold(19.)),
                         );
@@ -2787,7 +3097,7 @@ impl Disco {
                                                 ui.add_sized(
                                                     [67., 30.],
                                                     egui::Label::new(
-                                                        RichText::new("Тема").size(13.),
+                                                        RichText::new(crate::tr!("Тема", "Theme")).size(13.),
                                                     ),
                                                 );
                                                 egui::ComboBox::from_id_salt("theme_select")
@@ -2808,16 +3118,16 @@ impl Disco {
                                             }
                                             cols[0].add_space(10.);
                                             for (name, value) in [
-                                                ("Акцент", &mut theme.accent),
-                                                ("Фон", &mut theme.background),
-                                                ("Панелі", &mut theme.panel),
-                                                ("Текст", &mut theme.text),
+                                                (crate::tr!("Акцент", "Accent"), &mut theme.accent),
+                                                (crate::tr!("Фон", "Background"), &mut theme.background),
+                                                (crate::tr!("Панелі", "Panels"), &mut theme.panel),
+                                                (crate::tr!("Текст", "Text"), &mut theme.text),
                                             ] {
                                                 theme_color_row(&mut cols[0], name, value, &t);
                                             }
                                             cols[0].add_space(4.);
                                             egui::CollapsingHeader::new(
-                                                RichText::new("Додаткові кольори")
+                                                RichText::new(crate::tr!("Додаткові кольори", "Additional colors"))
                                                     .size(12.)
                                                     .color(color(&t.muted)),
                                             )
@@ -2825,9 +3135,10 @@ impl Disco {
                                                 &mut cols[0],
                                                 |ui| {
                                                     for (name, value) in [
-                                                        ("Підписи", &mut theme.muted),
-                                                        ("Межі", &mut theme.border),
-                                                        ("Підняття", &mut theme.raised),
+                                                        (crate::tr!("Кошик", "Trash"), &mut theme.trash),
+                                                        (crate::tr!("Підписи", "Labels"), &mut theme.muted),
+                                                        (crate::tr!("Межі", "Borders"), &mut theme.border),
+                                                        (crate::tr!("Підняття", "Raised"), &mut theme.raised),
                                                     ] {
                                                         theme_color_row(ui, name, value, &t);
                                                     }
@@ -2836,20 +3147,19 @@ impl Disco {
                                                             &mut theme.radius,
                                                             0..=12,
                                                         )
-                                                        .text("Радіус, px"),
+                                                        .text(crate::tr!("Радіус, px", "Corner radius, px")),
                                                     );
                                                 },
                                             );
                                             cols[1].label(
-                                                RichText::new("Попередній перегляд")
+                                                RichText::new(crate::tr!("Попередній перегляд", "Preview"))
                                                     .size(12.)
                                                     .color(color(&t.muted)),
                                             );
                                             self.preview(&mut cols[1], &theme, &layout);
                                             cols[1].add_space(9.);
                                             cols[1].label(
-                                                RichText::new(format!(
-                                                    "Контраст тексту: {:.1}:1",
+                                                RichText::new(crate::tr!("Контраст тексту: {:.1}:1", "Text contrast: {:.1}:1",
                                                     settings::contrast(
                                                         color(&theme.text),
                                                         color(&theme.background)
@@ -2860,22 +3170,22 @@ impl Disco {
                                             );
                                         } else {
                                             cols[0]
-                                                .label(RichText::new("Щільність рядків").size(13.));
+                                                .label(RichText::new(crate::tr!("Щільність рядків", "Row density")).size(13.));
                                             cols[0].horizontal(|ui| {
                                                 ui.selectable_value(
                                                     &mut layout.compact,
                                                     false,
-                                                    "Звичайна",
+                                                    crate::tr!("Звичайна", "Comfortable"),
                                                 );
                                                 ui.selectable_value(
                                                     &mut layout.compact,
                                                     true,
-                                                    "Компактна",
+                                                    crate::tr!("Компактна", "Compact"),
                                                 );
                                             });
                                             cols[0].add_space(4.);
                                             cols[0]
-                                                .label(RichText::new("Масштаб тексту").size(13.));
+                                                .label(RichText::new(crate::tr!("Масштаб тексту", "Text size")).size(13.));
                                             let mut pct = layout.text_scale * 100.;
                                             cols[0].add(
                                                 egui::Slider::new(&mut pct, 85.0..=140.0)
@@ -2887,68 +3197,68 @@ impl Disco {
                                             check_row(
                                                 &mut cols[0],
                                                 &mut layout.categories,
-                                                "Показувати категорії",
+                                                crate::tr!("Показувати категорії", "Show categories"),
                                                 true,
                                                 &t,
                                             );
                                             check_row(
                                                 &mut cols[0],
                                                 &mut layout.properties,
-                                                "Показувати властивості",
+                                                crate::tr!("Показувати властивості", "Show properties"),
                                                 true,
                                                 &t,
                                             );
                                             cols[0].add_space(5.);
                                             cols[0]
-                                                .label(RichText::new("Колонки у списку").size(13.));
+                                                .label(RichText::new(crate::tr!("Колонки у списку", "List columns")).size(13.));
                                             let mut always = true;
                                             check_row(
                                                 &mut cols[0],
                                                 &mut always,
-                                                "Назва",
+                                                crate::tr!("Назва", "Name"),
                                                 false,
                                                 &t,
                                             );
                                             check_row(
                                                 &mut cols[0],
                                                 &mut always,
-                                                "Розмір",
+                                                crate::tr!("Розмір", "Size"),
                                                 false,
                                                 &t,
                                             );
                                             check_row(
                                                 &mut cols[0],
                                                 &mut layout.show_count,
-                                                "Кількість файлів",
+                                                crate::tr!("Кількість файлів", "File count"),
                                                 true,
                                                 &t,
                                             );
-                                            egui::CollapsingHeader::new(RichText::new("Рух і відгук").size(12.).color(color(&t.muted)))
+                                            egui::CollapsingHeader::new(RichText::new(crate::tr!("Рух і відгук", "Motion & feedback")).size(12.).color(color(&t.muted)))
                                                 .show(&mut cols[0], |ui| {
-                                                    check_row(ui, &mut layout.animations, "Анімації інтерфейсу", true, &t);
-                                                    ui.add_enabled(layout.animations, egui::Slider::new(&mut layout.motion_speed, 0.5..=2.).text("Швидкість").suffix("×").fixed_decimals(2));
-                                                    ui.label(RichText::new("Вимкни анімації для зменшеного руху. У спокої вони не працюють.").size(12.).color(color(&t.muted)));
+                                                    check_row(ui, &mut layout.animations, crate::tr!("Анімації інтерфейсу", "Interface animations"), true, &t);
+                                                    ui.add_enabled(layout.animations, egui::Slider::new(&mut layout.motion_speed, 0.5..=2.).text(crate::tr!("Швидкість", "Speed")).suffix("×").fixed_decimals(2));
+                                                    ui.label(RichText::new(crate::tr!("Вимкни анімації для зменшеного руху. У спокої вони не працюють.", "Disable animations for reduced motion. They stop when idle.")).size(12.).color(color(&t.muted)));
                                                 });
                                             cols[1].label(
-                                                RichText::new("Попередній перегляд")
+                                                RichText::new(crate::tr!("Попередній перегляд", "Preview"))
                                                     .size(12.)
                                                     .color(color(&t.muted)),
                                             );
                                             self.preview(&mut cols[1], &theme, &layout);
-                                            egui::CollapsingHeader::new(RichText::new("Навігація та сканування").size(12.).color(color(&t.muted)))
+                                            egui::CollapsingHeader::new(RichText::new(crate::tr!("Навігація та сканування", "Navigation & scanning")).size(12.).color(color(&t.muted)))
                                                 .show(&mut cols[1], |ui| {
-                                                    ui.label(RichText::new("Клік по папці").size(13.));
-                                                    ui.radio_value(&mut layout.single_click_expand, true, "Один клік — розгорнути дерево");
-                                                    ui.radio_value(&mut layout.single_click_expand, false, "Подвійний клік — відкрити папку");
-                                                    check_row(ui, &mut layout.save_scan, "Зберігати й відновлювати останній скан", true, &t);
-                                                    check_row(ui, &mut layout.auto_refresh, "Автооновлення при зміні SSD", true, &t);
-                                                    ui.label(RichText::new("Зміна від 64 МіБ → оновлення через 8 с, не частіше разу на хвилину. Однаковий обсяг не гарантує відсутності змін — доступне ручне оновлення.").size(12.).color(color(&t.muted)));
-                                                    check_row(ui, &mut layout.reuse_scan, "Перевіряти зміни перед обходом", true, &t);
-                                                    check_row(ui, &mut layout.gentle_scan, "Бережний режим сканування", true, &t);
-                                                    ui.label(RichText::new("Бічні кнопки миші: назад / уперед. Shift + Оновити: повний обхід.").size(12.).color(color(&t.muted)));
+                                                    ui.label(RichText::new(crate::tr!("Клік по папці", "Folder clicks")).size(13.));
+                                                    ui.radio_value(&mut layout.single_click_expand, true, crate::tr!("Один клік — розгорнути дерево", "Single click expands the tree"));
+                                                    ui.radio_value(&mut layout.single_click_expand, false, crate::tr!("Подвійний клік — відкрити папку", "Double click opens a folder"));
+                                                    check_row(ui, &mut layout.save_scan, crate::tr!("Зберігати й відновлювати останній скан", "Save and restore the last scan"), true, &t);
+                                                    check_row(ui, &mut layout.auto_refresh, crate::tr!("Автооновлення при зміні SSD", "Refresh when disk usage changes"), true, &t);
+                                                    ui.label(RichText::new(crate::tr!("Зміна від 64 МіБ → оновлення через 8 с, не частіше разу на хвилину. Однаковий обсяг не гарантує відсутності змін — доступне ручне оновлення.", "Changes of 64 MiB or more trigger a refresh after 8 s, at most once a minute. Unchanged usage does not guarantee unchanged files; you can refresh manually.")).size(12.).color(color(&t.muted)));
+                                                    check_row(ui, &mut layout.reuse_scan, crate::tr!("Перевіряти зміни перед обходом", "Check for changes before rescanning"), true, &t);
+                                                    check_row(ui, &mut layout.gentle_scan, crate::tr!("Бережний режим сканування", "Gentle scanning mode"), true, &t);
+                                                    ui.label(RichText::new(crate::tr!("Бічні кнопки миші: назад / уперед. Shift + Оновити: повний обхід.", "Mouse side buttons: back / forward. Shift + Refresh: full scan.")).size(12.).color(color(&t.muted)));
                                                 });
                                             egui::CollapsingHeader::new(
-                                                RichText::new("Панелі та диск")
+                                                RichText::new(crate::tr!("Панелі та диск", "Panels & drive"))
                                                     .size(12.)
                                                     .color(color(&t.muted)),
                                             )
@@ -2960,16 +3270,16 @@ impl Disco {
                                                             &mut layout.category_width,
                                                             155.0..=280.0,
                                                         )
-                                                        .text("Категорії, px"),
+                                                        .text(crate::tr!("Категорії, px", "Categories, px")),
                                                     );
                                                     ui.add(
                                                         egui::Slider::new(
                                                             &mut layout.property_width,
                                                             240.0..=380.0,
                                                         )
-                                                        .text("Властивості, px"),
+                                                        .text(crate::tr!("Властивості, px", "Properties, px")),
                                                     );
-                                                    ui.label("Назва диска");
+                                                    ui.label(crate::tr!("Назва диска", "Drive name"));
                                                     ui.add(
                                                         egui::TextEdit::singleline(
                                                             &mut layout.drive_name,
@@ -2980,7 +3290,7 @@ impl Disco {
                                                 },
                                             );
                                             egui::CollapsingHeader::new(
-                                                RichText::new("Деталі вигляду")
+                                                RichText::new(crate::tr!("Деталі вигляду", "Display details"))
                                                     .size(12.)
                                                     .color(color(&t.muted)),
                                             )
@@ -2989,7 +3299,7 @@ impl Disco {
                                                 |ui| {
                                                     ui.label(
                                                         RichText::new(
-                                                            "Розмір іконок у панелях і дереві",
+                                                            crate::tr!("Розмір іконок у панелях і дереві", "Icon size in panels and tree"),
                                                         )
                                                         .size(12.),
                                                     );
@@ -3003,28 +3313,28 @@ impl Disco {
                                                     check_row(
                                                         ui,
                                                         &mut layout.category_sizes,
-                                                        "Розміри під категоріями",
+                                                        crate::tr!("Розміри під категоріями", "Sizes below categories"),
                                                         true,
                                                         &t,
                                                     );
                                                     check_row(
                                                         ui,
                                                         &mut layout.row_separators,
-                                                        "Розділювачі рядків",
+                                                        crate::tr!("Розділювачі рядків", "Row separators"),
                                                         true,
                                                         &t,
                                                     );
                                                     check_row(
                                                         ui,
                                                         &mut layout.striped_rows,
-                                                        "Чергування фону рядків",
+                                                        crate::tr!("Чергування фону рядків", "Alternating row backgrounds"),
                                                         true,
                                                         &t,
                                                     );
                                                     check_row(
                                                         ui,
                                                         &mut layout.drive_model,
-                                                        "Модель диска в шапці",
+                                                        crate::tr!("Модель диска в шапці", "Drive model in header"),
                                                         true,
                                                         &t,
                                                     );
@@ -3040,9 +3350,9 @@ impl Disco {
                                 ui.label(RichText::new(format!("disco {}", env!("CARGO_PKG_VERSION"))).font(art::bold(25.)));
                             });
                             ui.add_space(18.);
-                            ui.label("Аналізатор дискового простору");
+                            ui.label(crate::tr!("Аналізатор дискового простору", "Disk space analyzer"));
                             ui.label(
-                                RichText::new("Папки, великі файли та контрольоване очищення.")
+                                RichText::new(crate::tr!("Папки, великі файли та контрольоване очищення.", "Folders, large files, and cleanup with confirmation."))
                                     .color(color(&t.muted))
                                     .size(14.),
                             );
@@ -3070,15 +3380,15 @@ impl Disco {
                             150.,
                             15,
                             if self.settings_page == 0 {
-                                "Імпортувати тему"
+                                crate::tr!("Імпортувати тему", "Import theme")
                             } else {
-                                "Імпортувати"
+                                crate::tr!("Імпортувати", "Import")
                             }
                             .to_string(),
                             0,
                         ),
-                        (333., 258., 15, format!("Експортувати {name}"), 1),
-                        (600., 225., 16, "Скинути".to_string(), 2),
+                        (333., 258., 15, crate::tr!("Експортувати {name}", "Export {name}", name = name), 1),
+                        (600., 225., 16, crate::tr!("Скинути", "Reset").to_string(), 2),
                     ] {
                         let r =
                             Rect::from_min_size(foot.min + Vec2::new(x, 12.), Vec2::new(w, 34.));
@@ -3090,7 +3400,7 @@ impl Disco {
                                     if self.settings_page == 0 {
                                         theme = Theme::default();
                                     } else {
-                                        layout = Layout::default();
+                                        layout = Layout { language: layout.language, ..Layout::default() };
                                     }
                                 }
                             }
@@ -3098,7 +3408,7 @@ impl Disco {
                     }
                 }
                 let caption = if self.settings_error.is_empty() {
-                    "Збереження — кнопкою «Зберегти»"
+                    crate::tr!("Збереження — кнопкою «Зберегти»", "Click Save to keep your changes")
                 } else {
                     &self.settings_error
                 };
@@ -3119,8 +3429,8 @@ impl Disco {
                 let accept =
                     Rect::from_min_size(foot.min + Vec2::new(710., 60.), Vec2::new(115., 32.));
                 cancel =
-                    visual_button(ui, &self.art, back, usize::MAX, "Скасувати", true, &t).clicked();
-                save = visual_button(ui, &self.art, accept, usize::MAX, "Зберегти", true, &t)
+                    visual_button(ui, &self.art, back, usize::MAX, crate::tr!("Скасувати", "Cancel"), true, &t).clicked();
+                save = visual_button(ui, &self.art, accept, usize::MAX, crate::tr!("Зберегти", "Save"), true, &t)
                     .clicked();
             });
         self.theme_draft = Some(theme.clone());
@@ -3163,9 +3473,13 @@ impl Disco {
                 self.settings_error = match result {
                     Ok(()) => {
                         if export {
-                            "Експортовано".into()
+                            crate::tr!("Експортовано", "Exported").into()
                         } else {
-                            "Імпортовано. Натисни «Зберегти» для постійного застосування.".into()
+                            crate::tr!(
+                                "Імпортовано. Натисни «Зберегти» для постійного застосування.",
+                                "Imported. Click Save to apply permanently."
+                            )
+                            .into()
                         }
                     }
                     Err(e) => e,
@@ -3187,7 +3501,7 @@ impl Disco {
                     self.settings_open = false;
                     self.settings_snapshot = None;
                     self.theme_draft = None;
-                    self.message = "Налаштування збережено".into();
+                    self.message = crate::tr!("Налаштування збережено", "Settings saved").into();
                 }
                 Err(e) => self.settings_error = e,
             }
@@ -3247,13 +3561,8 @@ impl eframe::App for Disco {
                 self.start_job(false, true, true);
             }
         }
-        if self.view == View::Trash
-            && !self.demo
-            && !self.recycle.loaded
-            && !self.recycle.loading
-            && !self.recycle.busy
-        {
-            self.recycle.refresh(ui.ctx());
+        if !self.demo && self.trash_rx.is_none() && !self.confirm && self.purge_targets.is_none() {
+            self.recycle.maintain(ui.ctx());
         }
         let previous_location = self.nav_state();
         self.nav_traversed = false;
@@ -3383,6 +3692,13 @@ impl eframe::App for Disco {
         self.confirmation(&ctx);
         self.bin_confirmation(&ctx);
         self.settings_window(&ctx);
+        if i18n::current() != self.layout.language {
+            i18n::set_current(self.layout.language);
+            self.message.clear();
+            self.recycle.relocalize_notice();
+            self.refresh_drive();
+            ctx.request_repaint();
+        }
         if !self.demo
             && self.layout.auto_refresh
             && !self.busy
@@ -3457,6 +3773,7 @@ fn main() -> eframe::Result {
         return Ok(());
     }
     if args.iter().any(|a| a == "--snapshot-info") {
+        i18n::set_current(settings::load().1.language);
         let started = Instant::now();
         match snapshot::load() {
             Ok(Some(saved)) => {
@@ -3481,6 +3798,7 @@ fn main() -> eframe::Result {
         return Ok(());
     }
     if let Some(i) = args.iter().position(|x| x == "--scan") {
+        i18n::set_current(settings::load().1.language);
         if let Some(p) = args.get(i + 1) {
             let c = Control::default();
             c.gentle.store(true, Ordering::Relaxed);
@@ -3629,6 +3947,59 @@ mod tests {
         fs::remove_dir_all(path).unwrap();
     }
     #[test]
+    fn storage_bar_partitions_used_space_without_double_counting() {
+        let p = storage_parts(1000, 200, 300);
+        assert_eq!(
+            p,
+            StorageParts {
+                used: 800,
+                trash: 300,
+                other: 500
+            }
+        );
+        assert_eq!(p.other + p.trash + 200, 1000);
+        assert_eq!(storage_parts(100, 40, 999).trash, 60);
+        assert_eq!(
+            storage_parts(0, 0, 9),
+            StorageParts {
+                used: 0,
+                trash: 0,
+                other: 0
+            }
+        );
+        assert_eq!(storage_parts(10, 20, 9).used, 0);
+        let p = storage_parts(u64::MAX, 1, u64::MAX);
+        assert_eq!(p.other, 0);
+        assert_eq!(p.trash, u64::MAX - 1);
+        assert_eq!(
+            plural(
+                1,
+                crate::tr!("файл", "file"),
+                crate::tr!("файли", "files"),
+                crate::tr!("файлів", "files")
+            ),
+            crate::tr!("файл", "file")
+        );
+        assert_eq!(
+            plural(
+                22,
+                crate::tr!("файл", "file"),
+                crate::tr!("файли", "files"),
+                crate::tr!("файлів", "files")
+            ),
+            crate::tr!("файли", "files")
+        );
+        assert_eq!(
+            plural(
+                111,
+                crate::tr!("файл", "file"),
+                crate::tr!("файли", "files"),
+                crate::tr!("файлів", "files")
+            ),
+            crate::tr!("файлів", "files")
+        );
+    }
+    #[test]
     fn permission_display() {
         assert_eq!(permissions(0o755), "rwxr-xr-x");
         assert_eq!(permissions(0o600), "rw-------");
@@ -3642,9 +4013,9 @@ fn delete_dialog(
 ) -> egui::ModalResponse<(egui::Response, egui::Response)> {
     egui::Modal::new(egui::Id::unique("delete-confirmation")).show(ctx, |ui| {
         ui.set_width(480.);
-        ui.heading(if targets.len() == 1 { "Видалити папку?" } else { "Видалити вибрані папки?" });
+        ui.heading(if targets.len() == 1 { crate::tr!("Видалити папку?", "Delete folder?") } else { crate::tr!("Видалити вибрані папки?", "Delete selected folders?") });
         ui.add_space(8.);
-        ui.label("Папка та весь її вміст будуть переміщені у кошик.");
+        ui.label(crate::tr!("Папка та весь її вміст будуть переміщені у кошик.", "The folder and all its contents will be moved to Trash."));
         ui.add_space(10.);
         egui::ScrollArea::vertical().max_height(180.).show(ui, |ui| {
             for target in targets {
@@ -3654,17 +4025,56 @@ fn delete_dialog(
             }
         });
         let total = targets.iter().fold(0u64, |sum,t| sum.saturating_add(t.bytes));
-        ui.label(RichText::new(format!("За останнім сканом: {}", display_size(total))).strong());
+        ui.label(RichText::new(crate::tr!("За останнім сканом: {}", "According to the last scan: {}", display_size(total))).strong());
         ui.add_space(8.);
-        ui.label(RichText::new("Повернути файли можна з кошика у Dolphin / Files. Місце на SSD звільниться після спорожнення кошика.").size(13.).color(color(&t.muted)));
+        ui.label(RichText::new(crate::tr!("Повернути файли можна з кошика у Dolphin / Files. Місце на SSD звільниться після спорожнення кошика.", "You can restore files from Trash in Dolphin / Files. Disk space is freed after emptying Trash.")).size(13.).color(color(&t.muted)));
         ui.add_space(16.);
         ui.horizontal(|ui| {
-            let cancel = ui.button("Скасувати");
+            let cancel = ui.button(crate::tr!("Скасувати", "Cancel"));
             if fresh { cancel.request_focus(); }
-            let yes = ui.add(egui::Button::new(RichText::new("Так, перемістити у кошик").color(C::WHITE)).fill(color(&t.accent)));
+            let yes = ui.add(egui::Button::new(RichText::new(crate::tr!("Так, перемістити у кошик", "Yes, move to Trash")).color(C::WHITE)).fill(color(&t.accent)));
             (cancel, yes)
         }).inner
     })
+}
+#[derive(Debug, PartialEq)]
+struct StorageParts {
+    used: u64,
+    trash: u64,
+    other: u64,
+}
+fn storage_parts(total: u64, free: u64, trash: u64) -> StorageParts {
+    let used = total.saturating_sub(free.min(total));
+    let trash = trash.min(used);
+    StorageParts {
+        used,
+        trash,
+        other: used - trash,
+    }
+}
+fn plural<'a>(n: u64, one: &'a str, few: &'a str, many: &'a str) -> &'a str {
+    if i18n::current() == i18n::Language::En {
+        return if n == 1 { one } else { many };
+    }
+    if (11..=14).contains(&(n % 100)) {
+        many
+    } else {
+        match n % 10 {
+            1 => one,
+            2..=4 => few,
+            _ => many,
+        }
+    }
+}
+fn language_picker(ui: &mut egui::Ui, language: &mut i18n::Language) {
+    egui::ComboBox::from_id_salt("interface-language")
+        .width(135.)
+        .selected_text(language.name())
+        .show_ui(ui, |ui| {
+            for choice in [i18n::Language::Uk, i18n::Language::En] {
+                ui.selectable_value(language, choice, choice.name());
+            }
+        });
 }
 fn display_size(n: u64) -> String {
     human(n).replace(".0 ", " ")

@@ -2,7 +2,7 @@
 //! actions receive an explicit captured set, never a late "delete everything".
 use eframe::egui;
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     ffi::OsString,
     fs,
     os::unix::fs::MetadataExt,
@@ -21,6 +21,9 @@ pub struct Item {
     pub bytes: Option<u64>,
     pub complete_size: bool,
     pub directory: bool,
+    pub files: Option<u64>,
+    pub folders: Option<u64>,
+    content_version: (i64, i64, u64),
     info_identity: (u64, u64, i64, i64, u64),
     identity: (u64, u64),
 }
@@ -34,7 +37,11 @@ impl Item {
                 .and_then(Path::file_name)
                 .is_none_or(|n| n != "info")
         {
-            return Err("Неправильний ідентифікатор елемента кошика".into());
+            return Err(crate::tr!(
+                "Неправильний ідентифікатор елемента кошика",
+                "Invalid Trash item identifier"
+            )
+            .into());
         }
         let original = entry.original_path();
         if !original.is_absolute()
@@ -42,30 +49,50 @@ impl Item {
                 .components()
                 .any(|c| matches!(c, std::path::Component::ParentDir))
         {
-            return Err("Неправильний початковий шлях у кошику".into());
+            return Err(crate::tr!(
+                "Неправильний початковий шлях у кошику",
+                "Invalid original path in Trash"
+            )
+            .into());
         }
         let meta = fs::symlink_metadata(info).map_err(|e| e.to_string())?;
         if !meta.is_file() || info.canonicalize().map_err(|e| e.to_string())? != info {
-            return Err("Метадані кошика мають бути звичайним файлом".into());
+            return Err(crate::tr!(
+                "Метадані кошика мають бути звичайним файлом",
+                "Trash metadata must be a regular file"
+            )
+            .into());
         }
-        let stem = info.file_stem().ok_or("Немає назви елемента")?;
+        let stem = info
+            .file_stem()
+            .ok_or(crate::tr!("Немає назви елемента", "Missing item name"))?;
         if Path::new(stem).components().count() != 1
             || !matches!(
                 Path::new(stem).components().next(),
                 Some(std::path::Component::Normal(_))
             )
         {
-            return Err("Неправильна назва елемента кошика".into());
+            return Err(crate::tr!(
+                "Неправильна назва елемента кошика",
+                "Invalid Trash item name"
+            )
+            .into());
         }
         let stored = info
             .parent()
             .and_then(Path::parent)
-            .ok_or("Немає папки кошика")?
+            .ok_or(crate::tr!("Немає папки кошика", "Missing Trash folder"))?
             .join("files")
             .join(stem);
-        let parent = stored.parent().ok_or("Немає папки files")?;
+        let parent = stored
+            .parent()
+            .ok_or(crate::tr!("Немає папки files", "Missing files folder"))?;
         if parent.canonicalize().map_err(|e| e.to_string())? != parent {
-            return Err("Папка files у кошику не може бути посиланням".into());
+            return Err(crate::tr!(
+                "Папка files у кошику не може бути посиланням",
+                "The files folder in Trash cannot be a symbolic link"
+            )
+            .into());
         }
         let m = fs::symlink_metadata(&stored).map_err(|e| e.to_string())?;
         Ok(Self {
@@ -74,6 +101,9 @@ impl Item {
             bytes: (!m.is_dir()).then_some(m.blocks().saturating_mul(512)),
             complete_size: !m.is_dir(),
             directory: m.is_dir(),
+            files: (!m.is_dir()).then_some(1),
+            folders: (!m.is_dir()).then_some(0),
+            content_version: (m.mtime(), m.mtime_nsec(), m.len()),
             info_identity: (
                 meta.dev(),
                 meta.ino(),
@@ -107,7 +137,13 @@ pub struct Finished {
 }
 fn list() -> Result<Vec<trash::TrashItem>, String> {
     std::panic::catch_unwind(trash::os_limited::list)
-        .map_err(|_| "Не вдалося прочитати метадані кошика".to_string())?
+        .map_err(|_| {
+            crate::tr!(
+                "Не вдалося прочитати метадані кошика",
+                "Could not read Trash metadata"
+            )
+            .to_string()
+        })?
         .map_err(|e| e.to_string())
 }
 fn execute(items: &[Item], action: Action) -> Finished {
@@ -132,15 +168,17 @@ fn execute(items: &[Item], action: Action) -> Finished {
             .cloned()
             .and_then(|e| Item::capture(e).ok());
         if fresh.as_ref().is_none_or(|f| !item.matches(f)) {
-            result.error = Some(format!(
+            result.error = Some(crate::tr!(
                 "Елемент кошика змінився: {}. Онови список.",
+                "Trash item changed: {}. Refresh the list.",
                 item.entry.name.to_string_lossy()
             ));
             return result;
         }
         if action == Action::Restore && fs::symlink_metadata(item.entry.original_path()).is_ok() {
-            result.error = Some(format!(
+            result.error = Some(crate::tr!(
                 "Уже існує: {}. Відновлення не перезаписує наявні файли.",
+                "Already exists: {}. Restoring does not overwrite existing files.",
                 item.entry.original_path().display()
             ));
             return result;
@@ -151,7 +189,13 @@ fn execute(items: &[Item], action: Action) -> Finished {
             .map(|fresh| !item.matches(&fresh))
             .unwrap_or(true)
         {
-            result.error = Some("Елемент кошика змінився під час операції".into());
+            result.error = Some(
+                crate::tr!(
+                    "Елемент кошика змінився під час операції",
+                    "Trash item changed during the operation"
+                )
+                .into(),
+            );
             break;
         }
         result.changed = true;
@@ -159,7 +203,13 @@ fn execute(items: &[Item], action: Action) -> Finished {
             Action::Restore => trash::os_limited::restore_all([item.entry.clone()]),
             Action::Purge => trash::os_limited::purge_all([&item.entry]),
         })
-        .map_err(|_| "Операцію кошика перервано. Перевір оновлений список.".to_string())
+        .map_err(|_| {
+            crate::tr!(
+                "Операцію кошика перервано. Перевір оновлений список.",
+                "Trash operation interrupted. Check the refreshed list."
+            )
+            .to_string()
+        })
         .and_then(|result| result.map_err(|e| e.to_string()));
         match op {
             Ok(()) => result.done += 1,
@@ -171,9 +221,18 @@ fn execute(items: &[Item], action: Action) -> Finished {
     }
     result
 }
-fn size(path: &Path, cancel: &AtomicBool) -> Option<(u64, bool)> {
-    let mut bytes = 0u64;
-    let mut complete = true;
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct SizeStats {
+    bytes: u64,
+    files: u64,
+    folders: u64,
+    complete: bool,
+}
+fn size(path: &Path, cancel: &AtomicBool) -> Option<SizeStats> {
+    let mut stats = SizeStats {
+        complete: true,
+        ..Default::default()
+    };
     let mut links = HashSet::new();
     let mut yielded = Instant::now();
     for e in walkdir::WalkDir::new(path)
@@ -186,24 +245,60 @@ fn size(path: &Path, cancel: &AtomicBool) -> Option<(u64, bool)> {
         let meta = match e.and_then(|e| e.metadata()) {
             Ok(m) => m,
             Err(_) => {
-                complete = false;
+                stats.complete = false;
                 continue;
             }
         };
+        if meta.is_dir() {
+            stats.folders += 1;
+        } else {
+            stats.files += 1;
+        }
         if meta.is_file() && meta.nlink() > 1 && !links.insert((meta.dev(), meta.ino())) {
             continue;
         }
-        bytes = bytes.saturating_add(meta.blocks().saturating_mul(512));
+        stats.bytes = stats
+            .bytes
+            .saturating_add(meta.blocks().saturating_mul(512));
         if yielded.elapsed() > Duration::from_millis(50) {
             std::thread::sleep(Duration::from_millis(1));
             yielded = Instant::now();
         }
     }
-    Some((bytes, complete))
+    Some(stats)
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Summary {
+    pub bytes: u64,
+    pub files: u64,
+    pub folders: u64,
+    pub entries: usize,
+    pub complete: bool,
+}
+type ListingStamp = Vec<(PathBuf, Option<(u64, u64, i64, i64, u64)>)>;
+fn listing_stamp() -> Result<ListingStamp, String> {
+    let folders = std::panic::catch_unwind(trash::os_limited::trash_folders)
+        .map_err(|_| {
+            crate::tr!("Не вдалося перевірити кошик", "Could not check Trash").to_string()
+        })?
+        .map_err(|e| e.to_string())?;
+    let mut stamps = Vec::new();
+    for root in folders {
+        for child in ["info", "files"] {
+            let path = root.join(child);
+            let stamp = fs::metadata(&path)
+                .ok()
+                .map(|m| (m.dev(), m.ino(), m.mtime(), m.mtime_nsec(), m.len()));
+            stamps.push((path, stamp));
+        }
+    }
+    stamps.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(stamps)
 }
 enum Event {
-    Loaded(Vec<Item>, Option<String>),
-    Size(OsString, u64, bool),
+    Loaded(Vec<Item>, Option<String>, Option<ListingStamp>),
+    Unchanged,
+    Size(OsString, SizeStats),
     Ready,
     Error(String),
     Finished(Finished),
@@ -213,12 +308,18 @@ pub struct Bin {
     pub items: Vec<Item>,
     pub selected: HashSet<OsString>,
     pub loading: bool,
+    pub checking: bool,
     pub loaded: bool,
     pub busy: bool,
     pub notice: String,
+    notice_kind: Option<(Action, Option<usize>)>,
     pub error: String,
     rx: Option<Receiver<Event>>,
     cancel: Arc<AtomicBool>,
+    checked_at: Option<Instant>,
+    listing_stamp: Option<ListingStamp>,
+    summaries: HashMap<u64, Summary>,
+    item_ids: HashMap<OsString, usize>,
 }
 impl Bin {
     pub fn demo() -> Self {
@@ -246,16 +347,48 @@ impl Bin {
                 bytes: Some(bytes),
                 complete_size: true,
                 directory,
+                files: Some(if name == "Modlist_Downloads" {
+                    8534
+                } else if directory {
+                    4180
+                } else {
+                    1
+                }),
+                folders: Some(if directory { 1 } else { 0 }),
+                content_version: (0, 0, 0),
                 info_identity: (0, 0, 0, 0, 0),
                 identity: (0, 0),
             });
         }
+        s.rebuild_summaries();
         s
+    }
+    pub fn relocalize_notice(&mut self) {
+        self.notice = match self.notice_kind {
+            None => String::new(),
+            Some((Action::Restore, None)) => {
+                crate::tr!("Відновлюємо вибране…", "Restoring selected items…").into()
+            }
+            Some((Action::Purge, None)) => {
+                crate::tr!("Видаляємо остаточно…", "Deleting permanently…").into()
+            }
+            Some((action, Some(done))) => format!(
+                "{}: {}",
+                if action == Action::Restore {
+                    crate::tr!("Відновлено", "Restored")
+                } else {
+                    crate::tr!("Видалено остаточно", "Permanently deleted")
+                },
+                done
+            ),
+        };
     }
     pub fn invalidate(&mut self) {
         self.cancel.store(true, Ordering::Relaxed);
         self.loaded = false;
+        self.listing_stamp = None;
         self.loading = false;
+        self.checking = false;
         self.rx = None;
     }
     pub fn picked(&self) -> Vec<Item> {
@@ -266,19 +399,54 @@ impl Bin {
             .collect()
     }
     pub fn refresh(&mut self, ctx: &egui::Context) {
+        self.begin_refresh(ctx, false);
+    }
+    pub fn maintain(&mut self, ctx: &egui::Context) {
+        if !self.loading
+            && !self.busy
+            && (!self.loaded
+                || self
+                    .checked_at
+                    .is_none_or(|at| at.elapsed() >= Duration::from_secs(15)))
+        {
+            self.begin_refresh(ctx, true);
+        }
+    }
+    fn begin_refresh(&mut self, ctx: &egui::Context, reuse_sizes: bool) {
         if self.busy {
             return;
         }
         self.cancel.store(true, Ordering::Relaxed);
         self.cancel = Arc::new(AtomicBool::new(false));
+        self.checking = reuse_sizes && self.loaded;
         self.loading = true;
+        self.checked_at = Some(Instant::now());
         self.error.clear();
+        let cached: HashMap<_, _> = if reuse_sizes {
+            self.items
+                .iter()
+                .map(|i| (i.entry.id.clone(), i.clone()))
+                .collect()
+        } else {
+            HashMap::new()
+        };
+        let previous_stamp = if reuse_sizes {
+            self.listing_stamp.clone()
+        } else {
+            None
+        };
         let cancel = self.cancel.clone();
         let ctx = ctx.clone();
         let (tx, rx) = mpsc::channel();
         self.rx = Some(rx);
         std::thread::spawn(move || {
             crate::scan::background_priority();
+            let stamp = listing_stamp().ok();
+            if previous_stamp.is_some() && previous_stamp == stamp {
+                let _ = tx.send(Event::Unchanged);
+                ctx.request_repaint();
+                return;
+            }
             let entries = match list() {
                 Ok(v) => v,
                 Err(e) => {
@@ -294,7 +462,20 @@ impl Bin {
                     return;
                 }
                 match Item::capture(entry) {
-                    Ok(i) => items.push(i),
+                    Ok(mut i) => {
+                        if let Some(old) = cached.get(&i.entry.id).filter(|old| {
+                            old.matches(&i)
+                                && old.content_version == i.content_version
+                                && old.bytes.is_some()
+                                && old.files.is_some()
+                        }) {
+                            i.bytes = old.bytes;
+                            i.files = old.files;
+                            i.folders = old.folders;
+                            i.complete_size = old.complete_size;
+                        }
+                        items.push(i);
+                    }
                     Err(_) => skipped += 1,
                 }
             }
@@ -306,20 +487,25 @@ impl Bin {
             });
             let directories: Vec<_> = items
                 .iter()
-                .filter(|i| i.directory)
+                .filter(|i| i.directory && i.files.is_none())
                 .map(|i| (i.entry.id.clone(), i.stored.clone()))
                 .collect();
-            let warning =
-                (skipped > 0).then(|| format!("Не вдалося прочитати {skipped} елементів кошика."));
-            if tx.send(Event::Loaded(items, warning)).is_err() {
+            let warning = (skipped > 0).then(|| {
+                crate::tr!(
+                    "Не вдалося прочитати {skipped} елементів кошика.",
+                    "Could not read {skipped} Trash items.",
+                    skipped = skipped
+                )
+            });
+            if tx.send(Event::Loaded(items, warning, stamp)).is_err() {
                 return;
             }
             ctx.request_repaint();
             for (id, path) in directories {
-                let Some((bytes, complete)) = size(&path, &cancel) else {
+                let Some(stats) = size(&path, &cancel) else {
                     return;
                 };
-                if tx.send(Event::Size(id, bytes, complete)).is_err() {
+                if tx.send(Event::Size(id, stats)).is_err() {
                     return;
                 }
                 ctx.request_repaint();
@@ -334,13 +520,11 @@ impl Bin {
         }
         self.cancel.store(true, Ordering::Relaxed);
         self.loading = false;
+        self.checking = false;
         self.busy = true;
         self.error.clear();
-        self.notice = match action {
-            Action::Restore => "Відновлюємо вибране…",
-            Action::Purge => "Видаляємо остаточно…",
-        }
-        .into();
+        self.notice_kind = Some((action, None));
+        self.relocalize_notice();
         let (tx, rx) = mpsc::channel();
         self.rx = Some(rx);
         let ctx = ctx.clone();
@@ -356,11 +540,21 @@ impl Bin {
             .as_ref()
             .map(|r| r.try_iter().collect())
             .unwrap_or_default();
+        let mut changed = false;
         let mut finished = None;
         for event in events {
             match event {
-                Event::Loaded(items, warning) => {
+                Event::Loaded(items, warning, stamp) => {
+                    changed = true;
+                    self.checking = false;
+                    self.listing_stamp = stamp;
                     self.items = items;
+                    self.item_ids = self
+                        .items
+                        .iter()
+                        .enumerate()
+                        .map(|(n, i)| (i.entry.id.clone(), n))
+                        .collect();
                     self.loaded = true;
                     self.selected
                         .retain(|id| self.items.iter().any(|i| &i.entry.id == id));
@@ -371,17 +565,27 @@ impl Bin {
                         self.error.push_str(&w);
                     };
                 }
-                Event::Size(id, bytes, complete) => {
-                    if let Some(i) = self.items.iter_mut().find(|i| i.entry.id == id) {
-                        i.bytes = Some(bytes);
-                        i.complete_size = complete;
+                Event::Size(id, stats) => {
+                    changed = true;
+                    if let Some(i) = self.item_ids.get(&id).and_then(|n| self.items.get_mut(*n)) {
+                        i.bytes = Some(stats.bytes);
+                        i.files = Some(stats.files);
+                        i.folders = Some(stats.folders);
+                        i.complete_size = stats.complete;
                     }
                 }
+                Event::Unchanged => {
+                    self.checking = false;
+                    self.loading = false;
+                    self.rx = None;
+                }
                 Event::Ready => {
+                    self.checking = false;
                     self.loading = false;
                     self.rx = None;
                 }
                 Event::Error(e) => {
+                    self.checking = false;
                     self.loaded = true;
                     self.loading = false;
                     self.rx = None;
@@ -390,15 +594,8 @@ impl Bin {
                 Event::Finished(result) => {
                     self.busy = false;
                     self.selected.clear();
-                    self.notice = format!(
-                        "{}: {}",
-                        if result.action == Action::Restore {
-                            "Відновлено"
-                        } else {
-                            "Видалено остаточно"
-                        },
-                        result.done
-                    );
+                    self.notice_kind = Some((result.action, Some(result.done)));
+                    self.relocalize_notice();
                     let error = result.error.clone();
                     self.refresh(ctx);
                     if let Some(e) = error {
@@ -408,15 +605,39 @@ impl Bin {
                 }
             }
         }
+        if changed {
+            self.rebuild_summaries();
+        }
         finished
     }
+    fn rebuild_summaries(&mut self) {
+        self.summaries.clear();
+        for i in &self.items {
+            let sum = self.summaries.entry(i.identity.0).or_insert(Summary {
+                complete: true,
+                ..Default::default()
+            });
+            sum.entries += 1;
+            sum.bytes = sum.bytes.saturating_add(i.bytes.unwrap_or(0));
+            sum.files = sum.files.saturating_add(i.files.unwrap_or(0));
+            sum.folders = sum.folders.saturating_add(i.folders.unwrap_or(0));
+            sum.complete &=
+                i.bytes.is_some() && i.files.is_some() && i.folders.is_some() && i.complete_size;
+        }
+    }
+    pub fn summary_for(&self, device: u64) -> Summary {
+        let mut sum = self.summaries.get(&device).copied().unwrap_or(Summary {
+            complete: true,
+            ..Default::default()
+        });
+        sum.complete &= self.loaded && self.error.is_empty();
+        sum
+    }
     pub fn total(&self) -> (u64, bool) {
-        self.items.iter().fold((0, true), |(n, complete), i| {
-            (
-                n.saturating_add(i.bytes.unwrap_or(0)),
-                complete && i.bytes.is_some() && i.complete_size,
-            )
-        })
+        self.summaries.values().fold(
+            (0, self.loaded && self.error.is_empty()),
+            |(bytes, complete), s| (bytes.saturating_add(s.bytes), complete && s.complete),
+        )
     }
 }
 impl Drop for Bin {
@@ -435,6 +656,36 @@ mod tests {
         root
     }
     #[test]
+    fn header_summary_is_scoped_to_the_selected_filesystem() {
+        let mut bin = Bin::demo();
+        assert_eq!(bin.summary_for(0).files, 8534 + 4180 + 1);
+        bin.items[2].identity.0 = 42;
+        bin.rebuild_summaries();
+        let local = bin.summary_for(0);
+        assert_eq!(local.entries, 2);
+        assert_eq!(local.files, 8534 + 4180);
+        assert_eq!(local.folders, 2);
+        assert!(local.complete);
+        let external = bin.summary_for(42);
+        assert_eq!(external.files, 1);
+        assert_eq!(external.entries, 1);
+        assert_eq!(
+            bin.summary_for(99),
+            Summary {
+                complete: true,
+                ..Default::default()
+            }
+        );
+        bin.items[0].files = None;
+        bin.items[0].bytes = None;
+        bin.items[0].complete_size = false;
+        bin.rebuild_summaries();
+        assert!(!bin.summary_for(0).complete);
+        assert_eq!(bin.summary_for(0).files, 4180);
+        bin.loaded = false;
+        assert!(!bin.summary_for(42).complete);
+    }
+    #[test]
     fn folder_sizes_count_allocated_blocks_once_and_do_not_follow_links() {
         let root = fixture("size");
         let folder = root.join("folder");
@@ -449,7 +700,12 @@ mod tests {
             .sum::<u64>();
         assert_eq!(
             size(&folder, &AtomicBool::new(false)),
-            Some((expected, true))
+            Some(SizeStats {
+                bytes: expected,
+                files: 3,
+                folders: 1,
+                complete: true
+            })
         );
         assert_eq!(size(&folder, &AtomicBool::new(true)), None);
         fs::remove_dir_all(root).unwrap();
@@ -554,6 +810,53 @@ mod tests {
             assert!(!bin.loading);
             assert!(bin.loaded);
             assert!(bin.items.iter().any(|i| i.entry.name == "late"));
+            fs::create_dir_all(root.join("cached/child")).unwrap();
+            fs::write(root.join("cached/child/first"), b"fixture").unwrap();
+            trash::delete(root.join("cached")).unwrap();
+            let wait = |bin: &mut Bin| {
+                let deadline = Instant::now() + Duration::from_secs(3);
+                while bin.loading && Instant::now() < deadline {
+                    bin.poll(&ctx);
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                assert!(!bin.loading);
+            };
+            bin.refresh(&ctx);
+            wait(&mut bin);
+            let item = bin
+                .items
+                .iter()
+                .find(|i| i.entry.name == "cached")
+                .unwrap()
+                .clone();
+            assert_eq!(item.files, Some(1));
+            assert_eq!(item.folders, Some(2));
+            fs::write(item.stored.join("child/second"), b"new fixture").unwrap();
+            bin.checked_at = None;
+            bin.maintain(&ctx);
+            assert!(bin.checking);
+            wait(&mut bin);
+            assert!(!bin.checking);
+            // A periodic listing reuses immutable trash-tree totals; manual
+            // refresh always checks nested changes even without a root mtime change.
+            assert_eq!(
+                bin.items
+                    .iter()
+                    .find(|i| i.entry.name == "cached")
+                    .unwrap()
+                    .files,
+                Some(1)
+            );
+            bin.refresh(&ctx);
+            wait(&mut bin);
+            assert_eq!(
+                bin.items
+                    .iter()
+                    .find(|i| i.entry.name == "cached")
+                    .unwrap()
+                    .files,
+                Some(2)
+            );
             return;
         }
         let root = fixture("integration");

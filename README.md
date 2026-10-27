@@ -1,21 +1,25 @@
 # disco
 
-Нативний аналізатор місця на диску для Linux. Rust + egui, темний інтерфейс, без постійного фонового індексатора.
+**English** · [Українська](README.uk.md)
 
-![Дерево папок і властивості](docs/screenshots/folders.png)
+A native disk space analyzer for Linux. Built with Rust and egui, with a dark interface and no always-running indexing service.
 
-## Можливості
+![Folder tree and properties](docs/screenshots/folders.png)
 
-- Дерево папок із сортуванням за розміром, пошуком і категоріями.
-- Властивості файлів і папок, найбільші файли та пошук дублікатів за вмістом.
-- Збереження останнього скану та автоматичне відновлення при запуску.
-- Фонове оновлення після зміни зайнятого місця на диску.
-- Видалення папок у кошик із підтвердженням; відновлення та спорожнення кошика.
-- Теми, власні кольори, масштаб і компонування інтерфейсу через налаштування або TOML.
+## Features
 
-## Встановлення
+- Browse a folder tree, sort by size, search, and filter by category.
+- Inspect file and folder properties, find large files, and compare duplicate file contents.
+- Automatically save the last scan and restore it on startup.
+- Refresh in the background when disk usage changes.
+- Move folders to Trash with confirmation; restore items or empty Trash.
+- See Trash usage and file count separately in the drive's storage bar.
+- Customize themes, colors, text size, layout, and animations through settings or TOML.
+- Switch between English and Ukrainian without restarting.
 
-Потрібні **Linux**, **Rust 1.95+** із Cargo, C-компілятор (GCC або Clang), Git і Python 3. Для вікна — Wayland або X11 та драйвер OpenGL.
+## Install
+
+Requires **Linux**, **Rust 1.95+** with Cargo, a C compiler (GCC or Clang), Git, and Python 3. The desktop UI needs Wayland or X11 and an OpenGL driver.
 
 ```sh
 git clone https://github.com/hiddensudo/disco.git
@@ -24,32 +28,34 @@ cargo build --release --locked
 python3 install.py
 ```
 
-Відкрий **disco** в меню програм або запусти `~/.local/bin/disco`. Без встановлення: `./target/release/disco`.
+Open **disco** from your application menu or run `~/.local/bin/disco`. To run without installing: `./target/release/disco`.
 
-Інсталятор додає ярлик і посилання на зібраний файл, тому не переміщуй каталог проєкту після встановлення. Для оновлення достатньо `git pull` і повторної збірки. Власний каталог Cargo: `python3 install.py --binary /path/to/disco`.
+The installer creates a launcher pointing to your build, so keep the project directory in place. To update, run `git pull` and rebuild. For a custom Cargo output directory, use `python3 install.py --binary /path/to/disco`.
 
-## Використання
+## Use
 
-1. Натисни на назву диска зверху, вибери папку та натисни **Сканувати**. Під час обходу доступні пауза й скасування.
-2. Розгортай папки кліком; властивості будуть праворуч. Стрілки та бічні кнопки миші перемикають історію.
-3. **Великі файли**, **Очищення** та **Дублікати** — у меню **···** внизу зліва. Кнопка **Видалити папку** — у властивостях.
-4. У вкладці **Кошик** вибери елементи для відновлення чи остаточного видалення. Спорожнення потребує окремого підтвердження.
-5. Шестерня зверху відкриває налаштування вигляду, поведінки кліку та автооновлення.
+1. Click the drive name at the top left, choose a folder, and click **Scan**. You can pause or cancel the scan.
+2. Click folders to expand the tree; properties appear on the right. Navigation arrows and mouse side buttons go back and forward.
+3. Open **Large files**, **Cleanup**, or **Duplicates** from the **···** menu at the bottom left. **Delete folder** is in the properties panel.
+4. In **Trash**, select items to restore or permanently delete. Emptying Trash requires a separate confirmation.
+5. Open the gear icon to customize the interface. The **Language** selector is at the top of the settings window: choose **English** or **Українська**, then click **Save** to remember your choice. **Cancel** restores your previous preferences.
 
-![Кошик: відновлення й остаточне видалення](docs/screenshots/trash.png)
+![Trash: restore items or delete them permanently](docs/screenshots/trash.png)
 
-*Скріншоти показують демонстраційні дані.*
+*Screenshots use demonstration data.*
 
-Видалення у кошик звільняє місце після його спорожнення. Розміри рахуються за зайнятими блоками; символічні посилання не обходяться. Сканування обмежене однією файловою системою. Автооновлення реагує на зміну від 64 МіБ; зміни без різниці загального обсягу перевіряй кнопкою **Оновити**.
+Trash remains part of used space until it is emptied. Its amber segment is included in used storage, rather than added again; click the Trash label to open it. Change this color under **Appearance → Additional colors**.
 
-Налаштування: `~/.config/disco/{theme,layout}.toml`. Останній скан: `~/.cache/disco/last-scan.bin.gz`. Підтримуються `XDG_CONFIG_HOME` і `XDG_CACHE_HOME`.
+Sizes use allocated disk blocks. Symbolic links are not followed, and scans stay on one filesystem. Automatic refresh responds to changes of at least 64 MiB; use **Refresh** for changes that leave total usage unchanged.
+
+Preferences: `~/.config/disco/{theme,layout}.toml`. Last scan: `~/.cache/disco/last-scan.bin.gz`. `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` are supported. In `layout.toml`, `language = "en"` selects English and `language = "uk"` selects Ukrainian. Existing configurations without a language setting keep Ukrainian.
 
 ```sh
-./target/release/disco --demo          # приклад без сканування чи видалення
-./target/release/disco --trash         # одразу відкрити кошик
-./target/release/disco --scan /path    # сканування в терміналі
+./target/release/disco --demo          # sample data; no scanning or deletion
+./target/release/disco --trash         # open Trash directly
+./target/release/disco --scan /path    # scan in the terminal
 cargo test --locked
 python3 -m unittest discover -s tests
 ```
 
-Шрифт Inter: [SIL Open Font License](assets/fonts/LICENSE.txt). Локальне виправлення бібліотеки кошика: [опис і ліцензія](vendor/trash/DISCO-PATCH.md).
+Inter font: [SIL Open Font License](assets/fonts/LICENSE.txt). Local Trash library patch: [notes and license](vendor/trash/DISCO-PATCH.md).
