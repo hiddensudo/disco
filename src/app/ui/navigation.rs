@@ -176,18 +176,21 @@ impl Disco {
             Pos2::new(scan.left() - 207., rect.top()),
             Pos2::new(scan.left() - 8., rect.bottom() - 2.),
         );
-        ui.put(
-            search,
-            egui::TextEdit::singleline(&mut self.browser.filter)
-                .hint_text(crate::tr!("Пошук у цій папці…", "Search in this folder…"))
-                .font(FontId::proportional(14.))
-                .margin(egui::Margin {
-                    left: 29,
-                    right: 6,
-                    top: 8,
-                    bottom: 6,
-                }),
-        );
+        self.browser.text_input_focused = ui
+            .put(
+                search,
+                egui::TextEdit::singleline(&mut self.browser.filter)
+                    .id(egui::Id::unique("folder-search"))
+                    .hint_text(crate::tr!("Пошук у цій папці…", "Search in this folder…"))
+                    .font(FontId::proportional(14.))
+                    .margin(egui::Margin {
+                        left: 29,
+                        right: 6,
+                        top: 8,
+                        bottom: 6,
+                    }),
+            )
+            .has_focus();
         self.art.paint(
             ui,
             9,

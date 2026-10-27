@@ -20,6 +20,7 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+mod editor;
 mod jobs;
 mod state;
 mod ui;
@@ -38,6 +39,7 @@ pub(crate) struct Disco {
     recycle: recycle::Bin,
     files: crate::directory_files::Files,
     file_preview: crate::file_preview::Preview,
+    editor: editor::Editor,
     opening_file: Arc<std::sync::atomic::AtomicBool>,
     purge_targets: Option<Vec<recycle::Item>>,
     purge_fresh: bool,
@@ -157,6 +159,10 @@ impl Disco {
                     View::Folders
                 },
                 properties,
+                text_input_focused: false,
+                scroll_to: None,
+                scroll_offset: 0.,
+                scroll_height: 300.,
                 sort_size: true,
                 descending: true,
             },
@@ -186,6 +192,7 @@ impl Disco {
             recycle: recycle::Bin::default(),
             files: crate::directory_files::Files::default(),
             file_preview: crate::file_preview::Preview::default(),
+            editor: editor::Editor::default(),
             opening_file: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             purge_targets: None,
             purge_fresh: false,
@@ -231,6 +238,9 @@ impl Disco {
 }
 impl eframe::App for Disco {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        self.guard_native_close(ui.ctx());
+        self.editor.focused = false;
+        self.browser.text_input_focused = false;
         self.poll();
         if self.scan.restore_requested_root.is_none() && !self.scan.busy {
             if let Some(path) = self.qa_preview_file.take() {
@@ -281,6 +291,8 @@ impl eframe::App for Disco {
             && self.purge_targets.is_none()
             && !self.scan.busy
             && !self.recycle.busy
+            && self.editor.pending.is_none()
+            && self.editor.saving.is_none()
         {
             let (back, forward) = ui.input(|i| {
                 (
@@ -304,6 +316,7 @@ impl eframe::App for Disco {
             || self.scan.restore_requested_root.is_some()
             || self.recycle.loading
             || self.recycle.busy
+            || self.editor.saving.is_some()
         {
             ctx.request_repaint_after(Duration::from_millis(200));
         } else {
@@ -361,7 +374,6 @@ impl eframe::App for Disco {
                     return;
                 }
                 self.scope_controls(ui);
-                self.preview_controls(ui);
                 if !self.preferences.layout.categories {
                     ui.horizontal(|ui| {
                         for cat in [
@@ -408,9 +420,11 @@ impl eframe::App for Disco {
         {
             self.recycle.refresh(&ctx);
         }
+        self.keyboard_navigation(ui);
         self.confirmation(&ctx);
         self.bin_confirmation(&ctx);
         self.settings_window(&ctx);
+        self.editor_confirmation(&ctx);
         if i18n::current() != self.preferences.layout.language {
             i18n::set_current(self.preferences.layout.language);
             self.message.clear();
@@ -428,6 +442,9 @@ impl eframe::App for Disco {
             && !self.recycle.busy
             && self.browser.view != View::Trash
             && !self.preferences.open
+            && !self.editor.dirty()
+            && self.editor.saving.is_none()
+            && self.editor.pending.is_none()
             && self.browser.selected.is_empty()
             && self.browser.view != View::Duplicates
             && self.scan.report.as_ref().is_some_and(|r| {

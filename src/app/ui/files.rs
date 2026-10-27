@@ -30,10 +30,12 @@ impl Disco {
         self.browser.properties = Some(Properties::load(path, bytes, None, self.demo));
     }
     pub(in crate::app) fn open_file(&self, path: PathBuf) {
-        if self.demo
-            || !self.preferences.layout.open_files_on_double_click
-            || self.opening_file.swap(true, Ordering::Relaxed)
-        {
+        if self.preferences.layout.open_files_on_double_click {
+            self.open_default_file(path);
+        }
+    }
+    pub(in crate::app) fn open_default_file(&self, path: PathBuf) {
+        if self.demo || self.opening_file.swap(true, Ordering::Relaxed) {
             return;
         }
         let busy = self.opening_file.clone();

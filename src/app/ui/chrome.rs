@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 impl Disco {
     pub(in crate::app) fn titlebar(&mut self, ui: &mut egui::Ui) {
-        let t = &self.preferences.theme;
+        let t = self.preferences.theme.clone();
         let (rect, response) = ui.allocate_exact_size(
             Vec2::new(ui.available_width(), 42.),
             Sense::click_and_drag(),
@@ -74,7 +74,7 @@ impl Disco {
             );
             if b.clicked() {
                 match slot {
-                    0 => ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close),
+                    0 => self.request_close(ui.ctx()),
                     1 => {
                         let max = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
                         ui.ctx()

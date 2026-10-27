@@ -62,11 +62,27 @@ python3 -m unittest discover -s tests
 
 ## File previews
 
-Expand a folder to load its files, then select a file. Above the list, **Preview → Right panel / Beside list / Off** switches modes and remembers your choice. The larger preview area can be resized by dragging its divider. Images support Fit and zoom; text is read-only, scrollable, and can be copied.
+Expand a folder to load its files, then select a file. Beside the filename, the two panel icons switch between the right inspector and the larger, resizable area beside the list. The **×** closes the preview; the panel icons in the properties header reopen it. The chosen mode is remembered. Portrait images get a taller canvas automatically and preserve their proportions. Fit and zoom work in both modes.
 
-**Settings → Interface → File previews** also controls the mode and **Double click opens files in the default app** (enabled by default). A single click selects and previews. Double-clicking launches only an installed system association; without one, nothing opens. This integration uses `xdg-mime` and `gio` (typically provided by `xdg-utils` and GLib).
+Complete text files open directly in an editor. Click the text to type; **Save** or **Ctrl+S** writes the changes. Copy and Reload have the same 30 px toolbar height as the image controls. Leaving an edited file, reloading, rescanning, deleting it, or closing the app asks whether to save, discard, or cancel. An external file change causes a save error and keeps the draft. Saves preserve encoding, BOM, the file's line-ending convention, permissions, and extended attributes; fragments of large files remain read-only.
 
-Supported images: PNG, JPEG, WebP, BMP, TIFF. Text supports UTF-8 and UTF-16 with a byte-order mark. Only the selected file is read, in the background. To limit resource usage, image previews accept files up to 32 MiB and 12 megapixels and retain a thumbnail up to 2048 px; text shows up to 128 KiB / 2,000 lines. Unsupported or larger content keeps its properties and an explanatory preview message. Expanded-directory listings are cached separately from the saved scan and are bounded; a shortened listing is labeled explicitly. Search includes folder names and already loaded file listings.
+**Settings → Interface → File previews** also controls the mode and **Double click opens files in the default app** (enabled by default). Double-click opening can be disabled independently of the explicit **Enter** action. Only installed system associations are launched; without one, nothing opens. This integration uses `xdg-mime` and `gio` (typically provided by `xdg-utils` and GLib).
+
+In the file list/tree:
+
+| Key | Action |
+| --- | --- |
+| ↑ / ↓, Home / End, Page Up / Down | Move the selection and scroll it into view |
+| → / ← | Expand a folder, or collapse it / select its parent |
+| Enter | Enter a folder or open a file in its default application |
+| Backspace | Go back; otherwise select the parent |
+| Delete | Move the selected file or folder to Trash, after confirmation |
+| F5 | Refresh the scan |
+| Escape | Leave text editing; from the list, return the large preview to the right panel |
+
+Navigation shortcuts are disabled while typing in an editor or search field. **Ctrl+S** remains the save shortcut.
+
+Supported images: PNG, JPEG, WebP, BMP, TIFF. Text supports UTF-8 and UTF-16 with a byte-order mark. Only the selected file is read, in the background. To limit resource usage, image previews accept files up to 32 MiB and 12 megapixels and retain a thumbnail up to 2048 px; text previews read up to 128 KiB / 2,000 lines. Unsupported or larger content keeps its properties and an explanatory preview message. Expanded-directory listings are cached separately from the saved scan and are bounded; a shortened listing is labeled explicitly. Search includes folder names and already loaded file listings.
 
 In `layout.toml`: `preview_mode = "inspector"` (or `"workspace"`, `"off"`) and `open_files_on_double_click = true` (or `false`).
 
@@ -76,7 +92,7 @@ In `layout.toml`: `preview_mode = "inspector"` (or `"workspace"`, `"off"`) and `
 - `src/app.rs` and `src/app/{state,jobs}.rs`: application lifecycle, grouped state, and background job coordination.
 - `src/app/ui/`: window chrome, folder browser, inspector, Trash, dialogs, and settings pages.
 - `src/index.rs`, `src/filesystem.rs`, `src/format.rs`: scan navigation index, filesystem metadata, and display formatting.
-- `src/{file_preview,directory_files,associations}.rs`: bounded content loading, lazy file listings, and default-app integration.
+- `src/{file_preview,text_editor,directory_files,associations}.rs`: bounded content loading, document saves, lazy file listings, and default-app integration.
 - `src/{scan,snapshot,recycle,deletion}.rs`: scanning, persistence, and Trash operations; independent of UI state.
 
 Inter font: [SIL Open Font License](assets/fonts/LICENSE.txt). Local Trash library patch: [notes and license](vendor/trash/DISCO-PATCH.md).

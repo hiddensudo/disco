@@ -23,6 +23,9 @@ impl Disco {
         if self.scan.busy || self.deletion.rx.is_some() || self.recycle.busy {
             return;
         }
+        if self.guard_editor_scan(dup, force, automatic) {
+            return;
+        }
         self.scan.restore_requested_root = None;
         let path = PathBuf::from(&self.browser.root);
         if !path.is_absolute() {
@@ -300,15 +303,15 @@ impl Disco {
                     self.browser.root = root.to_string_lossy().into_owned();
                     self.start_job(false, true, true);
                     self.message = crate::tr!(
-                        "У кошику: {} папок. Оновлюємо список. Місце звільниться після спорожнення кошика.",
-                        "Moved {} folders to Trash. Refreshing the list. Empty Trash to free disk space.",
+                        "У кошику: {} елементів. Оновлюємо список. Місце звільниться після спорожнення кошика.",
+                        "Moved {} items to Trash. Refreshing the list. Empty Trash to free disk space.",
                         result.done.len()
                     );
                 }
                 if let Some(error) = result.error {
                     self.message = crate::tr!(
-                        "У кошику: {} папок. Не вдалося завершити: {error}",
-                        "Moved {} folders to Trash. Could not finish: {error}",
+                        "У кошику: {} елементів. Не вдалося завершити: {error}",
+                        "Moved {} items to Trash. Could not finish: {error}",
                         result.done.len(),
                         error = error
                     );
@@ -325,6 +328,17 @@ impl Disco {
         {
             return;
         }
+        if self.editor.dirty()
+            && self
+                .editor
+                .path
+                .as_ref()
+                .is_some_and(|edited| folders.iter().any(|(path, _)| edited.starts_with(path)))
+        {
+            self.editor.pending = Some(super::editor::Action::Delete(folders));
+            self.editor.confirm_fresh = true;
+            return;
+        }
         let targets: Result<Vec<_>, _> = folders
             .into_iter()
             .map(|(p, b)| deletion::Target::capture(&p, b))
@@ -337,8 +351,8 @@ impl Disco {
             }
             Err(e) => {
                 self.message = crate::tr!(
-                    "Не можна видалити папку: {e}",
-                    "Cannot delete folder: {e}",
+                    "Не можна видалити елемент: {e}",
+                    "Cannot delete item: {e}",
                     e = e
                 )
             }
@@ -349,7 +363,7 @@ impl Disco {
         let targets = std::mem::take(&mut self.deletion.targets);
         let (tx, rx) = mpsc::channel();
         self.deletion.rx = Some(rx);
-        self.message = crate::tr!("Переміщуємо папку у кошик…", "Moving folder to Trash…").into();
+        self.message = crate::tr!("Переміщуємо у кошик…", "Moving to Trash…").into();
         let ctx = ctx.clone();
         std::thread::spawn(move || {
             let _ = tx.send(deletion::move_to_trash(targets));

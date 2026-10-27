@@ -9,7 +9,7 @@ pub struct Art {
 }
 impl Art {
     pub fn load(_ctx: &egui::Context) -> Self {
-        let sources: [&[u8]; 25] = [
+        let sources: [&[u8]; 29] = [
             include_bytes!("../assets/icons/folder.svg"),
             include_bytes!("../assets/icons/game.svg"),
             include_bytes!("../assets/icons/code.svg"),
@@ -35,6 +35,10 @@ impl Art {
             include_bytes!("../assets/icons/forward.svg"),
             include_bytes!("../assets/icons/trash.svg"),
             include_bytes!("../assets/icons/image.svg"),
+            include_bytes!("../assets/icons/preview-side.svg"),
+            include_bytes!("../assets/icons/preview-split.svg"),
+            include_bytes!("../assets/icons/copy.svg"),
+            include_bytes!("../assets/icons/save.svg"),
         ];
         Self {
             icons: sources

@@ -17,6 +17,7 @@ mod refresh;
 mod scan;
 mod settings;
 mod snapshot;
+mod text_editor;
 
 use eframe::egui;
 use scan::{Control, background_priority, human, scan};

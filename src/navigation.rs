@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct History<T> {
     back: Vec<T>,
     forward: Vec<T>,

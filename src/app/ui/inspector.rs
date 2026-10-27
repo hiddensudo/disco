@@ -73,17 +73,25 @@ impl Disco {
                         C::WHITE,
                     );
                     let text_x = if p.is_dir { 84. } else { 62. };
-                    ui.painter().text(
-                        rect.min + Vec2::new(text_x, 9.),
-                        Align2::LEFT_TOP,
-                        shorten(
-                            &label(&p.path),
-                            ((rect.width() - text_x) / if p.is_dir { 12. } else { 10. }).max(5.)
-                                as usize,
-                        ),
-                        art::bold(if p.is_dir { 22. } else { 18. }),
-                        color(&t.text),
-                    );
+                    let has_controls = !p.is_dir
+                        && self.preferences.layout.preview_mode
+                            != crate::settings::PreviewMode::Workspace;
+                    let title_width = rect.width() - text_x - if has_controls { 98. } else { 0. };
+                    ui.painter()
+                        .with_clip_rect(Rect::from_min_max(
+                            rect.min,
+                            Pos2::new(rect.left() + text_x + title_width, rect.bottom()),
+                        ))
+                        .text(
+                            rect.min + Vec2::new(text_x, 9.),
+                            Align2::LEFT_TOP,
+                            shorten(
+                                &label(&p.path),
+                                (title_width / if p.is_dir { 12. } else { 9. }).max(3.) as usize,
+                            ),
+                            art::bold(if p.is_dir { 22. } else { 18. }),
+                            color(&t.text),
+                        );
                     let path = shorten(
                         &p.path.to_string_lossy(),
                         ((rect.width() - text_x - 2.) / 6.2) as usize,
@@ -97,11 +105,20 @@ impl Disco {
                     );
                     ui.interact(rect, ui.scope_id().with("property_path"), Sense::hover())
                         .on_hover_text(p.path.to_string_lossy());
+                    if has_controls {
+                        self.preview_mode_buttons(
+                            ui,
+                            Rect::from_min_size(
+                                Pos2::new(rect.right() - 92., rect.top() + 3.),
+                                Vec2::new(92., 28.),
+                            ),
+                        );
+                    }
                     if !p.is_dir
                         && self.preferences.layout.preview_mode
                             == crate::settings::PreviewMode::Inspector
                     {
-                        self.file_preview_ui(ui, true);
+                        self.file_preview_ui(ui, true, (action_area.height() - 108.).max(220.));
                         ui.add_space(6.);
                     }
                     ui.add_space(3.);

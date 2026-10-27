@@ -166,14 +166,16 @@ impl Disco {
             );
         }
         ui.add_space(6.);
-        ui.add(
-            egui::TextEdit::singleline(&mut self.browser.filter)
-                .hint_text(crate::tr!(
-                    "Пошук у кошику за назвою або початковим шляхом…",
-                    "Search Trash by name or original path…"
-                ))
-                .desired_width(f32::INFINITY),
-        );
+        self.browser.text_input_focused = ui
+            .add(
+                egui::TextEdit::singleline(&mut self.browser.filter)
+                    .hint_text(crate::tr!(
+                        "Пошук у кошику за назвою або початковим шляхом…",
+                        "Search Trash by name or original path…"
+                    ))
+                    .desired_width(f32::INFINITY),
+            )
+            .has_focus();
         ui.add_space(6.);
         let width = ui.available_width();
         let (header, _) = ui.allocate_exact_size(Vec2::new(width, 30.), Sense::hover());

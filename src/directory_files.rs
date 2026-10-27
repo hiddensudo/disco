@@ -89,6 +89,11 @@ impl Default for Files {
     }
 }
 impl Files {
+    pub fn invalidate(&mut self, path: &Path) {
+        self.cache.remove(path);
+        self.revision = self.revision.wrapping_add(1);
+    }
+
     pub fn get(&self, path: &Path) -> Option<&Arc<Listing>> {
         self.cache.get(path).map(|c| &c.listing)
     }

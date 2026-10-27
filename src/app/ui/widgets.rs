@@ -112,6 +112,15 @@ pub(in crate::app) fn visual_button(
         .painter()
         .layout_no_wrap(text.to_string(), FontId::proportional(13.), fg);
     let has_icon = icon < art.len();
+    if has_icon && text.is_empty() {
+        art.paint(
+            ui,
+            icon,
+            Rect::from_center_size(r.center(), Vec2::splat(18.)),
+            fg,
+        );
+        return response;
+    }
     let total = galley.size().x + if has_icon { 26. } else { 0. };
     let left = r.center().x - total / 2.;
     if has_icon {

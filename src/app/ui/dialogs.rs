@@ -34,9 +34,9 @@ pub(in crate::app) fn delete_dialog(
 ) -> egui::ModalResponse<(egui::Response, egui::Response)> {
     egui::Modal::new(egui::Id::unique("delete-confirmation")).show(ctx, |ui| {
         ui.set_width(480.);
-        ui.heading(if targets.len() == 1 { crate::tr!("Видалити папку?", "Delete folder?") } else { crate::tr!("Видалити вибрані папки?", "Delete selected folders?") });
+        ui.heading(crate::tr!("Перемістити у кошик?", "Move to Trash?"));
         ui.add_space(8.);
-        ui.label(crate::tr!("Папка та весь її вміст будуть переміщені у кошик.", "The folder and all its contents will be moved to Trash."));
+        ui.label(crate::tr!("Вибрані файли та папки будуть переміщені у кошик. Папки — разом з усім вмістом.", "Selected files and folders will be moved to Trash. Folders include all their contents."));
         ui.add_space(10.);
         egui::ScrollArea::vertical().max_height(180.).show(ui, |ui| {
             for target in targets {

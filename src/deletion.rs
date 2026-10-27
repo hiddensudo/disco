@@ -1,4 +1,4 @@
-//! Capture the exact directory the user is about to confirm, then revalidate it
+//! Capture the exact file or directory the user is about to confirm, then revalidate it
 //! immediately before handing it to the desktop trash implementation.
 use std::{
     fs,
@@ -11,6 +11,7 @@ pub struct Target {
     pub bytes: u64,
     device: u64,
     inode: u64,
+    pub is_dir: bool,
 }
 impl Target {
     pub fn capture(path: &Path, bytes: u64) -> Result<Self, String> {
@@ -35,13 +36,13 @@ impl Target {
             .into());
         }
         let meta = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
-        if !meta.is_dir()
+        if !(meta.is_dir() || meta.is_file())
             || meta.file_type().is_symlink()
             || path.canonicalize().map_err(|e| e.to_string())? != path
         {
             return Err(crate::tr!(
-                "Шлях має вказувати безпосередньо на папку, без символічних посилань.",
-                "The path must point directly to a folder, without symbolic links."
+                "Шлях має вказувати безпосередньо на файл або папку, без символічних посилань.",
+                "The path must point directly to a file or folder, without symbolic links."
             )
             .into());
         }
@@ -61,14 +62,15 @@ impl Target {
             bytes,
             device: meta.dev(),
             inode: meta.ino(),
+            is_dir: meta.is_dir(),
         })
     }
     pub fn validate(&self) -> Result<(), String> {
         let fresh = Self::capture(&self.path, self.bytes)?;
-        if fresh.device != self.device || fresh.inode != self.inode {
+        if fresh.device != self.device || fresh.inode != self.inode || fresh.is_dir != self.is_dir {
             return Err(crate::tr!(
-                "Папка змінилася після відкриття підтвердження: {}",
-                "Folder changed after opening confirmation: {}",
+                "Файл або папка змінилися після відкриття підтвердження: {}",
+                "File or folder changed after opening confirmation: {}",
                 self.path.display()
             ));
         }
@@ -136,6 +138,17 @@ mod tests {
             assert!(root.join("data/Trash/info/folder.trashinfo").is_file());
             fs::rename(trashed, &folder).unwrap();
             assert!(folder.join("payload.txt").is_file());
+            let file = root.join("file.txt");
+            fs::write(&file, b"plain file").unwrap();
+            let target = Target::capture(&file, 10).unwrap();
+            assert!(!target.is_dir);
+            let result = move_to_trash(vec![target]);
+            assert!(result.error.is_none());
+            assert!(!file.exists());
+            let trashed = root.join("data/Trash/files/file.txt");
+            assert_eq!(fs::read(&trashed).unwrap(), b"plain file");
+            assert!(root.join("data/Trash/info/file.txt.trashinfo").is_file());
+            fs::rename(trashed, &file).unwrap();
             return;
         }
         let root = fixture("roundtrip");

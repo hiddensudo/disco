@@ -38,6 +38,15 @@ impl Disco {
                                     label(&f.path),
                                 )
                                 .on_hover_text(f.path.to_string_lossy());
+                            if self
+                                .browser
+                                .scroll_to
+                                .as_ref()
+                                .is_some_and(|p| p == &f.path)
+                            {
+                                response.scroll_to_me(Some(egui::Align::Center));
+                                self.browser.scroll_to = None;
+                            }
                             if response.clicked() {
                                 self.select_file(f.path.clone(), f.bytes);
                             }
@@ -170,6 +179,15 @@ impl Disco {
                                     .is_some_and(|p| p.path == f.path),
                                 f.path.to_string_lossy(),
                             );
+                            if self
+                                .browser
+                                .scroll_to
+                                .as_ref()
+                                .is_some_and(|p| p == &f.path)
+                            {
+                                response.scroll_to_me(Some(egui::Align::Center));
+                                self.browser.scroll_to = None;
+                            }
                             if response.clicked() {
                                 selected_file = Some((f.path.clone(), f.bytes));
                             }

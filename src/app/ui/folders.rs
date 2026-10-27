@@ -319,207 +319,227 @@ impl Disco {
         }) * self.preferences.layout.text_scale)
             .max(23. * self.preferences.layout.icon_scale + 6.);
 
-        egui::ScrollArea::vertical()
+        let mut area = egui::ScrollArea::vertical()
             .id_salt("folder-table")
-            .auto_shrink([false, false])
-            .show_rows(ui, height, rows.len(), |ui, range| {
-                ui.spacing_mut().item_spacing.y = 0.;
-                for n in range {
-                    let (id, depth) = match &rows[n] {
-                        TreeRow::Folder(id, depth) => (*id, *depth),
-                        TreeRow::File(file, depth) => {
-                            self.file_row(
-                                ui,
-                                file.clone(),
-                                *depth,
-                                height,
-                                name_width,
-                                count_width,
-                                &t,
-                            );
-                            continue;
-                        }
-                        TreeRow::Pending(id, depth) | TreeRow::Notice(id, depth) => {
-                            self.file_listing_row(
-                                ui,
-                                *id,
-                                *depth,
-                                height,
-                                matches!(&rows[n], TreeRow::Pending(..)),
-                                &t,
-                            );
-                            continue;
-                        }
-                    };
-                    let f = self.scan.report.as_ref().unwrap().folders[id].clone();
-                    self.files.touch(&f.path);
-                    let (rect, response) = ui.allocate_exact_size(
-                        Vec2::new(ui.available_width(), height),
-                        Sense::click(),
-                    );
-                    if self.preferences.layout.striped_rows && n % 2 == 1 {
-                        ui.painter().rect_filled(
-                            rect,
-                            0,
-                            mix(color(&t.background), color(&t.raised), 0.3),
+            .auto_shrink([false, false]);
+        if let Some(path) = self.browser.scroll_to.take() {
+            if let Some(n) = rows.iter().position(|row| match row {
+                TreeRow::Folder(id, _) => self
+                    .scan
+                    .report
+                    .as_ref()
+                    .is_some_and(|r| r.folders[*id].path == path),
+                TreeRow::File(f, _) => f.path == path,
+                _ => false,
+            }) {
+                let y = n as f32 * height;
+                let current = self.browser.scroll_offset;
+                let view = self.browser.scroll_height;
+                let offset = if y < current {
+                    y
+                } else if y + height > current + view {
+                    y + height - view
+                } else {
+                    current
+                };
+                area = area.vertical_scroll_offset(offset.max(0.));
+            }
+        }
+        let scroll = area.show_rows(ui, height, rows.len(), |ui, range| {
+            ui.spacing_mut().item_spacing.y = 0.;
+            for n in range {
+                let (id, depth) = match &rows[n] {
+                    TreeRow::Folder(id, depth) => (*id, *depth),
+                    TreeRow::File(file, depth) => {
+                        self.file_row(
+                            ui,
+                            file.clone(),
+                            *depth,
+                            height,
+                            name_width,
+                            count_width,
+                            &t,
                         );
+                        continue;
                     }
-                    let selected = motion::value(
+                    TreeRow::Pending(id, depth) | TreeRow::Notice(id, depth) => {
+                        self.file_listing_row(
+                            ui,
+                            *id,
+                            *depth,
+                            height,
+                            matches!(&rows[n], TreeRow::Pending(..)),
+                            &t,
+                        );
+                        continue;
+                    }
+                };
+                let f = self.scan.report.as_ref().unwrap().folders[id].clone();
+                self.files.touch(&f.path);
+                let (rect, response) =
+                    ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click());
+                if self.preferences.layout.striped_rows && n % 2 == 1 {
+                    ui.painter().rect_filled(
+                        rect,
+                        0,
+                        mix(color(&t.background), color(&t.raised), 0.3),
+                    );
+                }
+                let selected = motion::value(
+                    ui,
+                    ("row-selected", self.scan.report_revision, id),
+                    if self.browser.focus == id
+                        && self.browser.properties.as_ref().is_none_or(|p| p.is_dir)
+                    {
+                        1.
+                    } else {
+                        0.
+                    },
+                    1.,
+                );
+                let hover = motion::hover(
+                    ui,
+                    ("row-hover", self.scan.report_revision, id),
+                    response.hovered(),
+                );
+                if hover > 0. && selected < 1. {
+                    ui.painter().rect_filled(
+                        rect,
+                        t.radius,
+                        color(&t.raised).gamma_multiply(hover * (1. - selected)),
+                    );
+                }
+                if selected > 0. {
+                    ui.painter().rect_filled(
+                        rect,
+                        t.radius,
+                        mix(color(&t.panel), color(&t.accent), 0.31).gamma_multiply(selected),
+                    );
+                    ui.painter().rect_stroke(
+                        rect,
+                        t.radius,
+                        Stroke::new(0.6, color(&t.accent).gamma_multiply(0.45 * selected)),
+                        egui::StrokeKind::Inside,
+                    );
+                    ui.painter().rect_filled(
+                        Rect::from_min_size(rect.min, Vec2::new(4., rect.height())),
+                        0,
+                        color(&t.accent).gamma_multiply(selected),
+                    );
+                }
+                let mut child_clicked = false;
+                let can_select =
+                    self.scan.index.cleanup_ids().contains(&id) && !self.scan.busy && !self.demo;
+                let mut x = rect.left() + 11. + (depth as f32 * 19.).min(name_width * 0.35);
+                if can_select {
+                    let cbrect =
+                        Rect::from_min_size(Pos2::new(x, rect.center().y - 9.), Vec2::splat(18.));
+                    let mut checked = self.browser.selected.contains(&f.path);
+                    let ir = ui.scope_builder(egui::UiBuilder::new().max_rect(cbrect), |ui| {
+                        ui.checkbox(&mut checked, "")
+                    });
+                    if ir.inner.changed() {
+                        child_clicked = true;
+                        if checked {
+                            self.browser.selected.insert(f.path.clone());
+                        } else {
+                            self.browser.selected.remove(&f.path);
+                        }
+                    }
+                    x += 24.;
+                }
+                let arrow = Rect::from_center_size(
+                    Pos2::new(x + 9., rect.center().y),
+                    Vec2::new(19., height),
+                );
+                if self.folder_can_expand(id) {
+                    let openness = motion::value(
                         ui,
-                        ("row-selected", self.scan.report_revision, id),
-                        if self.browser.focus == id
-                            && self.browser.properties.as_ref().is_none_or(|p| p.is_dir)
-                        {
+                        ("folder-disclosure", self.scan.report_revision, id),
+                        if self.browser.expanded.contains(&id) {
                             1.
                         } else {
                             0.
                         },
                         1.,
                     );
-                    let hover = motion::hover(
-                        ui,
-                        ("row-hover", self.scan.report_revision, id),
-                        response.hovered(),
-                    );
-                    if hover > 0. && selected < 1. {
-                        ui.painter().rect_filled(
-                            rect,
-                            t.radius,
-                            color(&t.raised).gamma_multiply(hover * (1. - selected)),
-                        );
-                    }
-                    if selected > 0. {
-                        ui.painter().rect_filled(
-                            rect,
-                            t.radius,
-                            mix(color(&t.panel), color(&t.accent), 0.31).gamma_multiply(selected),
-                        );
-                        ui.painter().rect_stroke(
-                            rect,
-                            t.radius,
-                            Stroke::new(0.6, color(&t.accent).gamma_multiply(0.45 * selected)),
-                            egui::StrokeKind::Inside,
-                        );
-                        ui.painter().rect_filled(
-                            Rect::from_min_size(rect.min, Vec2::new(4., rect.height())),
-                            0,
-                            color(&t.accent).gamma_multiply(selected),
-                        );
-                    }
-                    let mut child_clicked = false;
-                    let can_select = self.scan.index.cleanup_ids().contains(&id)
-                        && !self.scan.busy
-                        && !self.demo;
-                    let mut x = rect.left() + 11. + (depth as f32 * 19.).min(name_width * 0.35);
-                    if can_select {
-                        let cbrect = Rect::from_min_size(
-                            Pos2::new(x, rect.center().y - 9.),
-                            Vec2::splat(18.),
-                        );
-                        let mut checked = self.browser.selected.contains(&f.path);
-                        let ir = ui.scope_builder(egui::UiBuilder::new().max_rect(cbrect), |ui| {
-                            ui.checkbox(&mut checked, "")
-                        });
-                        if ir.inner.changed() {
-                            child_clicked = true;
-                            if checked {
-                                self.browser.selected.insert(f.path.clone());
-                            } else {
-                                self.browser.selected.remove(&f.path);
-                            }
-                        }
-                        x += 24.;
-                    }
-                    let arrow = Rect::from_center_size(
-                        Pos2::new(x + 9., rect.center().y),
-                        Vec2::new(19., height),
-                    );
-                    if self.folder_can_expand(id) {
-                        let openness = motion::value(
-                            ui,
-                            ("folder-disclosure", self.scan.report_revision, id),
-                            if self.browser.expanded.contains(&id) {
-                                1.
-                            } else {
-                                0.
-                            },
-                            1.,
-                        );
-                        motion::disclosure(ui, arrow.center(), openness, color(&t.muted));
-                        if ui
-                            .interact(arrow, ui.scope_id().with(("expand", id)), Sense::click())
-                            .clicked()
-                        {
-                            child_clicked = true;
-                            ui.ctx().request_repaint();
-                            self.toggle_folder(id);
-                        }
-                    }
-                    x += 29.;
-                    self.art.paint(
-                        ui,
-                        0,
-                        Rect::from_center_size(
-                            Pos2::new(x + 11., rect.center().y),
-                            Vec2::splat(23. * self.preferences.layout.icon_scale),
-                        ),
-                        C::WHITE,
-                    );
-                    x += 32. + (23. * (self.preferences.layout.icon_scale - 1.)).max(0.) * 0.5;
-                    let shown = shorten(
-                        &label(&f.path),
-                        ((name_width - (x - rect.left()) - 8.) / 7.2).max(5.) as usize,
-                    );
-                    ui.painter().text(
-                        Pos2::new(x, rect.center().y),
-                        Align2::LEFT_CENTER,
-                        shown,
-                        FontId::proportional(15. * self.preferences.layout.text_scale),
-                        color(&t.text),
-                    );
-                    ui.painter().text(
-                        Pos2::new(rect.right() - count_width - 12., rect.center().y),
-                        Align2::RIGHT_CENTER,
-                        display_size(f.bytes),
-                        FontId::proportional(15. * self.preferences.layout.text_scale),
-                        color(&t.text),
-                    );
-                    if self.preferences.layout.show_count {
-                        ui.painter().text(
-                            Pos2::new(rect.right() - 9., rect.center().y),
-                            Align2::RIGHT_CENTER,
-                            group_digits(f.files),
-                            FontId::proportional(12.),
-                            color(&t.muted),
-                        );
-                    }
-                    if self.preferences.layout.row_separators {
-                        ui.painter().hline(
-                            rect.x_range(),
-                            rect.bottom(),
-                            Stroke::new(0.5, color(&t.border)),
-                        );
-                    }
-                    if response.clicked() && !child_clicked {
-                        self.select_folder(id);
-                        if self.preferences.layout.single_click_expand
-                            && !response.double_clicked()
-                            && self.folder_can_expand(id)
-                        {
-                            ui.ctx().request_repaint();
-                            self.toggle_folder(id);
-                        }
-                    }
-                    if response.double_clicked()
-                        && !child_clicked
-                        && !self.preferences.layout.single_click_expand
+                    motion::disclosure(ui, arrow.center(), openness, color(&t.muted));
+                    if ui
+                        .interact(arrow, ui.scope_id().with(("expand", id)), Sense::click())
+                        .clicked()
                     {
-                        self.browser.table_root = Some(id);
-                        self.expand_folder(id);
-                        self.browser.filter.clear();
+                        child_clicked = true;
+                        ui.ctx().request_repaint();
+                        self.toggle_folder(id);
                     }
-                    response.on_hover_text(f.path.to_string_lossy());
                 }
-            });
+                x += 29.;
+                self.art.paint(
+                    ui,
+                    0,
+                    Rect::from_center_size(
+                        Pos2::new(x + 11., rect.center().y),
+                        Vec2::splat(23. * self.preferences.layout.icon_scale),
+                    ),
+                    C::WHITE,
+                );
+                x += 32. + (23. * (self.preferences.layout.icon_scale - 1.)).max(0.) * 0.5;
+                let shown = shorten(
+                    &label(&f.path),
+                    ((name_width - (x - rect.left()) - 8.) / 7.2).max(5.) as usize,
+                );
+                ui.painter().text(
+                    Pos2::new(x, rect.center().y),
+                    Align2::LEFT_CENTER,
+                    shown,
+                    FontId::proportional(15. * self.preferences.layout.text_scale),
+                    color(&t.text),
+                );
+                ui.painter().text(
+                    Pos2::new(rect.right() - count_width - 12., rect.center().y),
+                    Align2::RIGHT_CENTER,
+                    display_size(f.bytes),
+                    FontId::proportional(15. * self.preferences.layout.text_scale),
+                    color(&t.text),
+                );
+                if self.preferences.layout.show_count {
+                    ui.painter().text(
+                        Pos2::new(rect.right() - 9., rect.center().y),
+                        Align2::RIGHT_CENTER,
+                        group_digits(f.files),
+                        FontId::proportional(12.),
+                        color(&t.muted),
+                    );
+                }
+                if self.preferences.layout.row_separators {
+                    ui.painter().hline(
+                        rect.x_range(),
+                        rect.bottom(),
+                        Stroke::new(0.5, color(&t.border)),
+                    );
+                }
+                if response.clicked() && !child_clicked {
+                    self.select_folder(id);
+                    if self.preferences.layout.single_click_expand
+                        && !response.double_clicked()
+                        && self.folder_can_expand(id)
+                    {
+                        ui.ctx().request_repaint();
+                        self.toggle_folder(id);
+                    }
+                }
+                if response.double_clicked()
+                    && !child_clicked
+                    && !self.preferences.layout.single_click_expand
+                {
+                    self.browser.table_root = Some(id);
+                    self.expand_folder(id);
+                    self.browser.filter.clear();
+                }
+                response.on_hover_text(f.path.to_string_lossy());
+            }
+        });
+        self.browser.scroll_offset = scroll.state.clamped_offset().y;
+        self.browser.scroll_height = scroll.inner_rect.height();
     }
 }

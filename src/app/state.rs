@@ -80,6 +80,10 @@ pub(super) struct BrowserState {
     pub(super) category: Category,
     pub(super) view: View,
     pub(super) properties: Option<Properties>,
+    pub(super) text_input_focused: bool,
+    pub(super) scroll_to: Option<PathBuf>,
+    pub(super) scroll_offset: f32,
+    pub(super) scroll_height: f32,
     pub(super) sort_size: bool,
     pub(super) descending: bool,
 }

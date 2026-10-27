@@ -1,4 +1,4 @@
-//! Bounded, read-only content loading. Nothing here runs on the UI thread.
+//! Bounded file previews; content I/O and image decoding run on a worker.
 use image::{ImageDecoder, ImageReader};
 use std::{
     fs::{File, OpenOptions},
@@ -26,6 +26,7 @@ pub(crate) enum Content {
         lines: Vec<String>,
         encoding: &'static str,
         truncated: bool,
+        document: Option<crate::text_editor::Document>,
     },
     Unsupported,
     TooLarge,
@@ -116,6 +117,7 @@ fn read_text(bytes: &[u8], clipped: bool) -> Option<Content> {
         lines,
         encoding,
         truncated,
+        document: None,
     })
 }
 fn load_inner(path: &Path) -> Result<Content, Box<dyn std::error::Error>> {
@@ -156,7 +158,16 @@ fn load_inner(path: &Path) -> Result<Content, Box<dyn std::error::Error>> {
             .read_to_end(&mut bytes)?;
         let clipped = bytes.len() > TEXT_BYTES;
         bytes.truncate(TEXT_BYTES);
-        read_text(&bytes, clipped).unwrap_or(Content::Unsupported)
+        let mut text = read_text(&bytes, clipped).unwrap_or(Content::Unsupported);
+        if let Content::Text {
+            truncated: false,
+            document,
+            ..
+        } = &mut text
+        {
+            *document = crate::text_editor::Document::from_bytes(&bytes, &before);
+        }
+        text
     };
     // Reject a replaced or concurrently modified file instead of displaying a
     // mixture of versions. Reopening also rechecks the no-symlink policy.
