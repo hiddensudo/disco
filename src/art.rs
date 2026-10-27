@@ -9,7 +9,7 @@ pub struct Art {
 }
 impl Art {
     pub fn load(_ctx: &egui::Context) -> Self {
-        let sources: [&[u8]; 24] = [
+        let sources: [&[u8]; 25] = [
             include_bytes!("../assets/icons/folder.svg"),
             include_bytes!("../assets/icons/game.svg"),
             include_bytes!("../assets/icons/code.svg"),
@@ -34,6 +34,7 @@ impl Art {
             include_bytes!("../assets/icons/close.svg"),
             include_bytes!("../assets/icons/forward.svg"),
             include_bytes!("../assets/icons/trash.svg"),
+            include_bytes!("../assets/icons/image.svg"),
         ];
         Self {
             icons: sources
@@ -217,4 +218,18 @@ pub fn fonts(ctx: &egui::Context) {
         vec!["Inter Bold".into(), "Inter".into()],
     );
     ctx.set_fonts(f);
+}
+
+/// Select artwork without reading or decoding the file on the UI thread.
+pub(crate) fn file_icon(path: &std::path::Path) -> usize {
+    match path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "png" | "jpg" | "jpeg" | "webp" | "bmp" | "tif" | "tiff" | "gif" | "svg" | "ico" => 24,
+        _ => 4,
+    }
 }

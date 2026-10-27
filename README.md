@@ -10,6 +10,8 @@ A native disk space analyzer for Linux. Built with Rust and egui, with a dark in
 
 - Browse a folder tree, sort by size, search, and filter by category.
 - Inspect file and folder properties, find large files, and compare duplicate file contents.
+- Preview images and text in the right inspector or in a resizable area beside the list.
+- Double-click files to open their default application; this can be disabled.
 - Automatically save the last scan and restore it on startup.
 - Refresh in the background when disk usage changes.
 - Move folders to Trash with confirmation; restore items or empty Trash.
@@ -58,12 +60,23 @@ cargo test --locked
 python3 -m unittest discover -s tests
 ```
 
+## File previews
+
+Expand a folder to load its files, then select a file. Above the list, **Preview → Right panel / Beside list / Off** switches modes and remembers your choice. The larger preview area can be resized by dragging its divider. Images support Fit and zoom; text is read-only, scrollable, and can be copied.
+
+**Settings → Interface → File previews** also controls the mode and **Double click opens files in the default app** (enabled by default). A single click selects and previews. Double-clicking launches only an installed system association; without one, nothing opens. This integration uses `xdg-mime` and `gio` (typically provided by `xdg-utils` and GLib).
+
+Supported images: PNG, JPEG, WebP, BMP, TIFF. Text supports UTF-8 and UTF-16 with a byte-order mark. Only the selected file is read, in the background. To limit resource usage, image previews accept files up to 32 MiB and 12 megapixels and retain a thumbnail up to 2048 px; text shows up to 128 KiB / 2,000 lines. Unsupported or larger content keeps its properties and an explanatory preview message. Expanded-directory listings are cached separately from the saved scan and are bounded; a shortened listing is labeled explicitly. Search includes folder names and already loaded file listings.
+
+In `layout.toml`: `preview_mode = "inspector"` (or `"workspace"`, `"off"`) and `open_files_on_double_click = true` (or `false`).
+
 ## Source layout
 
 - `src/main.rs`: command-line entry points and native window startup.
 - `src/app.rs` and `src/app/{state,jobs}.rs`: application lifecycle, grouped state, and background job coordination.
 - `src/app/ui/`: window chrome, folder browser, inspector, Trash, dialogs, and settings pages.
 - `src/index.rs`, `src/filesystem.rs`, `src/format.rs`: scan navigation index, filesystem metadata, and display formatting.
+- `src/{file_preview,directory_files,associations}.rs`: bounded content loading, lazy file listings, and default-app integration.
 - `src/{scan,snapshot,recycle,deletion}.rs`: scanning, persistence, and Trash operations; independent of UI state.
 
 Inter font: [SIL Open Font License](assets/fonts/LICENSE.txt). Local Trash library patch: [notes and license](vendor/trash/DISCO-PATCH.md).

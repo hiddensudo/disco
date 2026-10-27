@@ -14,6 +14,9 @@ impl Disco {
         }
         let t = &self.preferences.theme;
         let mut s = egui::Style::default();
+        if self.screenshot.is_some() {
+            s.interaction.tooltip_delay = 60.;
+        }
         s.visuals = egui::Visuals::dark();
         s.animation_time = if self.preferences.layout.animations {
             0.16 / self.preferences.layout.motion_speed

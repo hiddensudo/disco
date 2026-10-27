@@ -34,8 +34,16 @@ pub(super) struct RowsKey {
     pub(super) descending: bool,
     pub(super) report: u64,
     pub(super) tree: u64,
+    pub(super) files: u64,
 }
-pub(super) type FolderRows = Arc<Vec<(usize, usize)>>;
+#[derive(Clone)]
+pub(super) enum TreeRow {
+    Folder(usize, usize),
+    File(Arc<crate::directory_files::Entry>, usize),
+    Pending(usize, usize),
+    Notice(usize, usize),
+}
+pub(super) type FolderRows = Arc<Vec<TreeRow>>;
 
 /// State owned by the scan part of the application.
 pub(super) struct ScanState {

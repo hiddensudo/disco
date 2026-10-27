@@ -122,6 +122,16 @@ pub struct Layout {
     pub auto_refresh: bool,
     pub animations: bool,
     pub motion_speed: f32,
+    pub preview_mode: PreviewMode,
+    pub open_files_on_double_click: bool,
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PreviewMode {
+    Off,
+    #[default]
+    Inspector,
+    Workspace,
 }
 impl Default for Layout {
     fn default() -> Self {
@@ -147,6 +157,8 @@ impl Default for Layout {
             auto_refresh: true,
             animations: true,
             motion_speed: 1.,
+            preview_mode: PreviewMode::Inspector,
+            open_files_on_double_click: true,
         }
     }
 }
@@ -342,6 +354,26 @@ drive_name = "My SSD"
             layout.icon_scale = invalid;
             assert!(layout.validate().is_err());
         }
+    }
+    #[test]
+    fn preview_preferences_roundtrip_and_older_configs_still_load() {
+        let old: Layout = toml::from_str("categories=true").unwrap();
+        assert_eq!(old.preview_mode, PreviewMode::Inspector);
+        assert!(old.open_files_on_double_click);
+        for mode in [
+            PreviewMode::Off,
+            PreviewMode::Inspector,
+            PreviewMode::Workspace,
+        ] {
+            let layout = Layout {
+                preview_mode: mode,
+                open_files_on_double_click: false,
+                ..old.clone()
+            };
+            let restored: Layout = toml::from_str(&toml::to_string(&layout).unwrap()).unwrap();
+            assert_eq!(restored, layout);
+        }
+        assert!(toml::from_str::<Layout>("preview_mode='invalid'").is_err());
     }
     #[test]
     fn language_roundtrips_without_losing_other_preferences() {

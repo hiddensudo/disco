@@ -1,7 +1,7 @@
 use crate::app::ui::preview;
 use crate::app::ui::widgets::check_row;
 use crate::art;
-use crate::settings::{Layout, Theme, color};
+use crate::settings::{Layout, PreviewMode, Theme, color};
 use eframe::egui::{self, RichText};
 
 pub(super) fn show(
@@ -49,6 +49,42 @@ pub(super) fn show(
         true,
         t,
     );
+    cols[0].add_space(7.);
+    cols[0].label(RichText::new(crate::tr!("Прев’ю файлів", "File previews")).size(13.));
+    egui::ComboBox::from_id_salt("preview-mode-settings")
+        .selected_text(match layout.preview_mode {
+            PreviewMode::Off => crate::tr!("Вимкнено", "Off"),
+            PreviewMode::Inspector => crate::tr!("Праворуч", "Right panel"),
+            PreviewMode::Workspace => crate::tr!("Поруч зі списком", "Beside list"),
+        })
+        .show_ui(&mut cols[0], |ui| {
+            for (mode, text) in [
+                (PreviewMode::Off, crate::tr!("Вимкнено", "Off")),
+                (
+                    PreviewMode::Inspector,
+                    crate::tr!("Праворуч", "Right panel"),
+                ),
+                (
+                    PreviewMode::Workspace,
+                    crate::tr!("Поруч зі списком", "Beside list"),
+                ),
+            ] {
+                ui.selectable_value(&mut layout.preview_mode, mode, text);
+            }
+        });
+    cols[0]
+        .add(egui::Checkbox::new(
+            &mut layout.open_files_on_double_click,
+            RichText::new(crate::tr!(
+                "Даблклік відкриває файл у типовій програмі",
+                "Double click opens files in the default app"
+            ))
+            .size(13.),
+        ))
+        .on_hover_text(crate::tr!(
+            "Без призначеної програми нічого не відкривається",
+            "Nothing opens if no default app is assigned"
+        ));
     cols[0].add_space(5.);
     cols[0].label(RichText::new(crate::tr!("Колонки у списку", "List columns")).size(13.));
     let mut always = true;

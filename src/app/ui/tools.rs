@@ -1,6 +1,6 @@
 use crate::app::Disco;
 use crate::app::state::View;
-use crate::filesystem::{Properties, open};
+use crate::filesystem::Properties;
 use crate::format::label;
 use crate::scan::human;
 use crate::settings::color;
@@ -29,24 +29,20 @@ impl Disco {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     for f in files {
                         ui.horizontal(|ui| {
-                            if ui
+                            let response = ui
                                 .selectable_label(
                                     self.browser
                                         .properties
                                         .as_ref()
-                                        .map(|p| p.path == f.path)
-                                        .unwrap_or(false),
+                                        .is_some_and(|p| p.path == f.path),
                                     label(&f.path),
                                 )
-                                .on_hover_text(f.path.to_string_lossy())
-                                .clicked()
-                            {
-                                self.browser.properties = Some(Properties::load(
-                                    f.path.clone(),
-                                    f.bytes,
-                                    None,
-                                    self.demo,
-                                ));
+                                .on_hover_text(f.path.to_string_lossy());
+                            if response.clicked() {
+                                self.select_file(f.path.clone(), f.bytes);
+                            }
+                            if response.double_clicked() {
+                                self.open_file(f.path.clone());
                             }
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
@@ -152,6 +148,8 @@ impl Disco {
                     .size(12.)
                     .color(color(&t.muted)),
                 );
+                let mut selected_file = None;
+                let mut opened_file = None;
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     for g in &self.scan.dups {
                         ui.add_space(10.);
@@ -165,15 +163,29 @@ impl Disco {
                             .strong(),
                         );
                         for f in g {
-                            if ui.link(f.path.to_string_lossy()).clicked() {
-                                if let Some(p) = f.path.parent() {
-                                    open(p);
-                                }
+                            let response = ui.selectable_label(
+                                self.browser
+                                    .properties
+                                    .as_ref()
+                                    .is_some_and(|p| p.path == f.path),
+                                f.path.to_string_lossy(),
+                            );
+                            if response.clicked() {
+                                selected_file = Some((f.path.clone(), f.bytes));
+                            }
+                            if response.double_clicked() {
+                                opened_file = Some(f.path.clone());
                             }
                         }
                         ui.separator();
                     }
                 });
+                if let Some((path, bytes)) = selected_file {
+                    self.select_file(path, bytes);
+                }
+                if let Some(path) = opened_file {
+                    self.open_file(path);
+                }
             }
             _ => {}
         }

@@ -36,12 +36,16 @@ pub(crate) struct Disco {
     drive: DriveState,
     deletion: DeletionState,
     recycle: recycle::Bin,
+    files: crate::directory_files::Files,
+    file_preview: crate::file_preview::Preview,
+    opening_file: Arc<std::sync::atomic::AtomicBool>,
     purge_targets: Option<Vec<recycle::Item>>,
     purge_fresh: bool,
     message: String,
     started: Instant,
     demo: bool,
     screenshot: Option<String>,
+    qa_preview_file: Option<PathBuf>,
     shots: usize,
 }
 impl Disco {
@@ -180,12 +184,18 @@ impl Disco {
                 rx: None,
             },
             recycle: recycle::Bin::default(),
+            files: crate::directory_files::Files::default(),
+            file_preview: crate::file_preview::Preview::default(),
+            opening_file: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             purge_targets: None,
             purge_fresh: false,
             message,
             started: Instant::now(),
             demo,
             screenshot: argument("--screenshot"),
+            qa_preview_file: argument("--screenshot")
+                .and_then(|_| argument("--preview-file"))
+                .map(PathBuf::from),
             shots: 0,
         };
         if demo {
@@ -222,6 +232,31 @@ impl Disco {
 impl eframe::App for Disco {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.poll();
+        if self.scan.restore_requested_root.is_none() && !self.scan.busy {
+            if let Some(path) = self.qa_preview_file.take() {
+                if let Some((report, parent)) = self.scan.report.as_ref().and_then(|r| {
+                    r.folders
+                        .iter()
+                        .position(|f| Some(f.path.as_path()) == path.parent())
+                        .map(|id| (r, id))
+                }) {
+                    self.browser.category = Category::All;
+                    self.browser.focus = parent;
+                    self.browser.table_root = Some(parent);
+                    let mut at = Some(parent);
+                    while let Some(id) = at {
+                        self.browser.expanded.insert(id);
+                        at = report.folders[id].parent;
+                    }
+                    self.browser.tree_revision = self.browser.tree_revision.wrapping_add(1);
+                    if let Ok(m) = std::fs::symlink_metadata(&path) {
+                        self.select_file(path, crate::scan::allocated(&m));
+                    }
+                }
+            }
+        }
+        self.files.poll(self.scan.report_revision);
+        self.sync_file_preview(ui.ctx());
         if let Some(result) = self.recycle.poll(ui.ctx()) {
             self.refresh_drive();
             if result.changed
@@ -291,9 +326,21 @@ impl eframe::App for Disco {
                 .frame(egui::Frame::new().fill(color(&t.panel)).inner_margin(0.))
                 .show(ui, |ui| self.sidebar(ui));
         }
-        if self.preferences.layout.properties {
+        if self.preferences.layout.properties
+            || (self.preferences.layout.preview_mode == settings::PreviewMode::Inspector
+                && self.browser.properties.as_ref().is_some_and(|p| !p.is_dir))
+        {
+            let inspector_width =
+                if self.preferences.layout.preview_mode == settings::PreviewMode::Workspace {
+                    self.preferences
+                        .layout
+                        .property_width
+                        .min((ui.available_width() - 570.).max(240.))
+                } else {
+                    self.preferences.layout.property_width
+                };
             egui::Panel::right("inspector")
-                .exact_size(self.preferences.layout.property_width)
+                .exact_size(inspector_width)
                 .resizable(false)
                 .frame(
                     egui::Frame::new()
@@ -314,6 +361,7 @@ impl eframe::App for Disco {
                     return;
                 }
                 self.scope_controls(ui);
+                self.preview_controls(ui);
                 if !self.preferences.layout.categories {
                     ui.horizontal(|ui| {
                         for cat in [
@@ -349,11 +397,7 @@ impl eframe::App for Disco {
                 ui.scope(|ui| {
                     ui.multiply_opacity(0.55 + enter * 0.45);
 
-                    if self.browser.view == View::Folders {
-                        self.folder_table(ui);
-                    } else {
-                        self.other_content(ui);
-                    }
+                    self.browser_content(ui);
                 });
             });
         if self.browser.view == View::Trash

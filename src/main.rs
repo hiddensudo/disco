@@ -1,7 +1,10 @@
 mod app;
 mod art;
+mod associations;
 mod deletion;
 mod demo;
+mod directory_files;
+mod file_preview;
 mod filesystem;
 mod format;
 mod frame_probe;

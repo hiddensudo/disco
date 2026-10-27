@@ -31,38 +31,65 @@ impl Disco {
         egui::ScrollArea::vertical()
             .id_salt("properties")
             .max_height(
-                (ui.available_height() - if action_properties.is_some() { 98. } else { 0. })
-                    .max(50.),
+                (ui.available_height()
+                    - if action_properties.as_ref().is_some_and(|p| p.is_dir) {
+                        98.
+                    } else if action_properties.is_some() {
+                        48.
+                    } else {
+                        0.
+                    })
+                .max(50.),
             )
             .show(ui, |ui| {
                 ui.add_space(7.);
                 if let Some(p) = self.browser.properties.clone() {
-                    let (rect, _) = ui
-                        .allocate_exact_size(Vec2::new(ui.available_width(), 88.), Sense::hover());
-                    let tile = Rect::from_min_size(rect.min + Vec2::new(0., 5.), Vec2::splat(66.));
+                    if !p.is_dir {
+                        ui.spacing_mut().item_spacing.y = 2.;
+                    }
+                    let (rect, _) = ui.allocate_exact_size(
+                        Vec2::new(ui.available_width(), if p.is_dir { 88. } else { 60. }),
+                        Sense::hover(),
+                    );
+                    let tile = Rect::from_min_size(
+                        rect.min + Vec2::new(0., 5.),
+                        Vec2::splat(if p.is_dir { 66. } else { 48. }),
+                    );
                     ui.painter().rect_filled(tile, t.radius, color(&t.raised));
                     self.art.paint(
                         ui,
-                        0,
+                        if p.is_dir {
+                            0
+                        } else {
+                            crate::art::file_icon(&p.path)
+                        },
                         Rect::from_center_size(
                             tile.center(),
-                            Vec2::splat(46. * self.preferences.layout.icon_scale),
+                            Vec2::splat(
+                                if p.is_dir { 46. } else { 34. }
+                                    * self.preferences.layout.icon_scale,
+                            ),
                         ),
                         C::WHITE,
                     );
+                    let text_x = if p.is_dir { 84. } else { 62. };
                     ui.painter().text(
-                        rect.min + Vec2::new(84., 13.),
+                        rect.min + Vec2::new(text_x, 9.),
                         Align2::LEFT_TOP,
-                        label(&p.path),
-                        art::bold(22.),
+                        shorten(
+                            &label(&p.path),
+                            ((rect.width() - text_x) / if p.is_dir { 12. } else { 10. }).max(5.)
+                                as usize,
+                        ),
+                        art::bold(if p.is_dir { 22. } else { 18. }),
                         color(&t.text),
                     );
                     let path = shorten(
                         &p.path.to_string_lossy(),
-                        ((rect.width() - 86.) / 6.2) as usize,
+                        ((rect.width() - text_x - 2.) / 6.2) as usize,
                     );
                     ui.painter().text(
-                        rect.min + Vec2::new(84., 44.),
+                        rect.min + Vec2::new(text_x, if p.is_dir { 44. } else { 35. }),
                         Align2::LEFT_TOP,
                         path,
                         FontId::proportional(12.),
@@ -70,14 +97,37 @@ impl Disco {
                     );
                     ui.interact(rect, ui.scope_id().with("property_path"), Sense::hover())
                         .on_hover_text(p.path.to_string_lossy());
+                    if !p.is_dir
+                        && self.preferences.layout.preview_mode
+                            == crate::settings::PreviewMode::Inspector
+                    {
+                        self.file_preview_ui(ui, true);
+                        ui.add_space(6.);
+                    }
                     ui.add_space(3.);
-                    ui.label(RichText::new(display_size(p.bytes)).font(art::bold(29.)));
-                    ui.add_space(12.);
+                    ui.label(
+                        RichText::new(display_size(p.bytes)).font(art::bold(if p.is_dir {
+                            29.
+                        } else {
+                            25.
+                        })),
+                    );
+                    ui.add_space(if p.is_dir { 12. } else { 6. });
                     for (k, v) in [
                         (
                             crate::tr!("Тип", "Type"),
                             if p.is_dir {
                                 crate::tr!("Папка", "Folder").into()
+                            } else if matches!(
+                                self.file_preview.content,
+                                Some(crate::file_preview::Content::Image { .. })
+                            ) {
+                                crate::tr!("Зображення", "Image").into()
+                            } else if matches!(
+                                self.file_preview.content,
+                                Some(crate::file_preview::Content::Text { .. })
+                            ) {
+                                crate::tr!("Текстовий файл", "Text file").into()
                             } else {
                                 crate::tr!("Файл", "File").into()
                             },
@@ -101,8 +151,11 @@ impl Disco {
                         (crate::tr!("Власник", "Owner"), p.owner),
                         (crate::tr!("Доступ", "Permissions"), p.permissions),
                     ] {
+                        if k == crate::tr!("Елементів", "Items") && !p.is_dir {
+                            continue;
+                        }
                         let (r, _) = ui.allocate_exact_size(
-                            Vec2::new(ui.available_width(), 25.),
+                            Vec2::new(ui.available_width(), if p.is_dir { 25. } else { 22. }),
                             Sense::hover(),
                         );
                         ui.painter().text(
@@ -160,7 +213,10 @@ impl Disco {
             });
         if let Some(p) = action_properties {
             let r = Rect::from_min_size(
-                Pos2::new(action_area.left(), action_area.bottom() - 83.),
+                Pos2::new(
+                    action_area.left(),
+                    action_area.bottom() - if p.is_dir { 83. } else { 36. },
+                ),
                 Vec2::new(action_area.width(), 36.),
             );
             if visual_button(

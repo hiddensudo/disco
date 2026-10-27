@@ -1,5 +1,5 @@
 use crate::app::Disco;
-use crate::app::state::{FolderRows, RowsKey};
+use crate::app::state::{FolderRows, RowsKey, TreeRow};
 use crate::app::ui::widgets::{chevron, mix};
 use crate::filesystem::Properties;
 use crate::format::{display_size, group_digits, label, shorten};
@@ -41,6 +41,7 @@ impl Disco {
             descending: self.browser.descending,
             report: self.scan.report_revision,
             tree: self.browser.tree_revision,
+            files: self.files.revision,
         };
         if let Some((old, rows)) = &self.browser.rows_cache {
             if *old == key {
@@ -51,7 +52,7 @@ impl Disco {
         self.browser.rows_cache = Some((key, rows.clone()));
         rows
     }
-    pub(in crate::app) fn build_visible_rows(&self) -> Vec<(usize, usize)> {
+    pub(in crate::app) fn build_visible_rows(&self) -> Vec<TreeRow> {
         let Some(r) = &self.scan.report else {
             return vec![];
         };
@@ -68,7 +69,20 @@ impl Disco {
                 .map(|(i, _)| i)
                 .collect();
             self.sort_ids(&mut ids);
-            return ids.into_iter().map(|i| (i, 0)).collect();
+            let mut rows: Vec<_> = ids.into_iter().map(|i| TreeRow::Folder(i, 0)).collect();
+            for (id, folder) in r.folders.iter().enumerate() {
+                if !self.scan.index.matches_category(id, self.browser.category) {
+                    continue;
+                }
+                if let Some(listing) = self.files.get(&folder.path) {
+                    for file in &listing.files {
+                        if file.path.to_string_lossy().to_lowercase().contains(&q) {
+                            rows.push(TreeRow::File(file.clone(), 0));
+                        }
+                    }
+                }
+            }
+            return rows;
         }
         let roots = if let Some(id) = self.browser.table_root {
             vec![id]
@@ -77,18 +91,52 @@ impl Disco {
         };
         let mut roots = roots;
         self.sort_ids(&mut roots);
-        let mut stack: Vec<_> = roots.into_iter().rev().map(|i| (i, 0)).collect();
+        let mut stack: Vec<_> = roots
+            .into_iter()
+            .rev()
+            .map(|i| TreeRow::Folder(i, 0))
+            .collect();
         let mut rows = vec![];
-        while let Some((i, d)) = stack.pop() {
-            rows.push((i, d));
+        while let Some(row) = stack.pop() {
+            let TreeRow::Folder(i, d) = row else {
+                rows.push(row);
+                continue;
+            };
+            rows.push(TreeRow::Folder(i, d));
             if self.browser.expanded.contains(&i) {
+                if let Some(listing) = self.files.get(&r.folders[i].path) {
+                    if listing.limited || listing.error.is_some() {
+                        stack.push(TreeRow::Notice(i, d + 1));
+                    }
+                    let mut files = listing.files.clone();
+                    files.sort_by(|a, b| {
+                        let cmp = if self.browser.sort_size {
+                            a.bytes.cmp(&b.bytes)
+                        } else {
+                            a.path.file_name().cmp(&b.path.file_name())
+                        };
+                        if self.browser.descending {
+                            cmp.reverse()
+                        } else {
+                            cmp
+                        }
+                    });
+                    stack.extend(files.into_iter().rev().map(|f| TreeRow::File(f, d + 1)));
+                } else if !self.demo {
+                    stack.push(TreeRow::Pending(i, d + 1));
+                }
                 let mut children = self.scan.index.children(i).to_vec();
                 if self.browser.category != Category::All {
                     children
                         .retain(|j| self.scan.index.matches_category(*j, self.browser.category));
                 }
                 self.sort_ids(&mut children);
-                stack.extend(children.into_iter().rev().map(|j| (j, d + 1)));
+                stack.extend(
+                    children
+                        .into_iter()
+                        .rev()
+                        .map(|j| TreeRow::Folder(j, d + 1)),
+                );
             }
         }
         rows
@@ -119,9 +167,13 @@ impl Disco {
         } else {
             0.
         };
-        let size_width = 145.;
+        let size_width = if ui.available_width() < 500. {
+            95.
+        } else {
+            145.
+        };
         let width = ui.available_width();
-        let name_width = (width - size_width - count_width).max(150.);
+        let name_width = (width - size_width - count_width).max(80.);
         let (h, _) = ui.allocate_exact_size(Vec2::new(width, 35.), Sense::hover());
         ui.painter()
             .rect_filled(h, t.radius, mix(color(&t.panel), color(&t.raised), 0.45));
@@ -273,8 +325,34 @@ impl Disco {
             .show_rows(ui, height, rows.len(), |ui, range| {
                 ui.spacing_mut().item_spacing.y = 0.;
                 for n in range {
-                    let (id, depth) = rows[n];
+                    let (id, depth) = match &rows[n] {
+                        TreeRow::Folder(id, depth) => (*id, *depth),
+                        TreeRow::File(file, depth) => {
+                            self.file_row(
+                                ui,
+                                file.clone(),
+                                *depth,
+                                height,
+                                name_width,
+                                count_width,
+                                &t,
+                            );
+                            continue;
+                        }
+                        TreeRow::Pending(id, depth) | TreeRow::Notice(id, depth) => {
+                            self.file_listing_row(
+                                ui,
+                                *id,
+                                *depth,
+                                height,
+                                matches!(&rows[n], TreeRow::Pending(..)),
+                                &t,
+                            );
+                            continue;
+                        }
+                    };
                     let f = self.scan.report.as_ref().unwrap().folders[id].clone();
+                    self.files.touch(&f.path);
                     let (rect, response) = ui.allocate_exact_size(
                         Vec2::new(ui.available_width(), height),
                         Sense::click(),
@@ -289,7 +367,13 @@ impl Disco {
                     let selected = motion::value(
                         ui,
                         ("row-selected", self.scan.report_revision, id),
-                        if self.browser.focus == id { 1. } else { 0. },
+                        if self.browser.focus == id
+                            && self.browser.properties.as_ref().is_none_or(|p| p.is_dir)
+                        {
+                            1.
+                        } else {
+                            0.
+                        },
                         1.,
                     );
                     let hover = motion::hover(
@@ -350,7 +434,7 @@ impl Disco {
                         Pos2::new(x + 9., rect.center().y),
                         Vec2::new(19., height),
                     );
-                    if !self.scan.index.children(id).is_empty() {
+                    if self.folder_can_expand(id) {
                         let openness = motion::value(
                             ui,
                             ("folder-disclosure", self.scan.report_revision, id),
@@ -420,7 +504,7 @@ impl Disco {
                         self.select_folder(id);
                         if self.preferences.layout.single_click_expand
                             && !response.double_clicked()
-                            && !self.scan.index.children(id).is_empty()
+                            && self.folder_can_expand(id)
                         {
                             ui.ctx().request_repaint();
                             self.toggle_folder(id);

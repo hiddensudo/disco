@@ -19,3 +19,5 @@ save_scan = true
 auto_refresh = true
 animations = true
 motion_speed = 1.0
+preview_mode = "inspector"
+open_files_on_double_click = true
