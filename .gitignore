@@ -1,0 +1,8 @@
+/target/
+/disco
+/disco.sha256
+/PERFORMANCE.md
+/VERIFICATION.md
+__pycache__/
+*.pyc
+.DS_Store

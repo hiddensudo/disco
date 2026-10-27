@@ -1,0 +1,9 @@
+name = "Carbon"
+accent = "#e45a52"
+background = "#101417"
+panel = "#111518"
+raised = "#1f252a"
+border = "#30373d"
+text = "#eef0f3"
+muted = "#bdc5ce"
+radius = 3

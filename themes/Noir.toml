@@ -1,0 +1,9 @@
+name = "Noir"
+accent = "#f07167"
+background = "#090c0e"
+panel = "#12181b"
+raised = "#1c2529"
+border = "#2b363b"
+text = "#e8edef"
+muted = "#9eafb6"
+radius = 3
