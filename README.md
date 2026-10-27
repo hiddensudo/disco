@@ -58,4 +58,12 @@ cargo test --locked
 python3 -m unittest discover -s tests
 ```
 
+## Source layout
+
+- `src/main.rs`: command-line entry points and native window startup.
+- `src/app.rs` and `src/app/{state,jobs}.rs`: application lifecycle, grouped state, and background job coordination.
+- `src/app/ui/`: window chrome, folder browser, inspector, Trash, dialogs, and settings pages.
+- `src/index.rs`, `src/filesystem.rs`, `src/format.rs`: scan navigation index, filesystem metadata, and display formatting.
+- `src/{scan,snapshot,recycle,deletion}.rs`: scanning, persistence, and Trash operations; independent of UI state.
+
 Inter font: [SIL Open Font License](assets/fonts/LICENSE.txt). Local Trash library patch: [notes and license](vendor/trash/DISCO-PATCH.md).

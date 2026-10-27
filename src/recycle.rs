@@ -275,6 +275,27 @@ pub struct Summary {
     pub entries: usize,
     pub complete: bool,
 }
+/// Resolve Trash locations once while building a scan index, including the
+/// configured home Trash even when a restored snapshot outlives its directory.
+pub(crate) fn scan_roots() -> Vec<PathBuf> {
+    let mut roots = std::panic::catch_unwind(trash::os_limited::trash_folders)
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or_default();
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let data = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .or_else(|| home.map(|p| p.join(".local/share")));
+    if let Some(data) = data {
+        roots.insert(data.join("Trash"));
+    }
+    let canonical: Vec<_> = roots.iter().filter_map(|p| p.canonicalize().ok()).collect();
+    roots.extend(canonical);
+    let mut roots: Vec<_> = roots.into_iter().collect();
+    roots.sort();
+    roots
+}
 type ListingStamp = Vec<(PathBuf, Option<(u64, u64, i64, i64, u64)>)>;
 fn listing_stamp() -> Result<ListingStamp, String> {
     let folders = std::panic::catch_unwind(trash::os_limited::trash_folders)

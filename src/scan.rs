@@ -47,12 +47,12 @@ pub(crate) enum Event {
     Progress(Progress),
     Finished(
         Report,
-        crate::Index,
+        crate::index::Index,
         Option<ChangeTracker>,
         Result<Option<u64>, String>,
-        Option<crate::ResolvedView>,
+        Option<crate::index::ResolvedView>,
     ),
-    Restored(Result<Option<(crate::snapshot::SavedScan, crate::Index)>, String>),
+    Restored(Result<Option<(crate::snapshot::SavedScan, crate::index::Index)>, String>),
     Duplicates(Vec<Vec<BigFile>>, u64),
     Error(String),
 }
@@ -311,7 +311,7 @@ pub(crate) fn spawn_scan(
     c: Arc<Control>,
     tx: Sender<Event>,
     persist: bool,
-    restore: Option<crate::RefreshPaths>,
+    restore: Option<crate::index::RefreshPaths>,
 ) {
     std::thread::spawn(move || {
         background_priority();
@@ -336,7 +336,7 @@ pub(crate) fn spawn_scan(
                 } else {
                     Ok(None)
                 };
-                let index = crate::Index::new(&r);
+                let index = crate::index::Index::new(&r);
                 let resolved = restore.map(|v| v.resolve(&r));
                 let _ = tx.send(Event::Finished(r, index, tracker, saved, resolved));
             }

@@ -1,7 +1,16 @@
-use crate::*;
+use crate::app::Disco;
+use crate::app::ui::widgets::{mix, visual_button};
+use crate::art;
+use crate::format::display_size;
+use crate::motion;
+use crate::recycle;
+use crate::settings::{Theme, color};
+use eframe::egui::{self, Align2, Color32 as C, FontId, Pos2, Rect, RichText, Sense, Stroke, Vec2};
+use std::collections::HashSet;
+
 impl Disco {
     pub(crate) fn bin_actions_enabled(&self) -> bool {
-        !self.demo && !self.busy && self.trash_rx.is_none() && !self.recycle.busy
+        !self.demo && !self.scan.busy && self.deletion.rx.is_none() && !self.recycle.busy
     }
     pub(crate) fn bin_restore(&mut self, ctx: &egui::Context) {
         if self.bin_actions_enabled() {
@@ -30,7 +39,7 @@ impl Disco {
         let modal = purge_dialog(
             ctx,
             targets,
-            &self.theme,
+            &self.preferences.theme,
             self.purge_fresh,
             self.bin_actions_enabled(),
         );
@@ -43,7 +52,7 @@ impl Disco {
         }
     }
     pub(crate) fn recycle_content(&mut self, ui: &mut egui::Ui) {
-        let t = self.theme.clone();
+        let t = self.preferences.theme.clone();
         ui.horizontal(|ui| {
             let (r, _) = ui.allocate_exact_size(Vec2::splat(32.), Sense::hover());
             if visual_button(
@@ -52,7 +61,7 @@ impl Disco {
                 r,
                 13,
                 "",
-                self.history.can_back() && !self.busy && !self.recycle.busy,
+                self.browser.history.can_back() && !self.scan.busy && !self.recycle.busy,
                 &t,
             )
             .on_hover_text(crate::tr!("Назад", "Back"))
@@ -158,7 +167,7 @@ impl Disco {
         }
         ui.add_space(6.);
         ui.add(
-            egui::TextEdit::singleline(&mut self.filter)
+            egui::TextEdit::singleline(&mut self.browser.filter)
                 .hint_text(crate::tr!(
                     "Пошук у кошику за назвою або початковим шляхом…",
                     "Search Trash by name or original path…"
@@ -210,7 +219,7 @@ impl Disco {
             ui.painter()
                 .text(p, align, text, FontId::proportional(12.), color(&t.muted));
         }
-        let filter = self.filter.to_lowercase();
+        let filter = self.browser.filter.to_lowercase();
         let ids: Vec<_> = self
             .recycle
             .items
@@ -335,7 +344,7 @@ impl Disco {
             });
     }
     pub(crate) fn recycle_inspector(&mut self, ui: &mut egui::Ui) {
-        let t = self.theme.clone();
+        let t = self.preferences.theme.clone();
         let picked = self.recycle.picked();
         let area = ui.max_rect();
         let enabled = self.bin_actions_enabled() && !picked.is_empty();

@@ -58,4 +58,12 @@ cargo test --locked
 python3 -m unittest discover -s tests
 ```
 
+## Структура коду
+
+- `src/main.rs`: команди CLI та запуск нативного вікна.
+- `src/app.rs` і `src/app/{state,jobs}.rs`: життєвий цикл, згрупований стан і координація фонових задач.
+- `src/app/ui/`: панелі вікна, дерево папок, властивості, кошик, діалоги та сторінки налаштувань.
+- `src/index.rs`, `src/filesystem.rs`, `src/format.rs`: індекс навігації, метадані файлової системи та форматування.
+- `src/{scan,snapshot,recycle,deletion}.rs`: сканування, збереження та операції з кошиком без залежності від стану UI.
+
 Шрифт Inter: [SIL Open Font License](assets/fonts/LICENSE.txt). Локальне виправлення бібліотеки кошика: [опис і ліцензія](vendor/trash/DISCO-PATCH.md).

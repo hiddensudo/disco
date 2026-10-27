@@ -12,7 +12,7 @@ CYRILLIC = re.compile('[А-Яа-яІіЇїЄєҐґ]')
 
 
 def translated_messages():
-    for path in (ROOT / 'src').glob('*.rs'):
+    for path in (ROOT / 'src').rglob('*.rs'):
         # Language names are intentionally written in their own language here.
         if path.name == 'i18n.rs':
             continue

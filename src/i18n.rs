@@ -76,8 +76,8 @@ mod tests {
             assert_eq!(crate::tr!("Кошик", "Trash"), "Trash");
             assert_eq!(crate::scan::human(1024u64.pow(3)), "1.0 GiB");
             assert_eq!(crate::scan::human(31), "31 B");
-            assert_eq!(crate::plural(21, "file", "files", "files"), "files");
-            assert_eq!(crate::plural(1, "file", "files", "files"), "file");
+            assert_eq!(crate::format::plural(21, "file", "files", "files"), "files");
+            assert_eq!(crate::format::plural(1, "file", "files", "files"), "file");
             let name = "layout.toml";
             assert_eq!(
                 crate::tr!("Експортувати {name}", "Export {name}", name = name),
@@ -88,8 +88,11 @@ mod tests {
         with_language(Language::Uk, || {
             assert_eq!(crate::tr!("Кошик", "Trash"), "Кошик");
             assert_eq!(crate::scan::human(1024u64.pow(3)), "1.0 ГіБ");
-            assert_eq!(crate::plural(21, "файл", "файли", "файлів"), "файл");
-            assert_eq!(crate::plural(11, "файл", "файли", "файлів"), "файлів");
+            assert_eq!(crate::format::plural(21, "файл", "файли", "файлів"), "файл");
+            assert_eq!(
+                crate::format::plural(11, "файл", "файли", "файлів"),
+                "файлів"
+            );
         });
     }
     #[test]
