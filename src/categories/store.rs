@@ -29,6 +29,8 @@ struct Document {
     auto_refresh: bool,
     #[serde(default)]
     read_only: bool,
+    #[serde(default)]
+    auto_save: bool,
 }
 impl From<&Collection> for Document {
     fn from(c: &Collection) -> Self {
@@ -39,6 +41,7 @@ impl From<&Collection> for Document {
             icon: c.icon.clone(),
             folders: c.folders.clone(),
             auto_refresh: c.auto_refresh,
+            auto_save: c.auto_save,
             read_only: c.read_only,
         }
     }
@@ -51,6 +54,7 @@ impl From<Document> for Collection {
             icon: c.icon,
             folders: c.folders,
             auto_refresh: c.auto_refresh,
+            auto_save: c.auto_save,
             read_only: c.read_only,
         }
     }
@@ -244,6 +248,7 @@ mod tests {
         let mut config = Config::default();
         config.items.push(Collection {
             auto_refresh: false,
+            auto_save: false,
             read_only: false,
             id: "photos".into(),
             name: "Photos".into(),

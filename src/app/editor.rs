@@ -1,5 +1,5 @@
 //! Keep editor state separate from preview decoding and guard transitions that
-//! would abandon a draft. Saving is explicit and performed off the UI thread.
+//! would abandon a draft. All writes run off the UI thread.
 use super::{Disco, state::View};
 use crate::{
     filesystem::Properties,
@@ -89,6 +89,8 @@ pub(super) struct Editor {
     pub saving: Option<Receiver<Result<(Stamp, Document), String>>>,
     bookmark: Option<Bookmark>,
     revision: u64,
+    pub auto_save_at: Option<f64>,
+    pub last_saved_at: Option<f64>,
 }
 impl Editor {
     pub fn dirty(&self) -> bool {
@@ -96,6 +98,40 @@ impl Editor {
     }
 }
 impl Disco {
+    pub(in crate::app) fn auto_save_enabled(&self) -> bool {
+        !self.category_read_only()
+            && self
+                .collections
+                .config
+                .get(self.browser.category)
+                .map(|c| c.auto_save)
+                .unwrap_or(self.preferences.layout.all_files_auto_save)
+    }
+    pub(in crate::app) fn note_editor_change(&mut self, ctx: &egui::Context) {
+        self.editor.auto_save_at = Some(ctx.input(|i| i.time) + 1.);
+        self.editor.last_saved_at = None;
+    }
+    pub(in crate::app) fn auto_save_tick(&mut self, ctx: &egui::Context) {
+        if !self.auto_save_enabled() || !self.editor.dirty() {
+            self.editor.auto_save_at = None;
+            return;
+        }
+        if self.demo
+            || self.preferences.open
+            || self.editor.pending.is_some()
+            || self.editor.saving.is_some()
+            || !self.editor.error.is_empty()
+        {
+            return;
+        }
+        let now = ctx.input(|i| i.time);
+        let due = *self.editor.auto_save_at.get_or_insert(now + 1.);
+        if now >= due {
+            self.save_editor(ctx);
+        } else {
+            ctx.request_repaint_after(std::time::Duration::from_secs_f64(due - now));
+        }
+    }
     pub(in crate::app) fn adopt_scope_refresh(&mut self, ctx: &egui::Context) {
         self.editor.revision = self.scan.report_revision;
         self.file_preview.adopt_revision(self.scan.report_revision);
@@ -165,6 +201,8 @@ impl Disco {
             return;
         }
         if self.editor.path != desired || self.editor.revision != self.scan.report_revision {
+            self.editor.auto_save_at = None;
+            self.editor.last_saved_at = None;
             self.editor.document = None;
             self.editor.error.clear();
             self.editor.bookmark = None;
@@ -277,6 +315,7 @@ impl Disco {
             return;
         };
         self.editor.error.clear();
+        self.editor.auto_save_at = None;
         let (tx, rx) = mpsc::channel();
         self.editor.saving = Some(rx);
         let ctx = ctx.clone();
@@ -304,6 +343,7 @@ impl Disco {
             self.editor.saving = None;
             match result {
                 Ok((stamp, saved)) => {
+                    self.editor.last_saved_at = Some(ctx.input(|i| i.time));
                     if let Some(doc) = &mut self.editor.document {
                         doc.accept_saved(stamp, &saved);
                     }

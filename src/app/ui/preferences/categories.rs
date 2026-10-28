@@ -49,6 +49,7 @@ impl Disco {
                     .unwrap();
                 config.items.push(Collection {
                     auto_refresh: false,
+                    auto_save: false,
                     read_only: false,
                     id,
                     name: crate::tr!("Нова категорія", "New category").into(),
@@ -103,6 +104,20 @@ impl Disco {
                         &mut c.auto_refresh,
                         crate::tr!("Автооновлення файлів", "Live file updates"),
                     );
+                    ui.add_enabled(
+                        !c.read_only,
+                        egui::Checkbox::new(
+                            &mut c.auto_save,
+                            crate::tr!(
+                                "Автозбереження після 1 с без набору",
+                                "Auto-save after 1 s idle"
+                            ),
+                        ),
+                    )
+                    .on_hover_text(crate::tr!(
+                        "При конфлікті чернетка залишається; файл не перезаписується.",
+                        "Conflicts keep your draft without overwriting the file."
+                    ));
                     ui.checkbox(
                         &mut c.read_only,
                         crate::tr!("Лише читання в disco", "Read only in disco"),

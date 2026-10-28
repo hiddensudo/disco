@@ -29,6 +29,8 @@ pub struct Collection {
     pub auto_refresh: bool,
     #[serde(default)]
     pub read_only: bool,
+    #[serde(default)]
+    pub auto_save: bool,
 }
 impl Collection {
     pub fn category(&self) -> Category {
@@ -67,6 +69,7 @@ impl Default for Config {
                 .iter()
                 .map(|(id, _, icon)| Collection {
                     auto_refresh: false,
+                    auto_save: false,
                     read_only: false,
                     id: id.to_string(),
                     name: String::new(),
@@ -223,6 +226,7 @@ mod tests {
         c.items[0].read_only = true;
         c.items.push(Collection {
             auto_refresh: false,
+            auto_save: false,
             read_only: false,
             id: "photos".into(),
             name: "Photos".into(),
@@ -254,6 +258,7 @@ mod tests {
     fn prompt_language_is_explicit_and_points_to_the_individual_category_file() {
         let c = Collection {
             auto_refresh: false,
+            auto_save: false,
             read_only: false,
             id: "photos".into(),
             name: "Photos".into(),
@@ -447,6 +452,7 @@ mod integration_tests {
         manager.draft = Some(manager.config.clone());
         manager.draft.as_mut().unwrap().items.push(Collection {
             auto_refresh: false,
+            auto_save: false,
             read_only: false,
             id: "photos".into(),
             name: "Photos".into(),

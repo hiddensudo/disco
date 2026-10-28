@@ -2,6 +2,10 @@
 
 Release history for disco, including earlier development checkpoints.
 
+## Unreleased
+
+- Optional per-category auto-save after one second without typing; background writes preserve focus, read-only rules and conflicting drafts. Saved/unsaved/saving states are visible in the editor.
+
 ## 0.2.0 — 2026-10-28
 
 - Drag categories to reorder them with a visible insertion target; persist the order without rewriting individual category documents. Optional category-order lock in Interface settings; Trash stays fixed.

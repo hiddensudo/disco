@@ -439,6 +439,7 @@ impl eframe::App for Disco {
             self.recycle.refresh(&ctx);
         }
         self.keyboard_navigation(ui);
+        self.auto_save_tick(&ctx);
         self.confirmation(&ctx);
         self.bin_confirmation(&ctx);
         self.settings_window(&ctx);

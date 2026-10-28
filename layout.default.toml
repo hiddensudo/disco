@@ -30,3 +30,4 @@ search_home_fallback = true
 # Policies for the All folders view. Other categories keep their own flags.
 all_files_auto_refresh = false
 all_files_read_only = false
+all_files_auto_save = false

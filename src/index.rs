@@ -415,6 +415,7 @@ mod collection_tests {
         let mut config = crate::categories::Config::default();
         let mut item = crate::categories::Collection {
             auto_refresh: false,
+            auto_save: false,
             read_only: false,
             id: "my-cache".into(),
             name: "My cache".into(),

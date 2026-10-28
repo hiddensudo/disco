@@ -17,6 +17,7 @@ files = [
 # name = "Photography"
 # icon = "camera"
 auto_refresh = false
+auto_save = false
 read_only = true
 # folders = ["/home/user/Pictures", "/mnt/photos/Archive"]
 #

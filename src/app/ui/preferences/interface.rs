@@ -201,6 +201,13 @@ pub(super) fn show(
                 "Live updates for All folders"
             ),
         );
+        ui.add_enabled(
+            !layout.all_files_read_only,
+            egui::Checkbox::new(
+                &mut layout.all_files_auto_save,
+                crate::tr!("Усі папки: автозбереження", "All folders: auto-save"),
+            ),
+        );
         ui.checkbox(
             &mut layout.all_files_read_only,
             crate::tr!("«Усі папки» — лише читання", "All folders: read only"),

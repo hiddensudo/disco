@@ -130,6 +130,7 @@ pub struct Layout {
     pub search_home_fallback: bool,
     pub all_files_auto_refresh: bool,
     pub all_files_read_only: bool,
+    pub all_files_auto_save: bool,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -180,6 +181,7 @@ impl Default for Layout {
             search_home_fallback: true,
             all_files_auto_refresh: false,
             all_files_read_only: false,
+            all_files_auto_save: false,
         }
     }
 }

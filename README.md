@@ -64,6 +64,10 @@ cargo test --locked
 python3 -m unittest discover -s tests
 ```
 
+## Auto-save
+
+Auto-save is off by default. Enable it per category under **Settings → Categories**, or for All folders under **Interface → Panels, Home & search**. Changes are saved after one second without typing, using the same background writer and conflict checks as Ctrl+S. The editor stays focused. Read-only categories never write; a failed save keeps the draft and shows the error without repeatedly retrying. Save/Discard/Cancel still protects a draft when leaving before its deadline.
+
 ## Scoped updates, code highlighting and Home (0.2)
 
 **Refresh** and **F5** update the current folder when you have entered one, otherwise the active category’s roots. Multiple category roots are read independently. The existing selection, expanded tree, navigation history and unsaved text are retained. Automatic categories prune nested directories belonging to other categories.

@@ -766,3 +766,154 @@ fn category_drag_lock_blank_editor_and_ctrl_tab_use_real_window_input() {
         );
     }
 }
+
+#[test]
+fn autosave_debounces_by_category_and_preserves_conflicting_drafts() {
+    let Ok(root) = std::env::var("DISCO_AUTOSAVE_FIXTURE") else {
+        let root = std::env::temp_dir().join(format!("disco-autosave-{}", std::process::id()));
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::create_dir_all(root.join("files")).unwrap();
+        fs::write(root.join("files/a.txt"), "original").unwrap();
+        fs::write(
+            root.join("config/layout.toml"),
+            "save_scan=false\nsearch_home_fallback=false\npreview_mode='focus'\nanimations=false\n",
+        )
+        .unwrap();
+        let out=Command::new(std::env::current_exe().unwrap())
+            .args(["--exact","app::ui::interaction_tests::autosave_debounces_by_category_and_preserves_conflicting_drafts","--nocapture"])
+            .env("DISCO_AUTOSAVE_FIXTURE",&root).env("DISCO_CONFIG_DIR",root.join("config"))
+            .env("XDG_DATA_HOME",root.join("data")).output().unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            out.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return;
+    };
+    let root = PathBuf::from(root);
+    let files = root.join("files");
+    let file = files.join("a.txt");
+    let ctx = egui::Context::default();
+    let mut time = 0.;
+    let mut app = Disco::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+    let report = crate::scan::scan(&files, &crate::scan::Control::default(), |_| {}).unwrap();
+    app.scan.index = crate::index::Index::new(&report);
+    app.scan.report = Some(std::sync::Arc::new(report));
+    app.browser.root = files.display().to_string();
+    app.browser.category = Category::Documents;
+    app.collections
+        .config
+        .items
+        .iter_mut()
+        .find(|c| c.category() == Category::Documents)
+        .unwrap()
+        .folders = vec![files.clone()];
+    app.update_collections();
+    app.select_file(file.clone(), 4096);
+    wait_document(&mut app, &ctx, &mut time);
+    let id = Id::unique(("file-editor", Some(file.clone())));
+    ctx.memory_mut(|m| m.request_focus(id));
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Text("first".into())],
+    );
+    for _ in 0..25 {
+        frame(&mut app, &ctx, &mut time, vec![]);
+    }
+    assert_eq!(
+        fs::read_to_string(&file).unwrap(),
+        "original",
+        "auto-save defaults off"
+    );
+    app.collections
+        .config
+        .items
+        .iter_mut()
+        .find(|c| c.category() == Category::Documents)
+        .unwrap()
+        .auto_save = true;
+    frame(&mut app, &ctx, &mut time, vec![]);
+    for _ in 0..10 {
+        frame(&mut app, &ctx, &mut time, vec![]);
+    }
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Text("second".into())],
+    );
+    for _ in 0..15 {
+        frame(&mut app, &ctx, &mut time, vec![]);
+    }
+    assert_eq!(
+        fs::read_to_string(&file).unwrap(),
+        "original",
+        "typing resets the one-second deadline"
+    );
+    for _ in 0..8 {
+        frame(&mut app, &ctx, &mut time, vec![]);
+    }
+    wait_document(&mut app, &ctx, &mut time);
+    assert!(!app.editor.dirty());
+    assert!(app.editor.last_saved_at.is_some());
+    assert_eq!(ctx.memory(|m| m.focused()), Some(id));
+    let saved = fs::read_to_string(&file).unwrap();
+    assert!(saved.contains("first") && saved.contains("second"));
+    // Read-only wins even when the auto-save option is enabled.
+    app.editor.document.as_mut().unwrap().text.push_str("local");
+    app.note_editor_change(&ctx);
+    app.collections
+        .config
+        .items
+        .iter_mut()
+        .find(|c| c.category() == Category::Documents)
+        .unwrap()
+        .read_only = true;
+    for _ in 0..25 {
+        frame(&mut app, &ctx, &mut time, vec![]);
+    }
+    assert_eq!(fs::read_to_string(&file).unwrap(), saved);
+    app.collections
+        .config
+        .items
+        .iter_mut()
+        .find(|c| c.category() == Category::Documents)
+        .unwrap()
+        .read_only = false;
+    // A replacement on disk is never overwritten and failed writes do not loop.
+    fs::write(&file, "external").unwrap();
+    for _ in 0..25 {
+        frame(&mut app, &ctx, &mut time, vec![]);
+    }
+    wait_document(&mut app, &ctx, &mut time);
+    assert!(app.editor.dirty() && !app.editor.error.is_empty());
+    assert!(
+        app.editor
+            .document
+            .as_ref()
+            .unwrap()
+            .text
+            .ends_with("local")
+    );
+    for _ in 0..40 {
+        frame(&mut app, &ctx, &mut time, vec![]);
+    }
+    assert!(app.editor.saving.is_none());
+    assert_eq!(fs::read_to_string(&file).unwrap(), "external");
+    let mut config = app.collections.config.clone();
+    config
+        .items
+        .iter_mut()
+        .find(|c| c.category() == Category::Games)
+        .unwrap()
+        .auto_save = false;
+    app.collections.draft = Some(config);
+    app.collections.save().unwrap();
+    let restored = crate::categories::Manager::load();
+    assert!(restored.config.get(Category::Documents).unwrap().auto_save);
+    assert!(!restored.config.get(Category::Games).unwrap().auto_save);
+}

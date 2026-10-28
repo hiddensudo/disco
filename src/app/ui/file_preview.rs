@@ -323,6 +323,7 @@ impl Disco {
         } else {
             room
         };
+        let mut text_changed = false;
         let viewport = egui::Frame::new()
             .fill(color(&t.background))
             .stroke(Stroke::new(1., color(&t.border)))
@@ -376,6 +377,7 @@ impl Disco {
                                             .show(ui)
                                     })
                                     .inner;
+                                text_changed = output.response.changed();
                                 let blank_gutter = Rect::from_min_max(
                                     Pos2::new(
                                         gutter_left,
@@ -512,6 +514,9 @@ impl Disco {
                     }
                 }
             });
+        if text_changed {
+            self.note_editor_change(ui.ctx());
+        }
         ui.interact(
             viewport.response.rect,
             egui::Id::unique("preview-viewport"),
@@ -534,6 +539,8 @@ impl Disco {
                     crate::tr!("Незбережені зміни · Ctrl+S", "Unsaved changes · Ctrl+S")
                 } else if read_only {
                     crate::tr!("Категорія: лише читання", "Category: read only")
+                } else if self.editor.last_saved_at.is_some() {
+                    crate::tr!("Збережено", "Saved")
                 } else if self.editor.document.is_some() {
                     crate::tr!("Редагування", "Editable")
                 } else {
