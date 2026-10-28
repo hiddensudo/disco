@@ -1,6 +1,6 @@
 # disco
 
-Current release: **2.0.0** ([source tag](https://github.com/hiddensudo/disco/tree/v2.0.0)).
+Current release: **0.2.0** ([source tag](https://github.com/hiddensudo/disco/tree/v0.2.0)).
 
 **English** · [Українська](README.uk.md)
 
@@ -64,7 +64,7 @@ cargo test --locked
 python3 -m unittest discover -s tests
 ```
 
-## Scoped updates, code highlighting and Home (2.0)
+## Scoped updates, code highlighting and Home (0.2)
 
 **Refresh** and **F5** update the current folder when you have entered one, otherwise the active category’s roots. Multiple category roots are read independently. The existing selection, expanded tree, navigation history and unsaved text are retained. Automatic categories prune nested directories belonging to other categories.
 
@@ -76,7 +76,7 @@ Read-only categories still support selection, copying and previewing. Editing, s
 
 Programming/configuration files use [syntect](https://docs.rs/syntect/) with [bat/two-face grammars](https://docs.rs/two-face/). Rust, Python, JSON, TOML, JavaScript/TypeScript, YAML and many other formats are detected from the filename or shebang. Parsing runs on one background worker. Unchanged frames reuse cached colored text layout. The dark palette contains no purple. Extremely long lines use plain text to bound parser work. Syntax asset licenses are available in About, through `--syntax-licenses`, and in [licenses/syntaxes.md](licenses/syntaxes.md).
 
-## Categories and viewing layouts (2.0)
+## Categories and viewing layouts (0.2)
 
 The category rail shows icons by default; names are optional under **Settings → Interface → Category labels**. The title bar has exactly two fixed, labeled layout buttons: **Overview** and **Focus**. **Overview** shows the list, preview and properties. **Focus** has a full-width path/search toolbar, a resizable folder tree on the left and the document on the right. Drive usage, selection counts and properties stay in Overview. Entering Focus opens the complete category tree and expands the selected item's ancestors. The same two choices are available under **Default file view**, and the selected mode is remembered. Mode buttons are not duplicated in document headers or a side rail.
 
