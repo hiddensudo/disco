@@ -25,6 +25,10 @@ struct Document {
     icon: String,
     #[serde(default)]
     folders: Vec<PathBuf>,
+    #[serde(default)]
+    auto_refresh: bool,
+    #[serde(default)]
+    read_only: bool,
 }
 impl From<&Collection> for Document {
     fn from(c: &Collection) -> Self {
@@ -34,6 +38,8 @@ impl From<&Collection> for Document {
             name: c.name.clone(),
             icon: c.icon.clone(),
             folders: c.folders.clone(),
+            auto_refresh: c.auto_refresh,
+            read_only: c.read_only,
         }
     }
 }
@@ -44,6 +50,8 @@ impl From<Document> for Collection {
             name: c.name,
             icon: c.icon,
             folders: c.folders,
+            auto_refresh: c.auto_refresh,
+            read_only: c.read_only,
         }
     }
 }
@@ -235,6 +243,8 @@ mod tests {
         let path = root.join("categories.toml");
         let mut config = Config::default();
         config.items.push(Collection {
+            auto_refresh: false,
+            read_only: false,
             id: "photos".into(),
             name: "Photos".into(),
             icon: "camera".into(),

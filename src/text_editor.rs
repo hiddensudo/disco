@@ -99,12 +99,20 @@ impl Document {
             crlf,
         })
     }
+    pub fn matches_disk(&self, metadata: &fs::Metadata) -> bool {
+        self.stamp == Stamp::of(metadata)
+    }
     pub fn dirty(&self) -> bool {
         self.text != self.baseline
     }
+    #[cfg(test)]
     pub fn buffer(&mut self) -> Buffer<'_> {
+        self.buffer_with_access(true)
+    }
+    pub fn buffer_with_access(&mut self, editable: bool) -> Buffer<'_> {
         Buffer {
             text: &mut self.text,
+            editable,
         }
     }
     pub fn encoded(&self) -> Vec<u8> {
@@ -147,6 +155,7 @@ impl Document {
 /// Preserve the existing line-ending convention for newly inserted text too.
 pub(crate) struct Buffer<'a> {
     text: &'a mut String,
+    editable: bool,
 }
 impl eframe::egui::TextBuffer for Buffer<'_> {
     fn type_id(&self) -> std::any::TypeId {
@@ -154,12 +163,15 @@ impl eframe::egui::TextBuffer for Buffer<'_> {
     }
 
     fn is_mutable(&self) -> bool {
-        true
+        self.editable
     }
     fn as_str(&self) -> &str {
         self.text
     }
     fn insert_text(&mut self, text: &str, index: eframe::egui::text::CharIndex) -> usize {
+        if !self.editable {
+            return 0;
+        }
         let normalized = text.replace("\r\n", "\n");
         if self.text.len() + normalized.len() > 256 * 1024 {
             return 0;
@@ -167,7 +179,9 @@ impl eframe::egui::TextBuffer for Buffer<'_> {
         eframe::egui::TextBuffer::insert_text(self.text, &normalized, index)
     }
     fn delete_char_range(&mut self, range: std::ops::Range<eframe::egui::text::CharIndex>) {
-        eframe::egui::TextBuffer::delete_char_range(self.text, range);
+        if self.editable {
+            eframe::egui::TextBuffer::delete_char_range(self.text, range);
+        }
     }
 }
 fn read_regular(path: &Path) -> std::io::Result<File> {

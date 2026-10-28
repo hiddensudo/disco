@@ -15,7 +15,7 @@ A native disk space analyzer for Linux. Built with Rust and egui, with a dark in
 - Preview images and text in the right inspector or in a resizable area beside the list.
 - Double-click files to open their default application; this can be disabled.
 - Automatically save the last scan and restore it on startup.
-- Refresh in the background when disk usage changes.
+- Refresh the current scope, with optional live updates and read-only policies for each category.
 - Move folders to Trash with confirmation; restore items or empty Trash.
 - See Trash usage and file count separately in the drive's storage bar.
 - Customize themes, colors, text size, layout, and animations through settings or TOML.
@@ -50,7 +50,7 @@ The installer creates a launcher pointing to your build, so keep the project dir
 
 Trash remains part of used space until it is emptied. Its amber segment is included in used storage, rather than added again; click the Trash label to open it. Change this color under **Appearance → Additional colors**.
 
-Sizes use allocated disk blocks. Symbolic links are not followed, and scans stay on one filesystem. Automatic refresh responds to changes of at least 64 MiB; use **Refresh** for changes that leave total usage unchanged.
+Sizes use allocated disk blocks. Symbolic links are not followed, and scans stay on one filesystem. **Refresh / F5** rereads the current folder scope, or the current category’s roots. Unrelated subtrees are preserved. Live updates use filesystem events rather than changes in total SSD usage.
 
 Preferences: `~/.config/disco/{theme,layout}.toml`. Last scan: `~/.cache/disco/last-scan.bin.gz`. `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` are supported. In `layout.toml`, `language = "en"` selects English and `language = "uk"` selects Ukrainian. Existing configurations without a language setting keep Ukrainian.
 
@@ -62,9 +62,21 @@ cargo test --locked
 python3 -m unittest discover -s tests
 ```
 
-## Categories and viewing layouts (0.11.1)
+## Scoped updates, code highlighting and Home (0.2)
 
-The category rail shows icons by default; names are optional under **Settings → Interface → Category labels**. The title bar has exactly two fixed, labeled layout buttons: **Overview** and **Focus**. **Overview** shows the list, preview and properties. **Focus** always has a resizable folder tree on the left and the document on the right, including when no file is selected; properties are never shown in Focus. Entering Focus opens the complete category tree and expands the selected item's ancestors. The same two choices are available under **Default file view**, and the selected mode is remembered. Mode buttons are not duplicated in document headers or a side rail.
+**Refresh** and **F5** update the current folder when you have entered one, otherwise the active category’s roots. Multiple category roots are read independently. The existing selection, expanded tree, navigation history and unsaved text are retained. Automatic categories prune nested directories belonging to other categories.
+
+Under **Settings → Categories**, each category has **Live file updates** and **Read only in disco**. Both default to off. Live monitoring runs only for the active category/scope while disco is open. It watches directories already present in the snapshot, with bounded event queues and coalescing; an ordinary file change rereads its parent directory, not the entire category. New directories are added to monitoring after discovery. The first activation synchronizes the scope. Watch-limit and permission errors are shown in the status bar.
+
+Read-only categories still support selection, copying and previewing. Editing, saving, file creation and deletion are disabled in disco; operating-system permissions and external applications are unchanged. External changes reload clean documents while preserving the cursor. Dirty documents remain in memory and the existing conflict check prevents overwriting external changes. The legacy global `auto_refresh` SSD trigger is no longer used.
+
+**Settings → Interface → Panels, Home & search** contains the Home path (default `/home`, falling back to `/` when unavailable), the optional Home search fallback, and live/read-only policies for **All folders**. Search includes files in unopened directories. It searches the current scope first; only an empty scope result enables the optional Home pass. Search jobs are cancellable and limited to 2,000 displayed results.
+
+Programming/configuration files use [syntect](https://docs.rs/syntect/) with [bat/two-face grammars](https://docs.rs/two-face/). Rust, Python, JSON, TOML, JavaScript/TypeScript, YAML and many other formats are detected from the filename or shebang. Parsing runs on one background worker. Unchanged frames reuse cached colored text layout. The dark palette contains no purple. Extremely long lines use plain text to bound parser work. Syntax asset licenses are available in About, through `--syntax-licenses`, and in [licenses/syntaxes.md](licenses/syntaxes.md).
+
+## Categories and viewing layouts (0.2)
+
+The category rail shows icons by default; names are optional under **Settings → Interface → Category labels**. The title bar has exactly two fixed, labeled layout buttons: **Overview** and **Focus**. **Overview** shows the list, preview and properties. **Focus** has a full-width path/search toolbar, a resizable folder tree on the left and the document on the right. Drive usage, selection counts and properties stay in Overview. Entering Focus opens the complete category tree and expands the selected item's ancestors. The same two choices are available under **Default file view**, and the selected mode is remembered. Mode buttons are not duplicated in document headers or a side rail.
 
 Breadcrumbs follow the selected folder or the selected file's parent. Their components are clickable, with hidden ancestors under **…**. Narrow tree panels put navigation and search on separate rows with consistent padding. Unsaved edits are guarded during navigation.
 

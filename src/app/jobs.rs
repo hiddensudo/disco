@@ -3,7 +3,6 @@ use crate::app::state::View;
 use crate::deletion;
 use crate::filesystem::drive_info;
 use crate::index::{Category, Index, RefreshPaths};
-use crate::refresh;
 use crate::scan::{
     ChangeTracker, Control, Event, Folder, background_priority, duplicates, spawn_scan,
 };
@@ -20,7 +19,7 @@ impl Disco {
         self.start_job(dup, force, false);
     }
     pub(in crate::app) fn start_job(&mut self, dup: bool, force: bool, automatic: bool) {
-        if self.scan.busy || self.deletion.rx.is_some() || self.recycle.busy {
+        if self.scoped.busy() || self.scan.busy || self.deletion.rx.is_some() || self.recycle.busy {
             return;
         }
         if self.guard_editor_scan(dup, force, automatic) {
@@ -39,9 +38,6 @@ impl Disco {
         let path = match path.canonicalize() {
             Ok(p) => p,
             Err(e) => {
-                if automatic {
-                    self.scan.auto_refresh.failed(Instant::now());
-                }
                 self.message = e.to_string();
                 return;
             }
@@ -170,9 +166,8 @@ impl Disco {
                             self.browser.root =
                                 saved.report.folders[0].path.to_string_lossy().into_owned();
                             self.scan.index = index;
-                            self.scan.auto_refresh.restore(saved.disk);
                             self.scan.report_revision = self.scan.report_revision.wrapping_add(1);
-                            self.scan.report = Some(saved.report);
+                            self.scan.report = Some(Arc::new(saved.report));
                             self.scan.saved_snapshot_at = Some(saved.saved_at);
                             self.scan.restored_snapshot = true;
                             self.scan.tracker = None;
@@ -203,7 +198,6 @@ impl Disco {
                 Event::Finished(r, index, tracker, saved, resolved) => {
                     if !r.complete && self.scan.report.as_ref().is_some_and(|old| old.complete) {
                         self.scan.busy = false;
-                        self.scan.auto_refresh.failed(Instant::now());
                         self.scan.automatic_job = false;
                         self.scan.tracker = None;
                         self.scan.restored_snapshot = true;
@@ -213,14 +207,6 @@ impl Disco {
                         )
                         .into();
                         continue;
-                    }
-                    if r.complete {
-                        self.scan.auto_refresh.completed(
-                            refresh::DiskSample::capture(Path::new(&self.browser.root)),
-                            Instant::now(),
-                        );
-                    } else {
-                        self.scan.auto_refresh.failed(Instant::now());
                     }
                     self.scan.automatic_job = false;
                     self.scan.saved_snapshot_at = saved.as_ref().ok().copied().flatten();
@@ -266,7 +252,7 @@ impl Disco {
                     }
                     self.browser.tree_revision = self.browser.tree_revision.wrapping_add(1);
                     self.browser.properties = None;
-                    self.scan.report = Some(r);
+                    self.scan.report = Some(Arc::new(r));
                 }
                 Event::Duplicates(d, n) => {
                     self.scan.busy = false;
@@ -279,7 +265,6 @@ impl Disco {
                     self.scan.dups = d;
                 }
                 Event::Error(e) => {
-                    self.scan.auto_refresh.failed(Instant::now());
                     self.scan.automatic_job = false;
                     self.scan.restored_snapshot = self.scan.report.is_some();
                     self.scan.busy = false;
@@ -322,6 +307,14 @@ impl Disco {
         }
     }
     pub(in crate::app) fn request_delete(&mut self, folders: Vec<(PathBuf, u64)>) {
+        if self.category_read_only() || self.scoped.busy() {
+            self.message = crate::tr!(
+                "Категорія доступна лише для читання або оновлюється",
+                "The category is read only or refreshing"
+            )
+            .into();
+            return;
+        }
         if self.demo
             || self.scan.busy
             || self.deletion.rx.is_some()
@@ -361,6 +354,10 @@ impl Disco {
         }
     }
     pub(in crate::app) fn commit_delete(&mut self, ctx: &egui::Context) {
+        if self.category_read_only() {
+            self.deletion.confirm = false;
+            return;
+        }
         self.deletion.confirm = false;
         let targets = std::mem::take(&mut self.deletion.targets);
         let (tx, rx) = mpsc::channel();

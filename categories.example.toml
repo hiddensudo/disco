@@ -16,6 +16,8 @@ files = [
 # id = "photos"
 # name = "Photography"
 # icon = "camera"
+auto_refresh = false
+read_only = true
 # folders = ["/home/user/Pictures", "/mnt/photos/Archive"]
 #
 # Settings → Categories edits these files. The robot in that editor copies a

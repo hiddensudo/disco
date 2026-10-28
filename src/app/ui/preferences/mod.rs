@@ -221,6 +221,17 @@ impl Disco {
                                 );
                             });
                             ui.add_space(18.);
+                            if ui
+                                .link(crate::tr!(
+                                    "Ліцензії граматик підсвічування",
+                                    "Syntax grammar licenses"
+                                ))
+                                .clicked()
+                            {
+                                crate::filesystem::open(std::path::Path::new(
+                                    two_face::acknowledgement::url(),
+                                ));
+                            }
                             ui.label(crate::tr!(
                                 "Аналізатор дискового простору",
                                 "Disk space analyzer"

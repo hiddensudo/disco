@@ -10,6 +10,49 @@ use eframe::egui::{self, Align2, Color32 as C, FontId, Pos2, Rect, Sense, Stroke
 use std::sync::Arc;
 
 impl Disco {
+    fn search_folder_row(
+        &mut self,
+        ui: &mut egui::Ui,
+        file: &Arc<crate::directory_files::Entry>,
+        depth: usize,
+        height: f32,
+        name_width: f32,
+    ) {
+        let t = self.preferences.theme.clone();
+        let (rect, response) =
+            ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click());
+        if response.hovered() {
+            ui.painter().rect_filled(rect, t.radius, color(&t.raised));
+        }
+        self.art.paint(
+            ui,
+            0,
+            Rect::from_center_size(
+                rect.left_center() + Vec2::new(28. + depth as f32 * 19., 0.),
+                Vec2::splat(22.),
+            ),
+            C::WHITE,
+        );
+        ui.painter()
+            .with_clip_rect(Rect::from_min_max(
+                rect.min,
+                Pos2::new(rect.left() + name_width, rect.bottom()),
+            ))
+            .text(
+                rect.left_center() + Vec2::new(48., 0.),
+                Align2::LEFT_CENTER,
+                label(&file.path),
+                FontId::proportional(14.),
+                color(&t.text),
+            );
+        if response.clicked() {
+            self.editor_action(
+                crate::app::editor::Action::Navigate(file.path.clone()),
+                ui.ctx(),
+            );
+        }
+        response.on_hover_text(file.path.display().to_string());
+    }
     pub(in crate::app) fn select_folder(&mut self, id: usize) {
         self.browser.focus = id;
         if let Some(r) = &self.scan.report {
@@ -42,6 +85,7 @@ impl Disco {
             report: self.scan.report_revision,
             tree: self.browser.tree_revision,
             files: self.files.revision,
+            search: self.search.revision,
         };
         if let Some((old, rows)) = &self.browser.rows_cache {
             if *old == key {
@@ -57,50 +101,50 @@ impl Disco {
             return vec![];
         };
         if !self.browser.filter.is_empty() {
-            let q = self.browser.filter.to_lowercase();
-            let scope = self
-                .browser
-                .table_root
-                .map(|id| r.folders[id].path.as_path());
-            let matches = |path: &std::path::Path| {
-                if scope.is_some_and(|root| !path.starts_with(root)) {
-                    return false;
-                }
-                let name = if q.contains('/') {
-                    scope
-                        .and_then(|root| path.strip_prefix(root).ok())
-                        .unwrap_or(path)
-                } else {
-                    std::path::Path::new(path.file_name().unwrap_or(path.as_os_str()))
-                };
-                name.to_string_lossy().to_lowercase().contains(&q)
-            };
-            let mut ids: Vec<_> = r
-                .folders
-                .iter()
-                .enumerate()
-                .filter(|(id, f)| {
-                    self.scan.index.matches_category(*id, self.browser.category) && matches(&f.path)
-                })
-                .map(|(i, _)| i)
-                .collect();
-            self.sort_ids(&mut ids);
-            let mut rows: Vec<_> = ids.into_iter().map(|i| TreeRow::Folder(i, 0)).collect();
-            for (id, folder) in r.folders.iter().enumerate() {
-                if !self.scan.index.matches_category(id, self.browser.category)
-                    || scope.is_some_and(|root| !folder.path.starts_with(root))
-                {
-                    continue;
-                }
-                if let Some(listing) = self.files.get(&folder.path) {
-                    for file in &listing.files {
-                        if matches(&file.path) {
-                            rows.push(TreeRow::File(file.clone(), 0));
-                        }
+            if let Some(results) = self.search.for_query(&self.browser.filter) {
+                let mut hits: Vec<_> = results.hits.iter().collect();
+                hits.sort_by(|a, b| {
+                    let cmp = if self.browser.sort_size {
+                        a.bytes.cmp(&b.bytes)
+                    } else {
+                        a.path.file_name().cmp(&b.path.file_name())
+                    };
+                    if self.browser.descending {
+                        cmp.reverse()
+                    } else {
+                        cmp
                     }
-                }
+                });
+                return hits
+                    .into_iter()
+                    .map(|hit| {
+                        if hit.directory {
+                            if let Some(id) = hit
+                                .folder_id
+                                .filter(|id| r.folders.get(*id).is_some_and(|f| f.path == hit.path))
+                            {
+                                return TreeRow::Folder(id, 0);
+                            }
+                            TreeRow::PathFolder(
+                                Arc::new(crate::directory_files::Entry {
+                                    path: hit.path.clone(),
+                                    bytes: hit.bytes,
+                                }),
+                                0,
+                            )
+                        } else {
+                            TreeRow::File(
+                                Arc::new(crate::directory_files::Entry {
+                                    path: hit.path.clone(),
+                                    bytes: hit.bytes,
+                                }),
+                                0,
+                            )
+                        }
+                    })
+                    .collect();
             }
-            return rows;
+            return vec![];
         }
         let roots = if let Some(id) = self.browser.table_root {
             vec![id]
@@ -351,7 +395,7 @@ impl Disco {
                     .report
                     .as_ref()
                     .is_some_and(|r| r.folders[*id].path == path),
-                TreeRow::File(f, _) => f.path == path,
+                TreeRow::File(f, _) | TreeRow::PathFolder(f, _) => f.path == path,
                 _ => false,
             }) {
                 let y = n as f32 * height;
@@ -377,6 +421,10 @@ impl Disco {
             for n in range {
                 let (id, depth) = match &rows[n] {
                     TreeRow::Folder(id, depth) => (*id, *depth),
+                    TreeRow::PathFolder(file, depth) => {
+                        self.search_folder_row(ui, file, *depth, height, name_width);
+                        continue;
+                    }
                     TreeRow::File(file, depth) => {
                         self.file_row(
                             ui,

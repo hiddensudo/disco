@@ -89,6 +89,20 @@ impl Default for Files {
     }
 }
 impl Files {
+    pub fn adopt_scope(&mut self, revision: u64, roots: &[PathBuf], shallow: bool) {
+        self.report = revision;
+        self.epoch = self.epoch.wrapping_add(1);
+        self.cache.retain(|path, _| {
+            !roots.iter().any(|root| {
+                if shallow {
+                    path == root
+                } else {
+                    path.starts_with(root)
+                }
+            })
+        });
+        self.revision = self.revision.wrapping_add(1);
+    }
     pub fn invalidate(&mut self, path: &Path) {
         self.cache.remove(path);
         // Discard reads that began before a save/create. Otherwise an old

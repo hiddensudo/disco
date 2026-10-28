@@ -7,7 +7,6 @@ use crate::index::{Category, Index};
 use crate::motion;
 use crate::navigation;
 use crate::recycle;
-use crate::refresh;
 use crate::scan::{Control, Event, Folder, background_priority};
 use crate::settings;
 use crate::settings::color;
@@ -23,6 +22,7 @@ use std::time::{Duration, Instant};
 mod editor;
 mod jobs;
 mod new_file;
+mod scope;
 mod state;
 mod ui;
 use self::{
@@ -42,6 +42,10 @@ pub(crate) struct Disco {
     files: crate::directory_files::Files,
     file_preview: crate::file_preview::Preview,
     editor: editor::Editor,
+    scoped: scope::Scope,
+    search: crate::file_search::Search,
+    live: crate::live_files::LiveFiles,
+    syntax: crate::syntax::Syntax,
     new_file: Option<new_file::Draft>,
     opening_file: Arc<std::sync::atomic::AtomicBool>,
     purge_targets: Option<Vec<recycle::Item>>,
@@ -129,7 +133,7 @@ impl Disco {
                 None
             },
             scan: ScanState {
-                report,
+                report: report.map(Arc::new),
                 report_revision: 0,
                 index,
                 tracker: None,
@@ -137,7 +141,6 @@ impl Disco {
                 saved_snapshot_at: None,
                 restored_snapshot: false,
                 restore_requested_root: None,
-                auto_refresh: refresh::AutoRefresh::default(),
                 automatic_job: false,
                 rx: None,
                 control: Arc::new(Control::default()),
@@ -198,6 +201,10 @@ impl Disco {
             files: crate::directory_files::Files::default(),
             file_preview: crate::file_preview::Preview::default(),
             new_file: None,
+            scoped: scope::Scope::default(),
+            search: crate::file_search::Search::default(),
+            live: crate::live_files::LiveFiles::default(),
+            syntax: crate::syntax::Syntax::default(),
             editor: editor::Editor::default(),
             opening_file: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             purge_targets: None,
@@ -249,6 +256,7 @@ impl eframe::App for Disco {
         self.editor.focused = false;
         self.browser.text_input_focused = false;
         self.poll();
+        self.poll_scope(ui.ctx());
         self.update_collections();
         if self.scan.restore_requested_root.is_none() && !self.scan.busy {
             if let Some(path) = self.qa_preview_file.take() {
@@ -290,6 +298,8 @@ impl eframe::App for Disco {
             && self.deletion.rx.is_none()
             && !self.deletion.confirm
             && self.purge_targets.is_none()
+            && (self.preferences.layout.preview_mode == settings::PreviewMode::Overview
+                || self.browser.view == View::Trash)
         {
             self.recycle.maintain(ui.ctx());
         }
@@ -336,9 +346,21 @@ impl eframe::App for Disco {
         egui::Panel::top("brand")
             .frame(egui::Frame::NONE)
             .show(ui, |ui| self.titlebar(ui));
-        egui::Panel::top("drive")
-            .frame(egui::Frame::NONE)
-            .show(ui, |ui| self.drive_header(ui));
+        if self.preferences.layout.preview_mode == settings::PreviewMode::Focus
+            && self.browser.view != View::Trash
+        {
+            egui::Panel::top("focus-navigation")
+                .frame(
+                    egui::Frame::new()
+                        .fill(color(&t.panel))
+                        .inner_margin(egui::Margin::symmetric(12, 8)),
+                )
+                .show(ui, |ui| self.scope_controls(ui));
+        } else {
+            egui::Panel::top("drive")
+                .frame(egui::Frame::NONE)
+                .show(ui, |ui| self.drive_header(ui));
+        }
         egui::Panel::bottom("selection")
             .frame(egui::Frame::NONE)
             .show(ui, |ui| self.footer(ui));
@@ -397,7 +419,6 @@ impl eframe::App for Disco {
                     "content-enter",
                     (
                         self.nav_state(),
-                        self.scan.report_revision,
                         self.browser.sort_size,
                         self.browser.descending,
                     ),
@@ -427,33 +448,6 @@ impl eframe::App for Disco {
             self.message.clear();
             self.recycle.relocalize_notice();
             self.refresh_drive();
-            ctx.request_repaint();
-        }
-        if !self.demo
-            && self.preferences.layout.auto_refresh
-            && !self.scan.busy
-            && self.scan.restore_requested_root.is_none()
-            && self.deletion.rx.is_none()
-            && !self.deletion.confirm
-            && self.purge_targets.is_none()
-            && !self.recycle.busy
-            && self.browser.view != View::Trash
-            && !self.preferences.open
-            && !self.editor.dirty()
-            && self.editor.saving.is_none()
-            && self.editor.pending.is_none()
-            && self.new_file.is_none()
-            && self.browser.selected.is_empty()
-            && self.browser.view != View::Duplicates
-            && self.scan.report.as_ref().is_some_and(|r| {
-                r.complete
-                    && r.folders
-                        .first()
-                        .is_some_and(|f| f.path == Path::new(&self.browser.root))
-            })
-            && self.scan.auto_refresh.due(Instant::now())
-        {
-            self.start_job(false, true, true);
             ctx.request_repaint();
         }
         if self.browser.nav_traversed {

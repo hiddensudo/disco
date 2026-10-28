@@ -36,6 +36,7 @@ impl Disco {
         let Some(report) = &mut self.scan.report else {
             return;
         };
+        let report = std::sync::Arc::make_mut(report);
         let mut added = false;
         for directory in &created.directories {
             if report.folders.iter().any(|f| f.path == directory.path) {
@@ -83,6 +84,9 @@ impl Disco {
         self.browser.tree_revision = self.browser.tree_revision.wrapping_add(1);
     }
     pub(in crate::app) fn request_new_file(&mut self, ctx: &egui::Context) {
+        if self.category_read_only() || self.scoped.busy() {
+            return;
+        }
         if self.demo
             || self.scan.busy
             || self.browser.view == View::Trash
@@ -146,6 +150,7 @@ impl Disco {
         ctx.request_repaint();
     }
     pub(in crate::app) fn new_file_dialog(&mut self, ctx: &egui::Context) {
+        let read_only = self.category_read_only();
         let Some(draft) = &mut self.new_file else {
             return;
         };
@@ -201,6 +206,13 @@ impl Disco {
         cancel |= !busy && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape));
         if cancel {
             self.new_file = None;
+        } else if submit && read_only {
+            draft.error = crate::tr!(
+                "Категорія доступна лише для читання",
+                "This category is read only"
+            )
+            .into();
+            draft.fresh = true;
         } else if submit && !busy {
             draft.error.clear();
             let directory = draft.directory.clone();

@@ -17,8 +17,15 @@ single_click_expand = true
 reuse_scan = true
 gentle_scan = false
 save_scan = true
-auto_refresh = true
+auto_refresh = false
 animations = true
 motion_speed = 1.0
 preview_mode = "overview"
 open_files_on_double_click = true
+
+# Home button and optional search fallback
+home_path = "/home"
+search_home_fallback = true
+# Policies for the All folders view. Other categories keep their own flags.
+all_files_auto_refresh = false
+all_files_read_only = false

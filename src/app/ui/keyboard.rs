@@ -70,7 +70,7 @@ impl Disco {
             return;
         }
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F5)) {
-            self.start(false, true);
+            self.refresh_scope(ctx);
             return;
         }
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Delete)) {
@@ -90,6 +90,8 @@ impl Disco {
                         .and_then(|r| r.folders.iter().position(|f| f.path == p.path))
                     {
                         self.enter_folder(id);
+                    } else {
+                        self.editor_action(crate::app::editor::Action::Navigate(p.path), ctx);
                     }
                 } else {
                     self.open_default_file(p.path);
@@ -155,6 +157,11 @@ impl Disco {
                                 folder: Some(*id),
                             })
                         }
+                        TreeRow::PathFolder(f, _) => Some(Item {
+                            path: f.path.clone(),
+                            bytes: f.bytes,
+                            folder: None,
+                        }),
                         TreeRow::File(f, _) => Some(Item {
                             path: f.path.clone(),
                             bytes: f.bytes,
@@ -403,7 +410,7 @@ mod tests {
             for dir in ["config", "bin", "data/applications", "files/child"] {
                 fs::create_dir_all(root.join(dir)).unwrap();
             }
-            fs::write(root.join("config/layout.toml"),"save_scan=false\nauto_refresh=false\npreview_mode='workspace'\nopen_files_on_double_click=false\n").unwrap();
+            fs::write(root.join("config/layout.toml"),"save_scan=false\nauto_refresh=false\nsearch_home_fallback=false\npreview_mode='workspace'\nopen_files_on_double_click=false\n").unwrap();
             fs::write(root.join("files/a.txt"), "original\n").unwrap();
             fs::write(root.join("files/b.txt"), "second\n").unwrap();
             fs::write(
@@ -446,7 +453,7 @@ mod tests {
         let b = folder.join("b.txt");
         let report = crate::scan::scan(&folder, &crate::scan::Control::default(), |_| {}).unwrap();
         app.scan.index = crate::index::Index::new(&report);
-        app.scan.report = Some(report);
+        app.scan.report = Some(std::sync::Arc::new(report));
         app.browser.root = folder.to_string_lossy().into();
         app.browser.category = crate::index::Category::All;
         app.browser.expanded = std::collections::HashSet::from([0]);

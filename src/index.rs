@@ -29,7 +29,7 @@ impl Category {
         }
     }
 }
-fn classify(path: &Path, trash_roots: &[PathBuf]) -> Category {
+pub(crate) fn classify(path: &Path, trash_roots: &[PathBuf]) -> Category {
     if trash_roots.iter().any(|root| path.starts_with(root)) {
         return Category::Trash;
     }
@@ -164,6 +164,19 @@ impl Index {
             self.collections.insert(category, members);
         }
         missing
+    }
+    pub(crate) fn category_scope_roots(&self, report: &Report, category: Category) -> Vec<usize> {
+        report
+            .folders
+            .iter()
+            .enumerate()
+            .filter(|(id, f)| {
+                self.classes[*id] == category
+                    && f.parent
+                        .is_none_or(|parent| self.classes[parent] != category)
+            })
+            .map(|(id, _)| id)
+            .collect()
     }
     pub(crate) fn folder_count(&self) -> usize {
         self.children.len()
@@ -401,6 +414,8 @@ mod collection_tests {
         let nested = report.folders[6].path.clone();
         let mut config = crate::categories::Config::default();
         let mut item = crate::categories::Collection {
+            auto_refresh: false,
+            read_only: false,
             id: "my-cache".into(),
             name: "My cache".into(),
             icon: "folder".into(),

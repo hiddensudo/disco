@@ -7,18 +7,22 @@ mod demo;
 mod directory_files;
 mod file_creation;
 mod file_preview;
+mod file_search;
 mod filesystem;
 mod format;
 mod frame_probe;
 mod i18n;
 mod index;
+mod live_files;
 mod motion;
 mod navigation;
 mod recycle;
 mod refresh;
 mod scan;
+mod scoped_refresh;
 mod settings;
 mod snapshot;
+mod syntax;
 mod text_editor;
 
 use eframe::egui;
@@ -29,6 +33,15 @@ fn main() -> eframe::Result {
     let args: Vec<_> = std::env::args().collect();
     if args.iter().any(|a| a == "--version" || a == "-V") {
         println!("disco {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+    if args.iter().any(|a| a == "--syntax-licenses") {
+        println!("# Syntax grammar licenses\n");
+        for license in two_face::acknowledgement::listing().for_syntaxes() {
+            let mut text = String::new();
+            license.write_md(&mut text);
+            print!("{text}");
+        }
         return Ok(());
     }
     if args.iter().any(|a| a == "--snapshot-info") {

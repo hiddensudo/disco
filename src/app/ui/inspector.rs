@@ -263,7 +263,9 @@ impl Disco {
                         && !self.scan.busy
                         && self.deletion.rx.is_none()
                         && !self.recycle.busy
-                        && p.error.is_none(),
+                        && p.error.is_none()
+                        && !self.category_read_only()
+                        && !self.scoped.busy(),
                     &danger,
                 )
                 .on_hover_text(crate::tr!(

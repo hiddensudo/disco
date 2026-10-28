@@ -12,6 +12,16 @@ impl<T> Default for History<T> {
     }
 }
 impl<T> History<T> {
+    pub fn remap(&mut self, mut map: impl FnMut(T) -> Option<T>) {
+        self.back = std::mem::take(&mut self.back)
+            .into_iter()
+            .filter_map(&mut map)
+            .collect();
+        self.forward = std::mem::take(&mut self.forward)
+            .into_iter()
+            .filter_map(map)
+            .collect();
+    }
     pub fn can_back(&self) -> bool {
         !self.back.is_empty()
     }

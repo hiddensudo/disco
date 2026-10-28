@@ -154,14 +154,13 @@ pub(super) fn show(
         ui.radio_value(&mut layout.single_click_expand, true, crate::tr!("Один клік — розгорнути дерево", "Single click expands the tree"));
         ui.radio_value(&mut layout.single_click_expand, false, crate::tr!("Подвійний клік — відкрити папку", "Double click opens a folder"));
         check_row(ui, &mut layout.save_scan, crate::tr!("Зберігати й відновлювати останній скан", "Save and restore the last scan"), true, t);
-        check_row(ui, &mut layout.auto_refresh, crate::tr!("Автооновлення при зміні SSD", "Refresh when disk usage changes"), true, t);
-        ui.label(RichText::new(crate::tr!("Зміна від 64 МіБ → оновлення через 8 с, не частіше разу на хвилину. Однаковий обсяг не гарантує відсутності змін — доступне ручне оновлення.", "Changes of 64 MiB or more trigger a refresh after 8 s, at most once a minute. Unchanged usage does not guarantee unchanged files; you can refresh manually.")).size(12.).color(color(&t.muted)));
+        ui.label(RichText::new(crate::tr!("Автооновлення та режим лише читання вмикаються окремо в налаштуваннях категорії. Оновлення працює тільки в активному scope.", "Live updates and read-only mode are configured per category. Updates run only for the active scope.")).size(12.).color(color(&t.muted)));
         check_row(ui, &mut layout.reuse_scan, crate::tr!("Перевіряти зміни перед обходом", "Check for changes before rescanning"), true, t);
         check_row(ui, &mut layout.gentle_scan, crate::tr!("Бережний режим сканування", "Gentle scanning mode"), true, t);
-        ui.label(RichText::new(crate::tr!("Бічні кнопки миші: назад / уперед. Shift + Оновити: повний обхід.", "Mouse side buttons: back / forward. Shift + Refresh: full scan.")).size(12.).color(color(&t.muted)));
+        ui.label(RichText::new(crate::tr!("Бічні кнопки миші: назад / уперед. F5: оновити поточний scope.", "Mouse side buttons: back / forward. F5: refresh the current scope.")).size(12.).color(color(&t.muted)));
     });
     egui::CollapsingHeader::new(
-        RichText::new(crate::tr!("Панелі та диск", "Panels & drive"))
+        RichText::new(crate::tr!("Панелі, Home та пошук", "Panels, Home & search"))
             .size(12.)
             .color(color(&t.muted)),
     )
@@ -176,6 +175,26 @@ pub(super) fn show(
                 Layout::MIN_PROPERTY_WIDTH..=Layout::MAX_PROPERTY_WIDTH,
             )
             .text(crate::tr!("Властивості, px", "Properties, px")),
+        );
+        ui.label(crate::tr!("Шлях «Додому»", "Home path"));
+        ui.add(egui::TextEdit::singleline(&mut layout.home_path).hint_text("/home"));
+        ui.checkbox(
+            &mut layout.search_home_fallback,
+            crate::tr!(
+                "Якщо не знайдено — шукати в Home",
+                "Search Home when the scope has no matches"
+            ),
+        );
+        ui.checkbox(
+            &mut layout.all_files_auto_refresh,
+            crate::tr!(
+                "Автооновлення для «Усі папки»",
+                "Live updates for All folders"
+            ),
+        );
+        ui.checkbox(
+            &mut layout.all_files_read_only,
+            crate::tr!("«Усі папки» — лише читання", "All folders: read only"),
         );
         ui.label(crate::tr!("Назва диска", "Drive name"));
         ui.add(

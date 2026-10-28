@@ -131,8 +131,8 @@ impl Disco {
         let home = ui
             .interact(home_rect, egui::Id::unique("folder-root"), Sense::click())
             .on_hover_text(crate::tr!(
-                "Усі папки · корінь сканування",
-                "All folders · scan root"
+                "Додому · шлях із налаштувань",
+                "Home · configured path"
             ));
         if home.hovered() {
             ui.painter()
@@ -145,14 +145,10 @@ impl Disco {
             color(&t.text),
         );
         if home.clicked() {
-            self.browser.category = Category::All;
-            self.browser.table_root = None;
-            self.browser.view = View::Folders;
-            self.expand_folder(0);
-            self.browser.properties = None;
-            self.select_folder(0);
-            self.browser.filter.clear();
-            ui.ctx().request_repaint();
+            self.editor_action(
+                crate::app::editor::Action::Navigate(self.preferences.layout.home_directory()),
+                ui.ctx(),
+            );
         }
         let path = self.breadcrumb_directory();
         let scan_width = if narrow { 34. } else { 145. };
@@ -213,6 +209,9 @@ impl Disco {
                 }),
         );
         self.browser.text_input_focused = search_response.has_focus();
+        if search_response.changed() {
+            ui.ctx().request_repaint();
+        }
         let scope = self
             .browser
             .table_root
@@ -248,7 +247,9 @@ impl Disco {
                 && self.browser.view != View::Trash
                 && self.deletion.rx.is_none()
                 && !self.recycle.busy
-                && !self.preferences.open,
+                && !self.preferences.open
+                && !self.category_read_only()
+                && !self.scoped.busy(),
             &t,
         )
         .on_hover_text(crate::tr!("Новий файл · Ctrl+N", "New file · Ctrl+N"))
@@ -261,67 +262,52 @@ impl Disco {
             &self.art,
             scan,
             11,
-            if narrow {""} else if self.scan.report.is_some() {
+            if narrow {
+                ""
+            } else if self.scan.report.is_some() {
                 crate::tr!("Оновити", "Refresh")
             } else {
                 crate::tr!("Сканувати", "Scan")
             },
-            !self.scan.busy && self.deletion.rx.is_none() && !self.recycle.busy && self.scan.restore_requested_root.is_none(),
+            !self.scan.busy
+                && !self.scoped.busy()
+                && self.deletion.rx.is_none()
+                && !self.recycle.busy
+                && self.scan.restore_requested_root.is_none(),
             &t,
         )
-        .on_hover_text(
-            crate::tr!("Перевірити події змін; знімок до 60 с можна використати повторно. Shift + клік — завжди повний обхід.", "Check for changes; reuse a snapshot up to 60 s old. Shift + click always runs a full scan."),
-        )
+        .on_hover_text(crate::tr!(
+            "Оновити лише поточну папку або корені категорії",
+            "Refresh only the current folder or category roots"
+        ))
         .clicked()
         {
-            self.start(false, ui.input(|i| i.modifiers.shift));
-            self.browser.view = View::Folders;
-            self.browser.table_root = None;
-        }
-        if self.scan.restored_snapshot
-            || self.scan.auto_refresh.pending()
-            || (self.scan.busy && !self.scan.duplicate_job && self.scan.report.is_some())
-        {
-            ui.add_space(4.);
-            let caption = if self.scan.busy {
-                crate::tr!(
-                    "Оновлюємо дані — поки показано попередній скан.",
-                    "Refreshing — showing the previous scan for now."
-                )
-                .to_string()
-            } else if self.preferences.layout.auto_refresh && self.scan.auto_refresh.pending() {
-                crate::tr!(
-                    "На SSD є зміни — заплановано фонове оновлення.",
-                    "SSD usage changed — background refresh scheduled."
-                )
-                .to_string()
-            } else if let Some(at) = self.scan.saved_snapshot_at {
-                crate::tr!(
-                    "Збережений скан від {}. {}",
-                    "Saved scan from {}. {}",
-                    date(std::time::UNIX_EPOCH + Duration::from_secs(at)),
-                    if self.preferences.layout.auto_refresh {
-                        crate::tr!(
-                            "Зміни зайнятого місця відстежуються автоматично.",
-                            "Disk usage changes are monitored automatically."
-                        )
-                    } else {
-                        crate::tr!(
-                            "Для перевірки змін натисни «Оновити».",
-                            "Click Refresh to check for changes."
-                        )
-                    }
-                )
+            if self.scoped.busy() {
+                self.scoped.cancel();
+            } else if self.scan.busy {
+                self.scan.control.cancel.store(true, Ordering::Relaxed);
             } else {
-                crate::tr!(
-                    "Попередній результат — натисни «Оновити» для перевірки змін.",
-                    "Previous result — click Refresh to check for changes."
-                )
-                .to_string()
-            };
-            ui.add(
-                egui::Label::new(RichText::new(caption).size(12.).color(color(&t.muted))).wrap(),
-            );
+                self.refresh_scope(ui.ctx());
+            }
+        }
+        if self.preferences.layout.preview_mode == crate::settings::PreviewMode::Focus {
+            return;
+        }
+        if self.scan.restored_snapshot {
+            if let Some(at) = self.scan.saved_snapshot_at {
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(crate::tr!(
+                            "Збережений скан від {} · «Оновити» перечитує поточний scope.",
+                            "Saved scan from {} · Refresh rereads the current scope.",
+                            date(std::time::UNIX_EPOCH + Duration::from_secs(at))
+                        ))
+                        .size(12.)
+                        .color(color(&t.muted)),
+                    )
+                    .truncate(),
+                );
+            }
         }
         if self.scan.busy {
             ui.add_space(5.);

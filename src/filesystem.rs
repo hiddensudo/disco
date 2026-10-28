@@ -38,6 +38,9 @@ impl Properties {
         match fs::symlink_metadata(&p.path) {
             Ok(m) => {
                 p.is_dir = m.is_dir();
+                if m.is_file() {
+                    p.bytes = crate::scan::allocated(&m);
+                }
                 p.modified = m.modified().map(date).unwrap_or_else(|_| "—".into());
                 p.created = m.created().map(date).unwrap_or_else(|_| "—".into());
                 p.owner = if m.uid() == unsafe { libc::geteuid() } {
@@ -123,6 +126,20 @@ pub(crate) fn open(p: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn file_properties_use_current_metadata_while_folder_sizes_keep_the_aggregate() {
+        let path = std::env::temp_dir().join(format!("disco-properties-{}", std::process::id()));
+        fs::write(&path, vec![1u8; 17000]).unwrap();
+        assert_eq!(
+            Properties::load(path.clone(), 1, None, false).bytes,
+            crate::scan::allocated(&fs::metadata(&path).unwrap())
+        );
+        assert_eq!(
+            Properties::load(path.parent().unwrap().to_path_buf(), 42, None, false).bytes,
+            42
+        );
+        fs::remove_file(path).unwrap();
+    }
     #[test]
     fn permission_display() {
         assert_eq!(permissions(0o755), "rwxr-xr-x");

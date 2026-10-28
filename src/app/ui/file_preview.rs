@@ -154,7 +154,9 @@ impl Disco {
         }
     }
     fn file_list_content(&mut self, ui: &mut egui::Ui) {
-        self.scope_controls(ui);
+        if self.preferences.layout.preview_mode != PreviewMode::Focus {
+            self.scope_controls(ui);
+        }
         ui.add_space(8.);
         self.unindexed_collection_folders(ui);
         if self.browser.view == View::Folders {
@@ -171,6 +173,7 @@ impl Disco {
     ) {
         let t = self.preferences.theme.clone();
         let path = self.file_preview.path.clone();
+        let read_only = self.category_read_only();
         if path.is_none() {
             let (r, _) = ui.allocate_exact_size(
                 Vec2::new(ui.available_width(), available_height.max(100.)),
@@ -250,7 +253,7 @@ impl Disco {
                     } else {
                         ""
                     },
-                    self.editor.dirty() && self.editor.saving.is_none() && !self.demo,
+                    self.editor.dirty() && self.editor.saving.is_none() && !self.demo && !read_only,
                     false,
                     &t,
                 )
@@ -342,12 +345,24 @@ impl Disco {
                             ui.set_min_size(inner);
                             ui.horizontal_top(|ui| {
                                 ui.allocate_space(Vec2::new(30., 0.));
-                                let mut buffer = doc.buffer();
+                                let mut buffer = doc.buffer_with_access(!read_only);
+                                let syntax = &mut self.syntax;
+                                let mut layouter =
+                                    |ui: &egui::Ui, buffer: &dyn egui::TextBuffer, _width: f32| {
+                                        syntax.layout(
+                                            ui,
+                                            buffer.as_str(),
+                                            font.clone(),
+                                            path.as_deref(),
+                                            color(&t.text),
+                                        )
+                                    };
                                 let output = ui
                                     .add_enabled_ui(!busy, |ui| {
                                         egui::TextEdit::multiline(&mut buffer)
                                             .id(egui::Id::unique(("file-editor", &path)))
                                             .code_editor()
+                                            .layouter(&mut layouter)
                                             .font(font.clone())
                                             .frame(egui::Frame::NONE)
                                             .margin(Vec2::new(2., 0.))
@@ -398,36 +413,47 @@ impl Disco {
                                     });
                             }
                         }
-                        Some(Content::Text { lines, .. }) => {
+                        Some(Content::Text { display_source, .. }) => {
                             let font = FontId::monospace(13. * self.preferences.layout.text_scale);
-                            let row_height = font.size + 5.;
+                            let galley = self.syntax.layout(
+                                ui,
+                                display_source,
+                                font.clone(),
+                                path.as_deref(),
+                                color(&t.text),
+                            );
                             egui::ScrollArea::both()
                                 .id_salt(("readonly-content", &path, compact))
                                 .auto_shrink([false, false])
                                 .max_height(inner.y)
-                                .show_rows(ui, row_height, lines.len(), |ui, range| {
-                                    ui.spacing_mut().item_spacing.y = 0.;
-                                    ui.spacing_mut().interact_size.y = row_height;
-                                    for n in range {
-                                        ui.horizontal(|ui| {
-                                            ui.add_sized(
-                                                [28., row_height],
-                                                egui::Label::new(
-                                                    RichText::new((n + 1).to_string())
-                                                        .font(font.clone())
-                                                        .color(color(&t.muted)),
-                                                ),
-                                            );
-                                            ui.add(
-                                                egui::Label::new(
-                                                    RichText::new(&lines[n])
-                                                        .font(font.clone())
-                                                        .color(color(&t.text)),
-                                                )
+                                .show(ui, |ui| {
+                                    ui.set_min_size(inner);
+                                    ui.horizontal_top(|ui| {
+                                        ui.allocate_space(Vec2::new(30., 0.));
+                                        let response = ui.add(
+                                            egui::Label::new(galley.clone())
+                                                .selectable(true)
                                                 .wrap_mode(egui::TextWrapMode::Extend),
+                                        );
+                                        for (n, row) in galley.rows.iter().enumerate() {
+                                            let y = response.rect.top() + row.pos.y;
+                                            if y + row.size.y < ui.clip_rect().top()
+                                                || y > ui.clip_rect().bottom()
+                                            {
+                                                continue;
+                                            }
+                                            ui.painter().text(
+                                                Pos2::new(
+                                                    response.rect.left() - 12.,
+                                                    y + row.size.y * 0.5,
+                                                ),
+                                                Align2::RIGHT_CENTER,
+                                                (n + 1).to_string(),
+                                                font.clone(),
+                                                color(&t.muted),
                                             );
-                                        });
-                                    }
+                                        }
+                                    });
                                 });
                         }
                         other => {
@@ -473,12 +499,15 @@ impl Disco {
                     crate::tr!("Збереження…", "Saving…")
                 } else if self.editor.dirty() {
                     crate::tr!("Незбережені зміни · Ctrl+S", "Unsaved changes · Ctrl+S")
+                } else if read_only {
+                    crate::tr!("Категорія: лише читання", "Category: read only")
                 } else if self.editor.document.is_some() {
                     crate::tr!("Редагування", "Editable")
                 } else {
                     crate::tr!("Лише перегляд", "Read only")
                 };
-                let mut text = format!("{encoding} · {state}");
+                let language = self.syntax.language().unwrap_or("Text");
+                let mut text = format!("{encoding} · {language} · {state}");
                 if *truncated {
                     text.push_str(crate::tr!(
                         " · Показано початок файлу",

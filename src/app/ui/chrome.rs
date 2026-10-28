@@ -120,9 +120,6 @@ impl Disco {
             } else {
                 refresh::DiskSample::capture(Path::new(&self.browser.root)).map(|sample| {
                     self.drive.device = Some(sample.device);
-                    if !self.scan.busy {
-                        self.scan.auto_refresh.observe(sample, Instant::now());
-                    }
                     (sample.total, sample.total.saturating_sub(sample.used))
                 })
             };
@@ -395,6 +392,34 @@ impl Disco {
     }
     pub(in crate::app) fn footer(&mut self, ui: &mut egui::Ui) {
         let t = self.preferences.theme.clone();
+        if self.preferences.layout.preview_mode == crate::settings::PreviewMode::Focus
+            && self.browser.view != View::Trash
+        {
+            let (rect, _) =
+                ui.allocate_exact_size(Vec2::new(ui.available_width(), 26.), Sense::hover());
+            ui.painter().rect_filled(rect, 0, color(&t.panel));
+            ui.painter().hline(
+                rect.x_range(),
+                rect.top(),
+                Stroke::new(1., color(&t.border)),
+            );
+            let status = self
+                .scope_status_text()
+                .unwrap_or_else(|| self.message.clone());
+            ui.painter()
+                .with_clip_rect(rect.shrink2(Vec2::new(12., 0.)))
+                .text(
+                    rect.left_center() + Vec2::new(12., 0.),
+                    Align2::LEFT_CENTER,
+                    &status,
+                    FontId::proportional(11.),
+                    color(&t.muted),
+                );
+            ui.interact(rect, egui::Id::unique("focus-statusbar"), Sense::hover())
+                .on_hover_text(status);
+            return;
+        }
+
         let total: u64 = if self.browser.view == View::Trash {
             self.recycle
                 .items
@@ -508,7 +533,10 @@ impl Disco {
                 self.request_delete(folders);
             }
         }
-        if !self.message.is_empty() {
+        let status = self
+            .scope_status_text()
+            .unwrap_or_else(|| self.message.clone());
+        if !status.is_empty() {
             let hint = ui.interact(
                 Rect::from_min_max(
                     Pos2::new(r.left() + 340., r.top()),
@@ -517,12 +545,12 @@ impl Disco {
                 ui.scope_id().with("scan_status"),
                 Sense::hover(),
             );
-            hint.on_hover_text(&self.message);
+            hint.on_hover_text(&status);
             if !self.demo {
                 ui.painter().text(
                     Pos2::new(button.left() - 15., r.center().y),
                     Align2::RIGHT_CENTER,
-                    shorten(&self.message, 43),
+                    shorten(&status, 43),
                     FontId::proportional(11.),
                     color(&t.muted),
                 );

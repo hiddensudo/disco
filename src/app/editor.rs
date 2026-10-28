@@ -76,6 +76,8 @@ pub(super) struct Editor {
     pub document: Option<Document>,
     pub focused: bool,
     pub focus_on_load: bool,
+    keep_cursor: bool,
+    preview_disk: Option<Stamp>,
     pub pending: Option<Action>,
     pub error: String,
     pub confirm_fresh: bool,
@@ -89,6 +91,42 @@ impl Editor {
     }
 }
 impl Disco {
+    pub(in crate::app) fn adopt_scope_refresh(&mut self, ctx: &egui::Context) {
+        self.editor.revision = self.scan.report_revision;
+        self.file_preview.adopt_revision(self.scan.report_revision);
+        if self.editor.document.is_some() {
+            self.editor.bookmark = Some(Bookmark::capture(self));
+        }
+        self.reload_changed_document(ctx);
+    }
+    pub(in crate::app) fn reload_changed_document(&mut self, ctx: &egui::Context) {
+        if self.editor.saving.is_some() {
+            return;
+        }
+        let Some(path) = self.editor.path.clone() else {
+            return;
+        };
+        let metadata = std::fs::symlink_metadata(&path).ok();
+        let same = self
+            .editor
+            .document
+            .as_ref()
+            .map(|d| metadata.as_ref().is_some_and(|m| d.matches_disk(m)))
+            .unwrap_or_else(|| metadata.as_ref().map(Stamp::of) == self.editor.preview_disk);
+        if same {
+            return;
+        }
+        if self.editor.dirty() {
+            self.editor.error = crate::tr!("Файл змінився на диску. Незбережений текст залишено; запис потребує перевірки конфлікту.",
+                "The file changed on disk. Your unsaved text was kept; saving requires a conflict check.").into();
+        } else {
+            self.editor.document = None;
+            self.editor.keep_cursor = true;
+            self.editor.preview_disk = metadata.as_ref().map(Stamp::of);
+            self.file_preview.reload();
+        }
+        ctx.request_repaint();
+    }
     pub(in crate::app) fn sync_file_preview(&mut self, ctx: &egui::Context) {
         self.poll_editor(ctx);
         let desired = if self.preferences.layout.preview_mode != PreviewMode::Off
@@ -126,6 +164,11 @@ impl Disco {
             self.editor.error.clear();
             self.editor.bookmark = None;
             self.editor.path = desired.clone();
+            self.editor.preview_disk = desired
+                .as_ref()
+                .and_then(|path| std::fs::symlink_metadata(path).ok())
+                .as_ref()
+                .map(Stamp::of);
             self.editor.revision = self.scan.report_revision;
         }
         self.file_preview.select(desired, self.scan.report_revision);
@@ -136,11 +179,14 @@ impl Disco {
             {
                 if let Some(doc) = document.take() {
                     self.editor.document = Some(doc);
-                    egui::TextEdit::store_state(
-                        ctx,
-                        egui::Id::unique(("file-editor", &self.editor.path)),
-                        Default::default(),
-                    );
+                    if !self.editor.keep_cursor {
+                        egui::TextEdit::store_state(
+                            ctx,
+                            egui::Id::unique(("file-editor", &self.editor.path)),
+                            Default::default(),
+                        );
+                    }
+                    self.editor.keep_cursor = false;
                     self.editor.bookmark = Some(Bookmark::capture(self));
                     if self.editor.focus_on_load {
                         ctx.memory_mut(|m| {
@@ -199,6 +245,14 @@ impl Disco {
         ctx.request_repaint();
     }
     pub(in crate::app) fn save_editor(&mut self, ctx: &egui::Context) {
+        if self.category_read_only() {
+            self.editor.error = crate::tr!(
+                "Редагування заборонене для цієї категорії",
+                "Editing is disabled for this category"
+            )
+            .into();
+            return;
+        }
         if self.demo || self.editor.saving.is_some() || !self.editor.dirty() {
             return;
         }

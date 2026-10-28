@@ -44,6 +44,14 @@ fn click(app: &mut Disco, ctx: &egui::Context, time: &mut f64, id: Id) {
     }
     frame(app, ctx, time, vec![]);
 }
+fn wait_search(app: &mut Disco, ctx: &egui::Context, time: &mut f64, query: &str) {
+    let started = Instant::now();
+    while app.search.for_query(query).is_none() && started.elapsed() < Duration::from_secs(4) {
+        frame(app, ctx, time, vec![]);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(app.search.for_query(query).is_some());
+}
 #[test]
 fn full_window_view_switches_properties_and_breadcrumbs_work_with_dirty_text() {
     let Ok(root) = std::env::var("DISCO_BROWSE_FIXTURE") else {
@@ -56,7 +64,7 @@ fn full_window_view_switches_properties_and_breadcrumbs_work_with_dirty_text() {
             "{\"example\": true}\n",
         )
         .unwrap();
-        fs::write(root.join("config/layout.toml"),"save_scan=false\nauto_refresh=false\npreview_mode='inspector'\nproperties=true\nanimations=false\n").unwrap();
+        fs::write(root.join("config/layout.toml"),"save_scan=false\nauto_refresh=false\nsearch_home_fallback=false\npreview_mode='inspector'\nproperties=true\nanimations=false\n").unwrap();
         let out=Command::new(std::env::current_exe().unwrap()).args(["--exact","app::ui::interaction_tests::full_window_view_switches_properties_and_breadcrumbs_work_with_dirty_text","--nocapture"])
             .env("DISCO_BROWSE_FIXTURE",&root).env("DISCO_CONFIG_DIR",root.join("config")).env("XDG_DATA_HOME",root.join("data")).output().unwrap();
         fs::remove_dir_all(root).unwrap();
@@ -75,10 +83,11 @@ fn full_window_view_switches_properties_and_breadcrumbs_work_with_dirty_text() {
     let ctx = egui::Context::default();
     let mut time = 0.;
     let mut app = Disco::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+    app.preferences.layout.home_path = files.display().to_string();
     let report = crate::scan::scan(&files, &crate::scan::Control::default(), |_| {}).unwrap();
     let child_id = report.folders.iter().position(|f| f.path == child).unwrap();
     app.scan.index = crate::index::Index::new(&report);
-    app.scan.report = Some(report);
+    app.scan.report = Some(std::sync::Arc::new(report));
     app.browser.root = files.display().to_string();
     app.browser.category = Category::All;
     app.enter_folder(child_id);
@@ -102,6 +111,17 @@ fn full_window_view_switches_properties_and_breadcrumbs_work_with_dirty_text() {
         .unwrap()
         .rect;
     assert!(tree.width() >= 240. && tree.width() <= 480.);
+    assert!(
+        tree.top() < 120.,
+        "Focus replaces the SSD header with navigation"
+    );
+    assert_eq!(
+        ctx.read_response(Id::unique("focus-statusbar"))
+            .unwrap()
+            .rect
+            .height(),
+        26.
+    );
     assert!(document.left() >= tree.right() - 1. && document.width() > tree.width());
     assert!(ctx.read_response(Id::unique("properties-panel")).is_none());
     let search = ctx
@@ -116,8 +136,8 @@ fn full_window_view_switches_properties_and_breadcrumbs_work_with_dirty_text() {
         .read_response(Id::unique("folder-toolbar"))
         .unwrap()
         .rect;
-    assert!(toolbar.height() > 70.);
-    assert!(search.left() >= tree.left() + 11. && refresh.right() <= tree.right() - 11.);
+    assert!(toolbar.height() >= 36. && toolbar.height() < 40.);
+    assert!(toolbar.bottom() <= tree.top() && refresh.right() <= 1360. - 11.);
     assert!(search.right() + 7. <= refresh.left());
     assert_eq!(app.breadcrumb_directory(), child);
     let parent = child.parent().unwrap().to_path_buf();
@@ -142,6 +162,7 @@ fn full_window_view_switches_properties_and_breadcrumbs_work_with_dirty_text() {
         vec![egui::Event::Paste("Parent Photos".into())],
     );
     frame(&mut app, &ctx, &mut time, vec![]);
+    wait_search(&mut app, &ctx, &mut time, "Parent Photos");
     assert_eq!(app.browser.filter, "Parent Photos");
     assert_eq!(
         app.build_visible_rows().len(),
@@ -165,6 +186,7 @@ fn full_window_view_switches_properties_and_breadcrumbs_work_with_dirty_text() {
         vec![egui::Event::Paste("child".into())],
     );
     frame(&mut app, &ctx, &mut time, vec![]);
+    wait_search(&mut app, &ctx, &mut time, "child");
     assert_eq!(
         app.build_visible_rows().len(),
         1,
@@ -300,7 +322,7 @@ fn full_window_view_switches_properties_and_breadcrumbs_work_with_dirty_text() {
     assert_eq!(fs::read_to_string(file).unwrap(), "{\"example\": true}\n");
     click(&mut app, &ctx, &mut time, Id::unique("folder-root"));
     assert_eq!(app.breadcrumb_directory(), files);
-    assert!(app.browser.table_root.is_none());
+    assert_eq!(app.browser.table_root, Some(0));
     // A truncated read-only preview has one footer line and fits the viewport,
     // including at the end of the inner scroll area.
     app.file_preview.path = Some(root.join("partial.py"));
@@ -308,6 +330,10 @@ fn full_window_view_switches_properties_and_breadcrumbs_work_with_dirty_text() {
         lines: (0..113)
             .map(|i| format!("line {i}: example text"))
             .collect(),
+        display_source: (0..113)
+            .map(|i| format!("line {i}: example text"))
+            .collect::<Vec<_>>()
+            .join("\n"),
         encoding: "UTF-8",
         truncated: true,
         document: None,

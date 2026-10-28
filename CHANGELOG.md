@@ -2,7 +2,17 @@
 
 The versions below follow existing development checkpoints. The next release number and any historical regrouping will be agreed with the maintainer before publishing.
 
-## Unreleased — current development build 0.11.1
+## 0.2.0 — development preview
+
+- Scoped refresh merges only the current folder or category roots into the existing snapshot; selection, navigation and unsaved text remain intact.
+- Per-category live file updates use native notifications, bounded queues and targeted directory reads. Monitoring is active only for the selected scope.
+- Per-category read-only mode blocks editing, saving, creation and deletion inside disco.
+- Cached background syntax highlighting with syntect and bat/two-face grammars, including TOML and TypeScript.
+- Configurable Home (`/home`, with `/` fallback), real file/folder search in unopened directories, and optional Home fallback after an empty scope search.
+- Compact Focus layout: full-width breadcrumbs/search instead of the SSD header, plus a small status bar without storage selection counts.
+- Replaced the former global SSD usage refresh timer with category-level file events.
+
+## 0.11.1 — earlier development checkpoint
 
 - Two consistent layouts: **Overview** for sizes, properties and previews, and **Focus** for a document with a resizable folder tree.
 - Compact category icons by default, custom categories, a bundled vector icon picker and imported icons.
@@ -47,7 +57,9 @@ The versions below follow existing development checkpoints. The next release num
 
 ## Українською
 
-**Поточні зміни (збірка 0.11.1):** режими «Огляд» і «Фокус», власні категорії та іконки, окремі TOML для категорій, локалізовані промпти, клікабельний шлях, пошук у вибраній папці, збереження фокусу редактора, системний буфер обміну та створення файлів разом із вкладеними папками. Помилки вводу залишають вікно створення відкритим і повертають фокус у поле.
+**0.2.0 (попередня збірка):** оновлення поточного scope, файлові події й режим лише читання для категорій, фонове підсвічування коду, налаштовуваний Home та пошук файлів у нерозгорнутих папках. У «Фокусі» шлях і пошук замінили смугу SSD.
+
+**Попередні напрацювання (0.11.1):** режими «Огляд» і «Фокус», власні категорії та іконки, окремі TOML для категорій, локалізовані промпти, клікабельний шлях, пошук у вибраній папці, збереження фокусу редактора, системний буфер обміну та створення файлів разом із вкладеними папками. Помилки вводу залишають вікно створення відкритим і повертають фокус у поле.
 
 **Раніше:** у 0.11.0 додали редагування тексту й клавіатурну навігацію; у 0.10.0 — прев’ю текстів і картинок; у 0.9.2 розділили код на модулі; у 0.9.0 додали англійську мову та відображення кошика на диску; у 0.8.0 опублікували початкову реалізацію аналізатора зі знімками сканування, категоріями, очищенням і кошиком.
 

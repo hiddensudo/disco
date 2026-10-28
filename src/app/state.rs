@@ -2,7 +2,7 @@ use crate::{
     deletion,
     filesystem::Properties,
     index::{Category, Index},
-    navigation, refresh,
+    navigation,
     scan::{BigFile, ChangeTracker, Control, Event, Progress, Report},
     settings::{Layout, Theme},
 };
@@ -35,11 +35,13 @@ pub(super) struct RowsKey {
     pub(super) report: u64,
     pub(super) tree: u64,
     pub(super) files: u64,
+    pub(super) search: u64,
 }
 #[derive(Clone)]
 pub(super) enum TreeRow {
     Folder(usize, usize),
     File(Arc<crate::directory_files::Entry>, usize),
+    PathFolder(Arc<crate::directory_files::Entry>, usize),
     Pending(usize, usize),
     Notice(usize, usize),
 }
@@ -47,7 +49,7 @@ pub(super) type FolderRows = Arc<Vec<TreeRow>>;
 
 /// State owned by the scan part of the application.
 pub(super) struct ScanState {
-    pub(super) report: Option<Report>,
+    pub(super) report: Option<Arc<Report>>,
     pub(super) report_revision: u64,
     pub(super) index: Index,
     pub(super) tracker: Option<ChangeTracker>,
@@ -55,7 +57,6 @@ pub(super) struct ScanState {
     pub(super) saved_snapshot_at: Option<u64>,
     pub(super) restored_snapshot: bool,
     pub(super) restore_requested_root: Option<String>,
-    pub(super) auto_refresh: refresh::AutoRefresh,
     pub(super) automatic_job: bool,
     pub(super) rx: Option<Receiver<Event>>,
     pub(super) control: Arc<Control>,

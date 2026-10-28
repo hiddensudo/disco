@@ -25,6 +25,10 @@ pub struct Collection {
     pub icon: String,
     #[serde(default)]
     pub folders: Vec<PathBuf>,
+    #[serde(default)]
+    pub auto_refresh: bool,
+    #[serde(default)]
+    pub read_only: bool,
 }
 impl Collection {
     pub fn category(&self) -> Category {
@@ -62,6 +66,8 @@ impl Default for Config {
             items: BUILTINS
                 .iter()
                 .map(|(id, _, icon)| Collection {
+                    auto_refresh: false,
+                    read_only: false,
                     id: id.to_string(),
                     name: String::new(),
                     icon: icon.to_string(),
@@ -195,7 +201,11 @@ mod tests {
     #[test]
     fn toml_round_trip_and_stable_keys() {
         let mut c = Config::default();
+        c.items[0].auto_refresh = true;
+        c.items[0].read_only = true;
         c.items.push(Collection {
+            auto_refresh: false,
+            read_only: false,
             id: "photos".into(),
             name: "Photos".into(),
             icon: "camera".into(),
@@ -225,6 +235,8 @@ mod tests {
     #[test]
     fn prompt_language_is_explicit_and_points_to_the_individual_category_file() {
         let c = Collection {
+            auto_refresh: false,
+            read_only: false,
             id: "photos".into(),
             name: "Photos".into(),
             icon: "camera".into(),
@@ -388,6 +400,8 @@ mod integration_tests {
         fs::write(path(), saved_manifest).unwrap();
         manager.draft = Some(manager.config.clone());
         manager.draft.as_mut().unwrap().items.push(Collection {
+            auto_refresh: false,
+            read_only: false,
             id: "photos".into(),
             name: "Photos".into(),
             icon: "camera".into(),

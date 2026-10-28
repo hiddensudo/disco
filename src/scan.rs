@@ -173,6 +173,27 @@ fn scan_inner(
     update: &mut impl FnMut(Progress),
     tracker: &mut Option<ChangeTracker>,
 ) -> std::io::Result<Report> {
+    scan_category_inner(root, c, update, tracker, None)
+}
+pub(crate) fn scan_category(
+    root: &Path,
+    c: &Control,
+    category: Option<crate::index::Category>,
+) -> std::io::Result<Report> {
+    scan_category_inner(root, c, &mut |_| {}, &mut None, category)
+}
+fn scan_category_inner(
+    root: &Path,
+    c: &Control,
+    update: &mut impl FnMut(Progress),
+    tracker: &mut Option<ChangeTracker>,
+    category: Option<crate::index::Category>,
+) -> std::io::Result<Report> {
+    let trash_roots = if category.is_some() {
+        crate::recycle::scan_roots()
+    } else {
+        vec![]
+    };
     let start = Instant::now();
     let mut yielded = Instant::now();
     let meta = fs::symlink_metadata(root)?;
@@ -239,6 +260,11 @@ fn scan_inner(
                 continue;
             }
             if m.is_dir() {
+                if category.is_some_and(|category| {
+                    crate::index::classify(&ent.path(), &trash_roots) != category
+                }) {
+                    continue;
+                }
                 let child = r.folders.len();
                 let bytes = allocated(&m);
                 r.folders.push(Folder {

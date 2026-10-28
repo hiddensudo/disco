@@ -125,6 +125,10 @@ pub struct Layout {
     pub motion_speed: f32,
     pub preview_mode: PreviewMode,
     pub open_files_on_double_click: bool,
+    pub home_path: String,
+    pub search_home_fallback: bool,
+    pub all_files_auto_refresh: bool,
+    pub all_files_read_only: bool,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -135,6 +139,13 @@ pub enum PreviewMode {
     Overview,
     #[serde(rename = "focus", alias = "workspace")]
     Focus,
+}
+pub fn default_home() -> PathBuf {
+    if Path::new("/home").is_dir() {
+        "/home".into()
+    } else {
+        "/".into()
+    }
 }
 impl Default for Layout {
     fn default() -> Self {
@@ -158,15 +169,27 @@ impl Default for Layout {
             reuse_scan: true,
             gentle_scan: false,
             save_scan: true,
-            auto_refresh: true,
+            auto_refresh: false,
             animations: true,
             motion_speed: 1.,
             preview_mode: PreviewMode::Overview,
             open_files_on_double_click: true,
+            home_path: default_home().display().to_string(),
+            search_home_fallback: true,
+            all_files_auto_refresh: false,
+            all_files_read_only: false,
         }
     }
 }
 impl Layout {
+    pub fn home_directory(&self) -> PathBuf {
+        let path = PathBuf::from(&self.home_path);
+        if path.is_absolute() && path.is_dir() {
+            path
+        } else {
+            default_home()
+        }
+    }
     pub fn normalize_file_mode(&mut self) {
         // "off" remains readable in old TOML files, but is no longer a third mode.
         if self.preview_mode == PreviewMode::Off {
@@ -177,6 +200,20 @@ impl Layout {
     pub const MIN_PROPERTY_WIDTH: f32 = 240.;
     pub const MAX_PROPERTY_WIDTH: f32 = 760.;
     pub fn validate(&self) -> Result<(), String> {
+        let home = Path::new(&self.home_path);
+        if !home.is_absolute()
+            || self.home_path.len() > 4096
+            || self.home_path.chars().any(char::is_control)
+            || home
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            return Err(crate::tr!(
+                "Для Home потрібен абсолютний шлях без ..",
+                "Home requires an absolute path without .."
+            )
+            .into());
+        }
         if !self.category_width.is_finite()
             || !(155.0..=280.0).contains(&self.category_width)
             || !self.property_width.is_finite()
@@ -430,4 +467,18 @@ drive_name = "My SSD"
         assert_eq!(read_theme(&path).unwrap(), Theme::preset("Noir"));
         fs::remove_dir_all(p).unwrap();
     }
+}
+#[test]
+fn home_defaults_and_missing_paths_fall_back_without_accepting_relative_paths() {
+    let mut layout = Layout::default();
+    assert!(layout.home_directory().is_dir());
+    assert_eq!(layout.home_directory(), default_home());
+    layout.home_path = "/this/disco-home-does-not-exist".into();
+    assert_eq!(layout.home_directory(), default_home());
+    layout.home_path = "relative/path".into();
+    assert!(layout.validate().is_err());
+    layout.home_path = "/home/../etc".into();
+    assert!(layout.validate().is_err());
+    layout.home_path = "/".into();
+    assert!(layout.validate().is_ok());
 }

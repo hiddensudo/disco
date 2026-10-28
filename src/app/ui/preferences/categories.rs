@@ -48,6 +48,8 @@ impl Disco {
                     })
                     .unwrap();
                 config.items.push(Collection {
+                    auto_refresh: false,
+                    read_only: false,
                     id,
                     name: crate::tr!("Нова категорія", "New category").into(),
                     icon: "folder".into(),
@@ -97,6 +99,14 @@ impl Disco {
                             .hint_text(fallback_name),
                     );
                     ui.add_space(8.);
+                    ui.checkbox(
+                        &mut c.auto_refresh,
+                        crate::tr!("Автооновлення файлів", "Live file updates"),
+                    );
+                    ui.checkbox(
+                        &mut c.read_only,
+                        crate::tr!("Лише читання в disco", "Read only in disco"),
+                    );
                     ui.label(crate::tr!("Папки в категорії", "Folders in this category"));
                     if c.builtin() && c.folders.is_empty() {
                         ui.label(
@@ -110,7 +120,7 @@ impl Disco {
                     let mut remove = None;
                     egui::ScrollArea::vertical()
                         .id_salt("collection-folders")
-                        .max_height(80.)
+                        .max_height(55.)
                         .show(ui, |ui| {
                             for (i, path) in c.folders.iter().enumerate() {
                                 ui.horizontal(|ui| {

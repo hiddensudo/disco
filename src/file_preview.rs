@@ -24,6 +24,7 @@ pub(crate) enum Content {
     },
     Text {
         lines: Vec<String>,
+        display_source: String,
         encoding: &'static str,
         truncated: bool,
         document: Option<crate::text_editor::Document>,
@@ -114,6 +115,7 @@ fn read_text(bytes: &[u8], clipped: bool) -> Option<Content> {
         lines.push(line.replace('\t', "    "));
     }
     Some(Content::Text {
+        display_source: lines.join("\n"),
         lines,
         encoding,
         truncated,
@@ -207,6 +209,9 @@ impl Preview {
         self.path = path;
         self.revision = revision;
         self.reload();
+    }
+    pub fn adopt_revision(&mut self, revision: u64) {
+        self.revision = revision;
     }
     pub fn reload(&mut self) {
         self.generation = self.generation.wrapping_add(1);
