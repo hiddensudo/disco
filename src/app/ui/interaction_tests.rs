@@ -1370,3 +1370,201 @@ fn keyboard_workspace_walk_preserves_words_drafts_and_reorders_categories() {
     assert!(app.editor.pending.is_none());
     assert_eq!(app.editor.document.as_ref().unwrap().text, draft);
 }
+
+#[test]
+fn keyboard_preview_reuses_one_tab_and_enter_right_keep_before_opening_or_focusing() {
+    let Ok(root) = std::env::var("DISCO_PREVIEW_TAB_FIXTURE") else {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!("disco-preview-tab-{}", std::process::id()));
+        for dir in ["config", "files", "bin", "data/applications"] {
+            fs::create_dir_all(root.join(dir)).unwrap();
+        }
+        for i in 0..30 {
+            fs::write(
+                root.join(format!("files/{i:02}.txt")),
+                format!("document {i}"),
+            )
+            .unwrap();
+        }
+        image::RgbImage::from_pixel(12, 20, image::Rgb([40, 50, 60]))
+            .save(root.join("files/z.jpg"))
+            .unwrap();
+        fs::write(
+            root.join("config/layout.toml"),
+            "save_scan=false\nsearch_home_fallback=false\npreview_mode='focus'\nanimations=false\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("data/applications/viewer.desktop"),
+            "[Desktop Entry]\nType=Application\nExec=false\n",
+        )
+        .unwrap();
+        for (name, script) in [
+            (
+                "xdg-mime",
+                "#!/bin/sh\nif [ \"$2\" = filetype ]; then printf 'text/plain\\n'; else printf 'viewer.desktop\\n'; fi\n",
+            ),
+            (
+                "gio",
+                "#!/bin/sh\nprintf '%s\\n' \"$@\" >> \"$DISCO_OPEN_LOG\"\n",
+            ),
+        ] {
+            let p = root.join("bin").join(name);
+            fs::write(&p, script).unwrap();
+            fs::set_permissions(p, fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let out=Command::new(std::env::current_exe().unwrap()).args(["--exact","app::ui::interaction_tests::keyboard_preview_reuses_one_tab_and_enter_right_keep_before_opening_or_focusing","--nocapture"])
+            .env("DISCO_PREVIEW_TAB_FIXTURE",&root).env("DISCO_CONFIG_DIR",root.join("config")).env("XDG_DATA_HOME",root.join("data")).env("XDG_DATA_DIRS",root.join("absent"))
+            .env("DISCO_OPEN_LOG",root.join("opened.log")).env("PATH",format!("{}:/usr/bin:/bin",root.join("bin").display())).output().unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            out.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return;
+    };
+    use crate::app::workspace_keyboard::Area;
+    use egui::{Key, Modifiers};
+    let root = PathBuf::from(root);
+    let files = root.join("files");
+    let a = files.join("00.txt");
+    let b = files.join("01.txt");
+    let log = root.join("opened.log");
+    let ctx = egui::Context::default();
+    let mut time = 0.;
+    let mut app = Disco::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+    let report = crate::scan::scan(&files, &crate::scan::Control::default(), |_| {}).unwrap();
+    app.scan.index = crate::index::Index::new(&report);
+    app.scan.report = Some(std::sync::Arc::new(report));
+    app.browser.root = files.display().to_string();
+    app.browser.category = Category::All;
+    app.browser.sort_size = false;
+    app.browser.descending = false;
+    app.enter_folder(0);
+    let start = Instant::now();
+    while app.files.get(&files).is_none() && start.elapsed() < Duration::from_secs(3) {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    app.focus_area(Area::Tree, &ctx);
+    press_key(&mut app, &ctx, &mut time, Key::Home, Modifiers::NONE);
+    press_key(&mut app, &ctx, &mut time, Key::ArrowDown, Modifiers::NONE);
+    wait_document(&mut app, &ctx, &mut time);
+    assert_eq!(app.tabs.order, vec![a.clone()]);
+    assert_eq!(app.tabs.preview.as_ref(), Some(&a));
+    press_key(&mut app, &ctx, &mut time, Key::ArrowDown, Modifiers::NONE);
+    wait_document(&mut app, &ctx, &mut time);
+    assert_eq!(app.tabs.order, vec![b.clone()]);
+    assert!(app.tabs.inactive.is_empty());
+    assert!(
+        egui::TextEdit::load_state(&ctx, Id::unique(("file-editor", Some(a.clone())))).is_none(),
+        "discarded preview releases undo state"
+    );
+    for _ in 0..15 {
+        press_key(&mut app, &ctx, &mut time, Key::ArrowDown, Modifiers::NONE);
+        assert_eq!(app.tabs.order.len(), 1);
+    }
+    let before_cycle = app.editor.path.clone();
+    press_key(&mut app, &ctx, &mut time, Key::Tab, Modifiers::CTRL);
+    assert_eq!(app.tabs.order.len(), 1);
+    assert!(app.keyboard.area == Area::Tree);
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        Key::Tab,
+        Modifiers::CTRL | Modifiers::SHIFT,
+    );
+    assert_eq!(app.tabs.order.len(), 1);
+    assert_eq!(app.editor.path, before_cycle);
+    // Returning to the first file still uses the same temporary slot.
+    press_key(&mut app, &ctx, &mut time, Key::Home, Modifiers::NONE);
+    press_key(&mut app, &ctx, &mut time, Key::ArrowDown, Modifiers::NONE);
+    wait_document(&mut app, &ctx, &mut time);
+    assert_eq!(app.tabs.preview.as_ref(), Some(&a));
+    press_key(&mut app, &ctx, &mut time, Key::Enter, Modifiers::NONE);
+    assert!(app.tabs.preview.is_none());
+    assert!(!log.exists());
+    assert!(!app.opening_file.load(std::sync::atomic::Ordering::Relaxed));
+    press_key(&mut app, &ctx, &mut time, Key::Enter, Modifiers::NONE);
+    let start = Instant::now();
+    while app.opening_file.load(std::sync::atomic::Ordering::Relaxed)
+        && start.elapsed() < Duration::from_secs(3)
+    {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(
+        fs::read_to_string(&log)
+            .unwrap()
+            .contains(a.to_str().unwrap())
+    );
+    fs::remove_file(&log).unwrap();
+    // Right keeps the tab before focusing it; the first press stays in the tree.
+    press_key(&mut app, &ctx, &mut time, Key::ArrowDown, Modifiers::NONE);
+    press_key(&mut app, &ctx, &mut time, Key::ArrowRight, Modifiers::NONE);
+    assert_eq!(app.tabs.order, vec![a.clone(), b.clone()]);
+    assert!(app.tabs.preview.is_none());
+    assert!(app.keyboard.area == Area::Tree);
+    wait_document(&mut app, &ctx, &mut time);
+    press_key(&mut app, &ctx, &mut time, Key::ArrowRight, Modifiers::NONE);
+    assert!(app.keyboard.area == Area::Editor);
+    assert_eq!(
+        ctx.memory(|m| m.focused()),
+        Some(Id::unique(("file-editor", Some(b.clone()))))
+    );
+    // Enter in the editor stays an ordinary newline.
+    press_key(&mut app, &ctx, &mut time, Key::Enter, Modifiers::NONE);
+    assert!(app.editor.dirty());
+    assert!(!log.exists());
+    app.focus_area(Area::Tree, &ctx);
+    press_key(&mut app, &ctx, &mut time, Key::ArrowDown, Modifiers::NONE);
+    wait_document(&mut app, &ctx, &mut time);
+    let c = files.join("02.txt");
+    assert_eq!(app.tabs.preview.as_ref(), Some(&c));
+    app.focus_area(Area::Editor, &ctx);
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Text("draft".into())],
+    );
+    assert!(
+        app.tabs.preview.is_none(),
+        "editing keeps a preview so it cannot be overwritten"
+    );
+    let draft = app.editor.document.as_ref().unwrap().text.clone();
+    app.focus_area(Area::Tree, &ctx);
+    press_key(&mut app, &ctx, &mut time, Key::ArrowDown, Modifiers::NONE);
+    wait_document(&mut app, &ctx, &mut time);
+    assert_eq!(
+        app.tabs.inactive[&c].editor.document.as_ref().unwrap().text,
+        draft
+    );
+    assert_eq!(app.tabs.order.len(), 4);
+    for _ in 0..10 {
+        press_key(&mut app, &ctx, &mut time, Key::ArrowDown, Modifiers::NONE);
+        assert_eq!(app.tabs.order.len(), 4);
+    }
+    // Images use the same keep/focus rules. Without an association, second Enter is a no-op.
+    fs::remove_file(root.join("data/applications/viewer.desktop")).unwrap();
+    press_key(&mut app, &ctx, &mut time, Key::End, Modifiers::NONE);
+    let image = files.join("z.jpg");
+    assert_eq!(app.tabs.preview.as_ref(), Some(&image));
+    press_key(&mut app, &ctx, &mut time, Key::Enter, Modifiers::NONE);
+    assert!(app.tabs.preview.is_none());
+    assert!(!log.exists());
+    press_key(&mut app, &ctx, &mut time, Key::Enter, Modifiers::NONE);
+    let start = Instant::now();
+    while app.opening_file.load(std::sync::atomic::Ordering::Relaxed)
+        && start.elapsed() < Duration::from_secs(3)
+    {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(!log.exists());
+    assert!(app.tabs.order.contains(&image));
+    press_key(&mut app, &ctx, &mut time, Key::ArrowRight, Modifiers::NONE);
+    assert!(app.keyboard.area == Area::Editor);
+    assert_eq!(app.tabs.order.len(), 4);
+}

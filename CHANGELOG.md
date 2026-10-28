@@ -2,7 +2,9 @@
 
 Release history for disco, including earlier development checkpoints.
 
-## Unreleased
+## 0.2.1 — 2026-10-28
+
+- Keyboard file navigation reuses a single italic preview tab. Enter or Right first retains it; subsequent Enter launches an existing file association and subsequent Right focuses the document. Editing retains the draft automatically; clean replaced previews release their undo state.
 
 - Keyboard workspace navigation uses Ctrl+Alt+arrows and F6/Shift+F6 with visible focus; categories and tabs have arrow/Enter navigation, category reordering respects the lock, and Ctrl+L/Ctrl+comma/Ctrl+W expose search, Settings and safe tab close. Standard editor Ctrl+arrows remain intact.
 

@@ -27,7 +27,19 @@ impl Disco {
             .is_none_or(|l| !l.files.is_empty() || l.limited || l.error.is_some())
     }
     pub(in crate::app) fn select_file(&mut self, path: PathBuf, bytes: u64) {
+        self.tabs.preview_request = None;
+        if self.preferences.layout.preview_mode == crate::settings::PreviewMode::Focus {
+            self.keep_preview_tab(&path);
+        }
         self.browser.properties = Some(Properties::load(path, bytes, None, self.demo));
+    }
+    pub(in crate::app) fn preview_keyboard_file(&mut self, path: PathBuf, bytes: u64) {
+        if self.preferences.layout.preview_mode == crate::settings::PreviewMode::Focus {
+            self.tabs.preview_request = Some(path.clone());
+            self.browser.properties = Some(Properties::load(path, bytes, None, self.demo));
+        } else {
+            self.select_file(path, bytes);
+        }
     }
     pub(in crate::app) fn open_file(&self, path: PathBuf) {
         if self.preferences.layout.open_files_on_double_click {
@@ -119,6 +131,18 @@ impl Disco {
                 rect.bottom(),
                 Stroke::new(0.5, color(&t.border)),
             );
+        }
+        if response.has_focus() {
+            ui.ctx().memory_mut(|m| {
+                m.set_focus_lock_filter(
+                    response.id,
+                    egui::EventFilter {
+                        horizontal_arrows: true,
+                        vertical_arrows: true,
+                        ..Default::default()
+                    },
+                )
+            });
         }
         if response.clicked() {
             ui.ctx().request_repaint();

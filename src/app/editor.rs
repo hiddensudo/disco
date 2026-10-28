@@ -158,6 +158,9 @@ impl Disco {
     pub(in crate::app) fn note_editor_change(&mut self, ctx: &egui::Context) {
         self.editor.auto_save_at = Some(ctx.input(|i| i.time) + 1.);
         self.editor.last_saved_at = None;
+        if let Some(path) = self.editor.path.clone() {
+            self.keep_preview_tab(&path);
+        }
     }
     pub(in crate::app) fn auto_save_tick(&mut self, ctx: &egui::Context) {
         if !self.auto_save_enabled() || !self.editor.dirty() {
@@ -346,7 +349,7 @@ impl Disco {
                 bytes,
                 focus_editor,
             } => {
-                self.select_file(path.clone(), bytes);
+                self.preview_keyboard_file(path.clone(), bytes);
                 self.browser.scroll_to = Some(path);
                 self.editor.focus_on_load = focus_editor;
             }

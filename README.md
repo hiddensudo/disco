@@ -1,6 +1,6 @@
 # disco
 
-Current release: **0.2.0** ([source tag](https://github.com/hiddensudo/disco/tree/v0.2.0)).
+Current release: **0.2.1** ([source tag](https://github.com/hiddensudo/disco/tree/v0.2.1)).
 
 **English** · [Українська](README.uk.md)
 
@@ -75,7 +75,7 @@ Use **Ctrl+Alt+arrows** to move between categories, the tree, tabs, the editor a
 
 ## Focus tabs
 
-Focus opens files in tabs. Switching files or browsing another category keeps each draft, cursor and scroll position. An existing file activates its existing tab; middle-click or × closes a tab. Unsaved tabs show a dot and ask before closing; closing the app checks inactive drafts too. Auto-save and read-only policies follow the category where the document was opened. Background auto-save continues for inactive text tabs. Only the visible image keeps a decoded texture; up to 64 document tabs can remain open.
+Focus keeps opened files in tabs. Keyboard file browsing reuses one temporary tab, shown in italics, instead of creating a tab for each selection. The first **Enter** or **Right arrow** keeps that tab open. On an already retained file, **Enter** opens its default application when an association exists; **Right arrow** focuses the document. Typing also retains a preview to protect the draft. Mouse selections continue opening retained tabs. Switching retained files or browsing another category keeps each draft, cursor and scroll position. An existing file activates its existing tab; middle-click or × closes a tab. Unsaved tabs show a dot and ask before closing; closing the app checks inactive drafts too. Auto-save and read-only policies follow the category where the document was opened. Background auto-save continues for inactive text tabs. Only the visible image keeps a decoded texture; up to 64 document tabs can remain open.
 
 ## Settings window
 
@@ -134,15 +134,15 @@ In the file list/tree:
 | Key | Action |
 | --- | --- |
 | ↑ / ↓, Home / End, Page Up / Down | Move the selection and scroll it into view |
-| → / ← | Expand a folder, or collapse it / select its parent |
-| Enter | Enter a folder or open a file in its default application |
+| → / ← | Expand/collapse folders; Right on a Focus file retains its preview, then focuses the document |
+| Enter | Enter a folder; in Focus, first retain a preview, then open a retained file in its default app |
 | Backspace | Go back; otherwise select the parent |
 | Delete | Move the selected file or folder to Trash, after confirmation |
 | F5 | Refresh the current scope |
 | Ctrl+Tab / Ctrl+Shift+Tab | Preview the next / previous visible file, skipping folders |
 | Escape | Leave text editing or clear the search without changing layout |
 
-List navigation shortcuts are disabled while typing in an editor or search field. **Ctrl+S** remains the save shortcut. **Ctrl+Tab / Ctrl+Shift+Tab** also work inside the editor and search: they follow the current tree/list order, skip collapsed folders, and stop at the first/last file. In Overview, unsaved changes trigger Save/Discard/Cancel. In Focus, the document remains in its tab while the adjacent file becomes active. The shortcuts follow the file list, not tab order.
+List navigation shortcuts are disabled while typing in an editor or search field. **Ctrl+S** remains the save shortcut. **Ctrl+Tab / Ctrl+Shift+Tab** also work inside the editor and search: they follow the current tree/list order, skip collapsed folders, and stop at the first/last file. In Overview, unsaved changes trigger Save/Discard/Cancel. In Focus, retained documents stay open and unedited temporary previews are replaced in the same slot. The shortcuts follow the file list, not tab order.
 
 **Ctrl+S** keeps the editor focused, including while the save runs in the background. You can keep typing; any newer changes remain unsaved until the next save. System **Ctrl+C / Ctrl+X / Ctrl+V** works in editable text fields on Wayland and X11.
 

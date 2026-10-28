@@ -11,7 +11,7 @@ use crate::{
     index::Category,
     settings::{PreviewMode, color},
 };
-use eframe::egui::{self, Align2, FontId, Pos2, Rect, Sense, Stroke, Vec2};
+use eframe::egui::{self, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -25,6 +25,9 @@ pub(super) struct Tab {
 pub(super) struct Tabs {
     pub order: Vec<PathBuf>,
     pub inactive: HashMap<PathBuf, Tab>,
+    /// At most one replaceable tab, requested only by keyboard file browsing.
+    pub preview: Option<PathBuf>,
+    pub preview_request: Option<PathBuf>,
     reveal: bool,
 }
 impl Tabs {
@@ -49,12 +52,53 @@ impl Disco {
             .map(|c| c.read_only)
             .unwrap_or(self.preferences.layout.all_files_read_only)
     }
+    pub(in crate::app) fn keep_preview_tab(&mut self, path: &Path) -> bool {
+        if self.tabs.preview.as_deref() != Some(path) {
+            return false;
+        }
+        self.tabs.preview = None;
+        self.message = crate::tr!("Вкладку закріплено", "Tab kept open").into();
+        true
+    }
     pub(in crate::app) fn open_focus_document(
         &mut self,
         path: PathBuf,
         ctx: &egui::Context,
     ) -> bool {
+        let temporary = self.tabs.preview_request.as_ref() == Some(&path);
+        if temporary {
+            self.tabs.preview_request = None;
+        }
+        let focus_on_load = self.editor.focus_on_load;
         if !self.tabs.order.contains(&path) {
+            let mut slot = None;
+            if temporary && let Some(old) = self.tabs.preview.clone() {
+                let protected = if self.editor.path.as_ref() == Some(&old) {
+                    self.editor.dirty() || self.editor.saving.is_some()
+                } else {
+                    self.tabs
+                        .inactive
+                        .get(&old)
+                        .is_some_and(|tab| tab.editor.dirty() || tab.editor.saving.is_some())
+                };
+                // Drafts/save jobs become retained documents; only a clean
+                // preview may be discarded as the keyboard selection moves.
+                self.tabs.preview = None;
+                if !protected {
+                    slot = self.tabs.order.iter().position(|p| p == &old);
+                    self.tabs.order.retain(|p| p != &old);
+                    self.tabs.inactive.remove(&old);
+                    if self.editor.path.as_ref() == Some(&old) {
+                        self.editor = Editor::default();
+                    }
+                    ctx.data_mut(|data| {
+                        data.remove::<egui::text_edit::TextEditState>(egui::Id::unique((
+                            "file-editor",
+                            Some(old),
+                        )))
+                    });
+                }
+            }
             if self.tabs.order.len() >= 64 {
                 self.message = crate::tr!(
                     "Відкрито 64 вкладки. Закрий одну перед відкриттям іншого файла.",
@@ -68,12 +112,20 @@ impl Disco {
                     .map(|p| Properties::load(p, 0, None, self.demo));
                 return false;
             }
-            self.tabs.order.push(path.clone());
+            if let Some(slot) = slot {
+                self.tabs
+                    .order
+                    .insert(slot.min(self.tabs.order.len()), path.clone());
+            } else {
+                self.tabs.order.push(path.clone());
+            }
+            if temporary {
+                self.tabs.preview = Some(path.clone());
+            }
         }
         if self.editor.path.as_ref() == Some(&path) {
             return true;
         }
-        let focus_on_load = self.editor.focus_on_load;
         self.editor.focus_on_load = false;
         if let Some(old_path) = self.editor.path.clone() {
             if !self.tabs.order.contains(&old_path) {
@@ -175,6 +227,12 @@ impl Disco {
         };
         self.tabs.order.remove(index);
         self.tabs.inactive.remove(path);
+        if self.tabs.preview.as_deref() == Some(path) {
+            self.tabs.preview = None;
+        }
+        if self.tabs.preview_request.as_deref() == Some(path) {
+            self.tabs.preview_request = None;
+        }
         // Discard clears editor.path before applying its pending close action.
         if self.editor.path.as_deref() == Some(path) || self.editor.path.is_none() {
             self.editor = Editor::default();
@@ -284,11 +342,20 @@ impl Disco {
                         } else {
                             name
                         };
-                        ui.painter().with_clip_rect(hit.shrink(6.)).text(
-                            Pos2::new(rect.left() + 9., rect.center().y),
-                            Align2::LEFT_CENTER,
+                        let temporary = self.tabs.preview.as_ref() == Some(path);
+                        let mut text = egui::text::LayoutJob::simple(
                             label,
                             FontId::proportional(13.),
+                            color(&t.text),
+                            f32::INFINITY,
+                        );
+                        for section in &mut text.sections {
+                            section.format.italics = temporary;
+                        }
+                        let galley = ui.fonts_mut(|fonts| fonts.layout_job(text));
+                        ui.painter().with_clip_rect(hit.shrink(6.)).galley(
+                            Pos2::new(rect.left() + 9., rect.center().y - galley.size().y / 2.),
+                            galley,
                             color(&t.text),
                         );
                         if response.has_focus() {
@@ -327,8 +394,16 @@ impl Disco {
                             response.scroll_to_me(Some(egui::Align::Center));
                         }
                         response.on_hover_text(format!(
-                            "{}{}",
+                            "{}{}{}",
                             path.display(),
+                            if temporary {
+                                crate::tr!(
+                                    "\nТимчасовий перегляд · Enter або → — закріпити",
+                                    "\nTemporary preview · Enter or Right arrow to keep open"
+                                )
+                            } else {
+                                ""
+                            },
                             editor
                                 .filter(|e| !e.error.is_empty())
                                 .map(|e| format!("\n{}", e.error))

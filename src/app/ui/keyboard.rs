@@ -67,6 +67,9 @@ impl Disco {
             // Guarded transitions and async loads retain the ordinary editor
             // protection; the old widget must not receive this key event.
             self.sync_file_preview(ctx);
+            if !focused {
+                self.focus_area(crate::app::workspace_keyboard::Area::Tree, ctx);
+            }
         }
     }
     pub(in crate::app) fn keyboard_navigation(&mut self, ui: &mut egui::Ui) {
@@ -154,6 +157,12 @@ impl Disco {
                     } else {
                         self.editor_action(crate::app::editor::Action::Navigate(p.path), ctx);
                     }
+                } else if self.preferences.layout.preview_mode
+                    == crate::settings::PreviewMode::Focus
+                    && self.keep_preview_tab(&p.path)
+                {
+                    // First Enter keeps the temporary tab; no association lookup.
+                    self.focus_area(crate::app::workspace_keyboard::Area::Tree, ctx);
                 } else {
                     self.open_default_file(p.path);
                 }
@@ -170,7 +179,25 @@ impl Disco {
                     } else {
                         self.move_keyboard_selection(1, false);
                     }
+                    self.focus_area(crate::app::workspace_keyboard::Area::Tree, ctx);
                     ctx.request_repaint();
+                } else if self.preferences.layout.preview_mode
+                    == crate::settings::PreviewMode::Focus
+                {
+                    if let Some(path) = self
+                        .browser
+                        .properties
+                        .as_ref()
+                        .filter(|p| !p.is_dir)
+                        .map(|p| p.path.clone())
+                    {
+                        if self.keep_preview_tab(&path) {
+                            self.focus_area(crate::app::workspace_keyboard::Area::Tree, ctx);
+                        } else {
+                            self.focus_area(crate::app::workspace_keyboard::Area::Editor, ctx);
+                        }
+                        ctx.request_repaint();
+                    }
                 }
                 return;
             }
@@ -196,6 +223,7 @@ impl Disco {
         ] {
             if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, key)) {
                 self.move_keyboard_selection(delta, edge);
+                self.focus_area(crate::app::workspace_keyboard::Area::Tree, ctx);
                 ctx.request_repaint();
                 break;
             }
@@ -310,8 +338,10 @@ impl Disco {
         let item = &items[next];
         if let Some(id) = item.folder {
             self.select_folder(id);
-        } else {
+        } else if item.is_dir {
             self.select_file(item.path.clone(), item.bytes);
+        } else {
+            self.preview_keyboard_file(item.path.clone(), item.bytes);
         }
         self.browser.scroll_to = Some(item.path.clone());
     }

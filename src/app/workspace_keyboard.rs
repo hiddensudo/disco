@@ -21,6 +21,7 @@ pub(super) struct Keyboard {
     pub tab: Option<PathBuf>,
     pub reveal_category: bool,
     pub reveal_tab: bool,
+    pending_focus: Option<Id>,
 }
 impl Disco {
     fn area_rect(&self, ctx: &egui::Context, area: Area) -> Option<Rect> {
@@ -113,6 +114,9 @@ impl Disco {
         if !self.available_areas().contains(&area) {
             area = Area::Tree;
         }
+        if area != Area::Editor {
+            self.editor.focus_on_load = false;
+        }
         self.keyboard.area = area;
         self.keyboard.visible = true;
         if let Some(id) = ctx.memory(|m| m.focused()) {
@@ -178,19 +182,20 @@ impl Disco {
             Area::Editor if self.editor.document.is_some() => {
                 Id::unique(("file-editor", &self.editor.path))
             }
-            Area::Editor => Id::unique("preview-viewport"),
-            Area::Tree => Id::unique(
-                if self.preferences.layout.preview_mode == PreviewMode::Focus
-                    && self.browser.view != View::Trash
-                {
-                    "focus-tree-panel"
-                } else {
-                    "browser-panel-bounds"
-                },
-            ),
+            Area::Editor => {
+                if self.editor.path.is_some() {
+                    self.editor.focus_on_load = true;
+                }
+                Id::unique("preview-viewport")
+            }
+            Area::Tree => Id::unique("tree-keyboard-focus"),
             Area::Search => Id::unique("folder-search"),
         };
-        ctx.memory_mut(|m| m.request_focus(id));
+        ctx.memory_mut(|m| {
+            m.move_focus(egui::FocusDirection::None);
+            m.request_focus(id);
+        });
+        self.keyboard.pending_focus = Some(id);
         ctx.request_repaint();
     }
     pub(in crate::app) fn open_preferences_keyboard(&mut self, ctx: &egui::Context) {
@@ -416,6 +421,22 @@ impl Disco {
         if self.preferences.open && ui.ctx().embed_viewports() {
             return;
         }
+        // Non-interactive panels cannot retain keyboard focus in egui unless
+        // screen-reader mode is enabled. A tiny focus anchor in their margin
+        // keeps tree navigation stable even while a preview is loading.
+        if let Some(rect) = self.area_rect(ui.ctx(), Area::Tree) {
+            ui.interact(
+                Rect::from_min_size(rect.min + egui::vec2(2., 2.), egui::vec2(1., 1.)),
+                Id::unique("tree-keyboard-focus"),
+                egui::Sense::click(),
+            );
+        }
+        if let Some(id) = self.keyboard.pending_focus.take() {
+            ui.ctx().memory_mut(|m| {
+                m.move_focus(egui::FocusDirection::None);
+                m.request_focus(id);
+            });
+        }
         self.infer_workspace_area(ui.ctx());
         if self.keyboard.visible && self.editor.pending.is_none() {
             if let Some(rect) = self.area_rect(ui.ctx(), self.keyboard.area) {
@@ -427,23 +448,18 @@ impl Disco {
                 );
             }
         }
-        // Panel focus accepts arrows locally while Tab/Shift+Tab remain native.
-        for id in [
-            Id::unique("focus-tree-panel"),
-            Id::unique("browser-panel-bounds"),
-        ] {
-            if ui.ctx().memory(|m| m.has_focus(id)) {
-                ui.ctx().memory_mut(|m| {
-                    m.set_focus_lock_filter(
-                        id,
-                        egui::EventFilter {
-                            horizontal_arrows: true,
-                            vertical_arrows: true,
-                            ..Default::default()
-                        },
-                    )
-                });
-            }
+        let id = Id::unique("tree-keyboard-focus");
+        if ui.ctx().memory(|m| m.has_focus(id)) {
+            ui.ctx().memory_mut(|m| {
+                m.set_focus_lock_filter(
+                    id,
+                    egui::EventFilter {
+                        horizontal_arrows: true,
+                        vertical_arrows: true,
+                        ..Default::default()
+                    },
+                )
+            });
         }
     }
 }
