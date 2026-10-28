@@ -1,8 +1,8 @@
 # Changelog
 
-The versions below follow existing development checkpoints. The next release number and any historical regrouping will be agreed with the maintainer before publishing.
+Release history for disco, including earlier development checkpoints.
 
-## 0.2.0 — development preview
+## 2.0.0 — 2026-10-28
 
 - Drag categories to reorder them with a visible insertion target; persist the order without rewriting individual category documents. Optional category-order lock in Interface settings; Trash stays fixed.
 - Ctrl+Tab / Ctrl+Shift+Tab preview adjacent visible files, skipping folders and preserving unsaved-change confirmation; editor input no longer treats these shortcuts as indentation.
@@ -15,6 +15,8 @@ The versions below follow existing development checkpoints. The next release num
 - Configurable Home (`/home`, with `/` fallback), real file/folder search in unopened directories, and optional Home fallback after an empty scope search.
 - Compact Focus layout: full-width breadcrumbs/search instead of the SSD header, plus a small status bar without storage selection counts.
 - Replaced the former global SSD usage refresh timer with category-level file events.
+
+Includes the changes developed during the 0.2.0 preview.
 
 ## 0.11.1 — earlier development checkpoint
 
@@ -61,7 +63,7 @@ The versions below follow existing development checkpoints. The next release num
 
 ## Українською
 
-**0.2.0 (попередня збірка):** оновлення поточного scope, файлові події й режим лише читання для категорій, фонове підсвічування коду, налаштовуваний Home та пошук файлів у нерозгорнутих папках. У «Фокусі» шлях і пошук замінили смугу SSD.
+**2.0.0:** перетягування категорій зі збереженням порядку, опція закріплення, Ctrl+Tab / Ctrl+Shift+Tab між видимими файлами та встановлення курсора в кінець файла при кліку нижче тексту. Також оновлення поточного scope, файлові події й режим лише читання для категорій, фонове підсвічування коду, налаштовуваний Home та пошук файлів у нерозгорнутих папках. У «Фокусі» шлях і пошук замінили смугу SSD.
 
 **Попередні напрацювання (0.11.1):** режими «Огляд» і «Фокус», власні категорії та іконки, окремі TOML для категорій, локалізовані промпти, клікабельний шлях, пошук у вибраній папці, збереження фокусу редактора, системний буфер обміну та створення файлів разом із вкладеними папками. Помилки вводу залишають вікно створення відкритим і повертають фокус у поле.
 
