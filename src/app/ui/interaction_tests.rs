@@ -393,3 +393,376 @@ fn full_window_view_switches_properties_and_breadcrumbs_work_with_dirty_text() {
     }
     assert!(Path::new(&app.browser.root).starts_with(&root));
 }
+
+fn pointer_at(app: &mut Disco, ctx: &egui::Context, time: &mut f64, pos: Pos2, pressed: bool) {
+    frame(
+        app,
+        ctx,
+        time,
+        vec![egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        }],
+    );
+}
+fn press_key(
+    app: &mut Disco,
+    ctx: &egui::Context,
+    time: &mut f64,
+    key: egui::Key,
+    modifiers: egui::Modifiers,
+) {
+    for pressed in [true, false] {
+        frame(
+            app,
+            ctx,
+            time,
+            vec![egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed,
+                repeat: false,
+                modifiers,
+            }],
+        );
+    }
+}
+fn wait_document(app: &mut Disco, ctx: &egui::Context, time: &mut f64) {
+    frame(app, ctx, time, vec![]);
+    let start = Instant::now();
+    while (app.editor.document.is_none() || app.editor.saving.is_some())
+        && start.elapsed() < Duration::from_secs(4)
+    {
+        frame(app, ctx, time, vec![]);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(app.editor.document.is_some() && app.editor.saving.is_none());
+}
+fn drag_category(
+    app: &mut Disco,
+    ctx: &egui::Context,
+    time: &mut f64,
+    from: &str,
+    to: &str,
+    after: bool,
+) {
+    let source = ctx
+        .read_response(Id::unique(("category", from)))
+        .unwrap()
+        .rect;
+    let target = ctx
+        .read_response(Id::unique(("category", to)))
+        .unwrap()
+        .rect;
+    let a = source.center();
+    let b = Pos2::new(
+        target.center().x,
+        if after {
+            target.bottom() - 5.
+        } else {
+            target.top() + 5.
+        },
+    );
+    frame(app, ctx, time, vec![egui::Event::PointerMoved(a)]);
+    pointer_at(app, ctx, time, a, true);
+    frame(
+        app,
+        ctx,
+        time,
+        vec![egui::Event::PointerMoved(a + egui::vec2(8., 0.))],
+    );
+    frame(app, ctx, time, vec![egui::Event::PointerMoved(b)]);
+    pointer_at(app, ctx, time, b, false);
+    frame(app, ctx, time, vec![]);
+}
+
+#[test]
+fn category_drag_lock_blank_editor_and_ctrl_tab_use_real_window_input() {
+    let Ok(root) = std::env::var("DISCO_SMALL_TASKS_FIXTURE") else {
+        let root = std::env::temp_dir().join(format!("disco-small-tasks-{}", std::process::id()));
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::create_dir_all(root.join("files/closed")).unwrap();
+        fs::write(
+            root.join("files/closed/hidden.txt"),
+            "do not traverse collapsed folders",
+        )
+        .unwrap();
+        for (name, text) in [
+            ("a.rs", "first\nlast λ"),
+            ("b.txt", "second"),
+            ("c.txt", ""),
+            ("d.txt", "last\n"),
+        ] {
+            fs::write(root.join("files").join(name), text).unwrap();
+        }
+        fs::write(root.join("config/layout.toml"), "save_scan=false\nauto_refresh=false\nsearch_home_fallback=false\npreview_mode='focus'\nanimations=false\n").unwrap();
+        let out = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "app::ui::interaction_tests::category_drag_lock_blank_editor_and_ctrl_tab_use_real_window_input", "--nocapture"])
+            .env("DISCO_SMALL_TASKS_FIXTURE", &root).env("DISCO_CONFIG_DIR", root.join("config"))
+            .env("XDG_DATA_HOME", root.join("data")).output().unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            out.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return;
+    };
+    let root = PathBuf::from(root);
+    let ctx = egui::Context::default();
+    let mut time = 0.;
+    let mut app = Disco::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+    app.preferences.layout.categories_locked = false;
+    let files = root.join("files");
+    let report = crate::scan::scan(&files, &crate::scan::Control::default(), |_| {}).unwrap();
+    app.scan.index = crate::index::Index::new(&report);
+    app.scan.report = Some(std::sync::Arc::new(report));
+    app.browser.root = files.display().to_string();
+    app.browser.category = Category::All;
+    app.browser.sort_size = false;
+    app.browser.descending = false;
+    app.expand_folder(0);
+    for _ in 0..3 {
+        frame(&mut app, &ctx, &mut time, vec![]);
+    }
+
+    let original = app.collections.config.clone();
+    let child = app.collections.file_for(&original.items[0]);
+    let comment = format!(
+        "# Keep my custom comment\n{}",
+        fs::read_to_string(&child).unwrap()
+    );
+    fs::write(&child, &comment).unwrap();
+    app.collections.reload().unwrap();
+    drag_category(&mut app, &ctx, &mut time, "games", "caches", true);
+    assert_eq!(
+        app.collections
+            .config
+            .items
+            .iter()
+            .map(|c| c.id.as_str())
+            .collect::<Vec<_>>(),
+        ["development", "caches", "games", "documents", "other"]
+    );
+    assert_eq!(
+        app.browser.category,
+        Category::All,
+        "a drag must not select a category"
+    );
+    assert_eq!(
+        crate::categories::Manager::load().config,
+        app.collections.config,
+        "order survives restart"
+    );
+    assert_eq!(
+        fs::read_to_string(&child).unwrap(),
+        comment,
+        "order only changes the manifest"
+    );
+    app.preferences.layout.categories_locked = true;
+    crate::settings::write(&root.join("config/layout.toml"), &app.preferences.layout).unwrap();
+    assert!(
+        crate::settings::read_layout(&root.join("config/layout.toml"))
+            .unwrap()
+            .categories_locked
+    );
+    frame(&mut app, &ctx, &mut time, vec![]);
+    let locked = app.collections.config.clone();
+    drag_category(&mut app, &ctx, &mut time, "games", "development", false);
+    assert_eq!(app.collections.config, locked);
+    assert!(!egui::DragAndDrop::has_any_payload(&ctx));
+    app.preferences.layout.categories_locked = false;
+    frame(&mut app, &ctx, &mut time, vec![]);
+    drag_category(&mut app, &ctx, &mut time, "games", "development", false);
+    assert_eq!(app.collections.config, original);
+    for _ in 0..3 {
+        frame(&mut app, &ctx, &mut time, vec![]);
+    }
+    // Tiny movement is still a click, not a reorder; Trash remains a fixed tool.
+    let rect = ctx
+        .read_response(Id::unique(("category", "games")))
+        .unwrap()
+        .rect;
+    let before = app.collections.config.clone();
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::PointerMoved(rect.center())],
+    );
+    pointer_at(&mut app, &ctx, &mut time, rect.center(), true);
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::PointerMoved(
+            rect.center() + egui::vec2(1., 0.),
+        )],
+    );
+    pointer_at(
+        &mut app,
+        &ctx,
+        &mut time,
+        rect.center() + egui::vec2(1., 0.),
+        false,
+    );
+    assert_eq!(app.collections.config, before);
+    assert_eq!(
+        app.browser.category,
+        Category::Games,
+        "click rect={rect:?}; configs={:?}",
+        app.collections
+            .config
+            .items
+            .iter()
+            .map(|c| &c.id)
+            .collect::<Vec<_>>()
+    );
+    assert!(!before.items.iter().any(|c| c.id == "trash"));
+    let manifest = fs::read(crate::categories::path()).unwrap();
+    let revision = app.collections.revision;
+    assert!(!app.collections.reorder("games", "games", false).unwrap());
+    assert_eq!(app.collections.revision, revision);
+    app.collections.draft = Some(app.collections.config.clone());
+    assert!(app.collections.reorder("games", "other", true).is_err());
+    app.collections.draft = None;
+    fs::write(&child, format!("# External edit\n{comment}")).unwrap();
+    assert!(app.collections.reorder("games", "other", true).is_err());
+    assert_eq!(fs::read(crate::categories::path()).unwrap(), manifest);
+    assert_eq!(app.collections.config, original);
+    app.collections.reload().unwrap();
+    app.browser.category = Category::All;
+    app.browser.table_root = None;
+    app.expand_folder(0);
+    let a = files.join("a.rs");
+    let b = files.join("b.txt");
+    app.select_file(a.clone(), 4096);
+    wait_document(&mut app, &ctx, &mut time);
+    // A click far below a short Unicode document lands at the final character.
+    let id = Id::unique(("file-editor", Some(a.clone())));
+    frame(&mut app, &ctx, &mut time, vec![]);
+    let area = ctx.read_response(id).unwrap().rect;
+    assert!(
+        area.height() > 300.,
+        "the editor hit area must fill the viewport"
+    );
+    let pos = area.right_bottom() - egui::vec2(20., 20.);
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::PointerMoved(pos)],
+    );
+    pointer_at(&mut app, &ctx, &mut time, pos, true);
+    pointer_at(&mut app, &ctx, &mut time, pos, false);
+    assert_eq!(ctx.memory(|m| m.focused()), Some(id));
+    let cursor = egui::TextEdit::load_state(&ctx, id)
+        .unwrap()
+        .cursor
+        .char_range()
+        .unwrap();
+    assert_eq!(cursor.primary.index.0, "first\nlast λ".chars().count());
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Text("!".into())],
+    );
+    assert_eq!(app.editor.document.as_ref().unwrap().text, "first\nlast λ!");
+    // Ctrl+Tab asks about the draft and never adds/removes indentation.
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        egui::Key::Tab,
+        egui::Modifiers::CTRL,
+    );
+    assert!(matches!(&app.editor.pending, Some(Action::SelectFile { path, .. }) if path==&b));
+    assert_eq!(app.editor.path.as_ref(), Some(&a));
+    assert_eq!(app.editor.document.as_ref().unwrap().text, "first\nlast λ!");
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        egui::Key::Escape,
+        egui::Modifiers::NONE,
+    );
+    assert!(app.editor.pending.is_none());
+    app.save_editor(&ctx);
+    wait_document(&mut app, &ctx, &mut time);
+    ctx.memory_mut(|m| m.request_focus(id));
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        egui::Key::Tab,
+        egui::Modifiers::CTRL,
+    );
+    wait_document(&mut app, &ctx, &mut time);
+    assert_eq!(app.editor.path.as_ref(), Some(&b));
+    assert_eq!(app.editor.document.as_ref().unwrap().text, "second");
+    assert_eq!(
+        ctx.memory(|m| m.focused()),
+        Some(Id::unique(("file-editor", Some(b.clone()))))
+    );
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        egui::Key::Tab,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    wait_document(&mut app, &ctx, &mut time);
+    assert_eq!(app.editor.path.as_ref(), Some(&a));
+    // At the first file there is no wrap, and collapsed children are skipped.
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        egui::Key::Tab,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    assert_eq!(app.editor.path.as_ref(), Some(&a));
+    assert!(!app.editor.dirty());
+    for (name, expected) in [("c.txt", ""), ("d.txt", "last\n")] {
+        let p = files.join(name);
+        app.select_file(p.clone(), 4096);
+        wait_document(&mut app, &ctx, &mut time);
+        let id = Id::unique(("file-editor", Some(p)));
+        let rect = ctx.read_response(id).unwrap().rect;
+        let pos = rect.left_bottom() + egui::vec2(40., -15.);
+        frame(
+            &mut app,
+            &ctx,
+            &mut time,
+            vec![egui::Event::PointerMoved(pos)],
+        );
+        pointer_at(&mut app, &ctx, &mut time, pos, true);
+        pointer_at(&mut app, &ctx, &mut time, pos, false);
+        let gutter = ctx.read_response(id.with("blank-gutter")).unwrap().rect;
+        let gutter_pos = gutter.center();
+        frame(
+            &mut app,
+            &ctx,
+            &mut time,
+            vec![egui::Event::PointerMoved(gutter_pos)],
+        );
+        pointer_at(&mut app, &ctx, &mut time, gutter_pos, true);
+        pointer_at(&mut app, &ctx, &mut time, gutter_pos, false);
+        assert_eq!(ctx.memory(|m| m.focused()), Some(id));
+        assert_eq!(
+            egui::TextEdit::load_state(&ctx, id)
+                .unwrap()
+                .cursor
+                .char_range()
+                .unwrap()
+                .primary
+                .index
+                .0,
+            expected.chars().count()
+        );
+    }
+}

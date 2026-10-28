@@ -344,6 +344,7 @@ impl Disco {
                         .show(ui, |ui| {
                             ui.set_min_size(inner);
                             ui.horizontal_top(|ui| {
+                                let gutter_left = ui.cursor().min.x;
                                 ui.allocate_space(Vec2::new(30., 0.));
                                 let mut buffer = doc.buffer_with_access(!read_only);
                                 let syntax = &mut self.syntax;
@@ -357,7 +358,7 @@ impl Disco {
                                             color(&t.text),
                                         )
                                     };
-                                let output = ui
+                                let mut output = ui
                                     .add_enabled_ui(!busy, |ui| {
                                         egui::TextEdit::multiline(&mut buffer)
                                             .id(egui::Id::unique(("file-editor", &path)))
@@ -368,10 +369,42 @@ impl Disco {
                                             .margin(Vec2::new(2., 0.))
                                             .desired_width(f32::INFINITY)
                                             .desired_rows(1)
+                                            // Keep hit testing below short documents inside
+                                            // TextEdit, so egui maps the click to EOF.
+                                            .min_size(Vec2::new(0., inner.y))
                                             .char_limit(128 * 1024)
                                             .show(ui)
                                     })
                                     .inner;
+                                let blank_gutter = Rect::from_min_max(
+                                    Pos2::new(
+                                        gutter_left,
+                                        output.galley_pos.y + output.galley.size().y,
+                                    ),
+                                    Pos2::new(
+                                        output.response.rect.left(),
+                                        output.response.rect.bottom(),
+                                    ),
+                                );
+                                if !busy
+                                    && blank_gutter.is_positive()
+                                    && ui
+                                        .interact(
+                                            blank_gutter,
+                                            output.response.id.with("blank-gutter"),
+                                            Sense::click(),
+                                        )
+                                        .on_hover_cursor(egui::CursorIcon::Text)
+                                        .clicked()
+                                {
+                                    output.response.request_focus();
+                                    output.state.cursor.set_char_range(Some(
+                                        egui::text::CCursorRange::one(egui::text::CCursor::new(
+                                            doc.text.chars().count(),
+                                        )),
+                                    ));
+                                    output.state.clone().store(ui.ctx(), output.response.id);
+                                }
                                 self.editor.focused |= output.response.has_focus();
                                 let clip = ui.clip_rect();
                                 for (n, row) in output.galley.rows.iter().enumerate() {

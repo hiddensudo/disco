@@ -7,6 +7,9 @@ use crate::{
 };
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Vec2};
 
+#[derive(Clone)]
+struct CategoryDrag(String);
+
 impl Disco {
     pub(in crate::app) fn update_collections(&mut self) {
         if !self.preferences.open {
@@ -121,6 +124,8 @@ impl Disco {
     pub(in crate::app) fn sidebar(&mut self, ui: &mut egui::Ui) {
         let t = self.preferences.theme.clone();
         let labels = self.preferences.layout.category_labels;
+        let reorder = !self.preferences.layout.categories_locked && !self.preferences.open;
+        let mut dropped = None;
         egui::Panel::bottom("collection-tools")
             .exact_size(if labels { 40. } else { 76. })
             .frame(egui::Frame::NONE)
@@ -200,6 +205,26 @@ impl Disco {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.add_space(6.);
+                // Reach off-screen categories without releasing the drag.
+                if reorder && egui::DragAndDrop::has_payload_of_type::<CategoryDrag>(ui.ctx()) {
+                    if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                        let clip = ui.clip_rect();
+                        if clip.contains(pos) {
+                            let direction = if pos.y < clip.top() + 28. {
+                                1.
+                            } else if pos.y > clip.bottom() - 28. {
+                                -1.
+                            } else {
+                                0.
+                            };
+                            if direction != 0. {
+                                let dt = ui.input(|i| i.stable_dt).min(0.05);
+                                ui.scroll_with_delta(Vec2::new(0., direction * 280. * dt));
+                                ui.ctx().request_repaint();
+                            }
+                        }
+                    }
+                }
                 for collection in self.collections.config.items.clone() {
                     let cat = collection.category();
                     let active = self.browser.view == View::Folders && self.browser.category == cat;
@@ -210,9 +235,35 @@ impl Disco {
                     let click_rect = rect;
                     let response = ui.interact(
                         click_rect,
-                        ui.scope_id().with(("category", &collection.id)),
-                        Sense::click(),
+                        egui::Id::unique(("category", &collection.id)),
+                        if reorder {
+                            Sense::click_and_drag()
+                        } else {
+                            Sense::click()
+                        },
                     );
+                    if reorder {
+                        response.dnd_set_drag_payload(CategoryDrag(collection.id.clone()));
+                        if let Some(payload) = response.dnd_hover_payload::<CategoryDrag>() {
+                            if payload.0 != collection.id {
+                                let after = ui
+                                    .input(|i| i.pointer.hover_pos())
+                                    .is_some_and(|p| p.y >= rect.center().y);
+                                let y = if after { rect.bottom() } else { rect.top() };
+                                ui.painter().hline(
+                                    rect.shrink(4.).x_range(),
+                                    y,
+                                    egui::Stroke::new(2., color(&t.accent)),
+                                );
+                                if let Some(payload) =
+                                    response.dnd_release_payload::<CategoryDrag>()
+                                {
+                                    dropped =
+                                        Some((payload.0.clone(), collection.id.clone(), after));
+                                }
+                            }
+                        }
+                    }
                     let total = self
                         .scan
                         .report
@@ -222,11 +273,19 @@ impl Disco {
                         })
                         .map(|_| self.scan.index.total(cat));
                     let help = format!(
-                        "{}\n{}",
+                        "{}\n{}\n{}",
                         collection.title(),
                         total
                             .map(crate::format::display_size)
-                            .unwrap_or_else(|| "—".into())
+                            .unwrap_or_else(|| "—".into()),
+                        if self.preferences.layout.categories_locked {
+                            crate::tr!(
+                                "Порядок закріплено в налаштуваннях",
+                                "Order is locked in settings"
+                            )
+                        } else {
+                            crate::tr!("Перетягни, щоб змінити порядок", "Drag to reorder")
+                        }
                     );
                     let response = response.on_hover_text(help);
                     let hover =
@@ -354,6 +413,45 @@ impl Disco {
                     }
                 }
             });
+        if let Some((source, target, after)) = dropped {
+            if self.demo {
+                if self.collections.config.reorder(&source, &target, after) {
+                    self.collections.revision = self.collections.revision.wrapping_add(1);
+                }
+            } else if let Err(error) = self.collections.reorder(&source, &target, after) {
+                self.message = error;
+            }
+            ui.ctx().request_repaint();
+        }
+        if reorder {
+            if let Some(payload) = egui::DragAndDrop::payload::<CategoryDrag>(ui.ctx()) {
+                if let Some(pos) = ui.input(|i| i.pointer.hover_pos()) {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                    if let Some(c) = self
+                        .collections
+                        .config
+                        .items
+                        .iter()
+                        .find(|c| c.id == payload.0)
+                    {
+                        egui::Area::new(egui::Id::unique("dragged-category"))
+                            .order(egui::Order::Tooltip)
+                            .interactable(false)
+                            .fixed_pos(pos + Vec2::new(14., 10.))
+                            .show(ui.ctx(), |ui| {
+                                egui::Frame::new()
+                                    .fill(color(&t.raised))
+                                    .stroke(egui::Stroke::new(1., color(&t.accent)))
+                                    .inner_margin(8.)
+                                    .corner_radius(t.radius)
+                                    .show(ui, |ui| {
+                                        ui.label(c.title());
+                                    });
+                            });
+                    }
+                }
+            }
+        }
     }
     pub(in crate::app) fn unindexed_collection_folders(&mut self, ui: &mut egui::Ui) {
         if self.browser.view != View::Folders || self.browser.table_root.is_some() {

@@ -49,6 +49,15 @@ pub(super) fn show(
         true,
         t,
     );
+    cols[0].push_id("lock-category-order", |ui| {
+        check_row(
+            ui,
+            &mut layout.categories_locked,
+            crate::tr!("Закріпити порядок категорій", "Lock category order"),
+            true,
+            t,
+        );
+    });
     cols[0].add_space(7.);
     cols[0].label(
         RichText::new(crate::tr!("Стандартний вигляд файлів", "Default file view")).size(13.),

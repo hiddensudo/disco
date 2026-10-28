@@ -4,6 +4,10 @@ The versions below follow existing development checkpoints. The next release num
 
 ## 0.2.0 — development preview
 
+- Drag categories to reorder them with a visible insertion target; persist the order without rewriting individual category documents. Optional category-order lock in Interface settings; Trash stays fixed.
+- Ctrl+Tab / Ctrl+Shift+Tab preview adjacent visible files, skipping folders and preserving unsaved-change confirmation; editor input no longer treats these shortcuts as indentation.
+- Clicking anywhere below a short document, including its empty gutter, focuses the editor and places the cursor at EOF.
+
 - Scoped refresh merges only the current folder or category roots into the existing snapshot; selection, navigation and unsaved text remain intact.
 - Per-category live file updates use native notifications, bounded queues and targeted directory reads. Monitoring is active only for the selected scope.
 - Per-category read-only mode blocks editing, saving, creation and deletion inside disco.

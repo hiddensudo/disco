@@ -1,6 +1,7 @@
 language = "en"
 categories = true
 category_labels = false
+categories_locked = false
 properties = true
 category_width = 220.0
 property_width = 300.0

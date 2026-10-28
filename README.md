@@ -80,6 +80,8 @@ The category rail shows icons by default; names are optional under **Settings �
 
 Breadcrumbs follow the selected folder or the selected file's parent. Their components are clickable, with hidden ancestors under **…**. Narrow tree panels put navigation and search on separate rows with consistent padding. Unsaved edits are guarded during navigation.
 
+Drag category icons or rows to reorder them; the insertion line shows the destination. The order is saved in the shared category index. Trash stays fixed at the bottom. **Settings → Interface → Lock category order** disables reordering and is off by default.
+
 Under **Settings → Categories**, create or rename a collection, choose from 38 vector icons or import your own SVG/PNG/JPEG/WebP, and add folders with Browse or an absolute path. Right-click a category to add the currently selected folders. Removing a category or a path only changes the collection. Changes take effect when you click **Save**; **Cancel** discards them.
 
 Collections are overlays: the same folder can appear in several categories. Nested roots within one collection are counted once. A built-in category with no explicit folders uses automatic rules; assigning folders replaces its rules with those paths. Sizes reflect the current scan snapshot. Folders outside it are listed with **Scan** buttons; scanning one replaces the current snapshot, so scanning a common parent is useful for collections with several roots on the same filesystem.
@@ -100,7 +102,7 @@ Expand a folder to load its files, then select a file. Use **Overview / Focus** 
 
 Drag the left edge of the properties panel to change its width (240–760 px, subject to available window space). The settings slider updates immediately, and the width is saved on release. Settings changes still apply in both directions. Wheel scrolling over a document stays inside it at its top and bottom; scroll outside the editor or use the outer scrollbar to move the properties panel.
 
-Complete text files open directly in an editor. Click the text to type; **Save** or **Ctrl+S** writes the changes. Copy and Reload have the same 30 px toolbar height as the image controls. Leaving an edited file, reloading, rescanning, deleting it, or closing the app asks whether to save, discard, or cancel. An external file change causes a save error and keeps the draft. Saves preserve encoding, BOM, the file's line-ending convention, permissions, and extended attributes; fragments of large files remain read-only.
+Complete text files open directly in an editor. Click the text to type; clicking the empty editor area below the text places the cursor at the end of the file; **Save** or **Ctrl+S** writes the changes. Copy and Reload have the same 30 px toolbar height as the image controls. Leaving an edited file, reloading, rescanning, deleting it, or closing the app asks whether to save, discard, or cancel. An external file change causes a save error and keeps the draft. Saves preserve encoding, BOM, the file's line-ending convention, permissions, and extended attributes; fragments of large files remain read-only.
 
 **Settings → Interface → Default file view** also controls the mode and **Double click opens files in the default app** (enabled by default). Double-click opening can be disabled independently of the explicit **Enter** action. Only installed system associations are launched; without one, nothing opens. This integration uses `xdg-mime` and `gio` (typically provided by `xdg-utils` and GLib).
 
@@ -113,10 +115,11 @@ In the file list/tree:
 | Enter | Enter a folder or open a file in its default application |
 | Backspace | Go back; otherwise select the parent |
 | Delete | Move the selected file or folder to Trash, after confirmation |
-| F5 | Refresh the scan |
+| F5 | Refresh the current scope |
+| Ctrl+Tab / Ctrl+Shift+Tab | Preview the next / previous visible file, skipping folders |
 | Escape | Leave text editing or clear the search without changing layout |
 
-Navigation shortcuts are disabled while typing in an editor or search field. **Ctrl+S** remains the save shortcut.
+List navigation shortcuts are disabled while typing in an editor or search field. **Ctrl+S** remains the save shortcut. **Ctrl+Tab / Ctrl+Shift+Tab** also work inside the editor and search: they follow the current tree/list order, skip collapsed folders, and stop at the first/last file. Unsaved changes trigger the ordinary Save/Discard/Cancel confirmation. They switch previews, not tabs.
 
 **Ctrl+S** keeps the editor focused, including while the save runs in the background. You can keep typing; any newer changes remain unsaved until the next save. System **Ctrl+C / Ctrl+X / Ctrl+V** works in editable text fields on Wayland and X11.
 

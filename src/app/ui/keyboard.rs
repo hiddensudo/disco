@@ -9,8 +9,66 @@ struct Item {
     path: PathBuf,
     bytes: u64,
     folder: Option<usize>,
+    is_dir: bool,
 }
 impl Disco {
+    /// Run before TextEdit: its code-editor Tab handling also accepts Ctrl+Tab.
+    pub(in crate::app) fn file_cycle_shortcuts(&mut self, ctx: &egui::Context) {
+        if self.preferences.open
+            || self.deletion.confirm
+            || self.purge_targets.is_some()
+            || self.editor.pending.is_some()
+            || self.new_file.is_some()
+            || egui::Popup::is_any_open(ctx)
+        {
+            return;
+        }
+        let backwards =
+            if ctx.input_mut(|i| i.consume_key(Modifiers::CTRL | Modifiers::SHIFT, Key::Tab)) {
+                true
+            } else if ctx.input_mut(|i| i.consume_key(Modifiers::CTRL, Key::Tab)) {
+                false
+            } else {
+                return;
+            };
+        // Consume even at the edge or while busy: never insert indentation.
+        if self.scan.busy
+            || self.deletion.rx.is_some()
+            || self.recycle.busy
+            || self.editor.saving.is_some()
+            || self.browser.view == View::Trash
+        {
+            return;
+        }
+        let items = self.keyboard_items();
+        let current = self
+            .browser
+            .properties
+            .as_ref()
+            .and_then(|p| items.iter().position(|i| i.path == p.path));
+        let next = if backwards {
+            let end = current.unwrap_or(items.len());
+            items[..end].iter().rev().find(|i| !i.is_dir)
+        } else {
+            let start = current.map_or(0, |i| i + 1);
+            items[start..].iter().find(|i| !i.is_dir)
+        };
+        if let Some(item) = next {
+            let focused = ctx.memory(|m| m.focused())
+                == Some(egui::Id::unique(("file-editor", &self.editor.path)));
+            self.editor_action(
+                crate::app::editor::Action::SelectFile {
+                    path: item.path.clone(),
+                    bytes: item.bytes,
+                    focus_editor: focused,
+                },
+                ctx,
+            );
+            // Guarded transitions and async loads retain the ordinary editor
+            // protection; the old widget must not receive this key event.
+            self.sync_file_preview(ctx);
+        }
+    }
     pub(in crate::app) fn keyboard_navigation(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx();
         if self.preferences.open
@@ -155,17 +213,20 @@ impl Disco {
                                 path: f.path.clone(),
                                 bytes: f.bytes,
                                 folder: Some(*id),
+                                is_dir: true,
                             })
                         }
                         TreeRow::PathFolder(f, _) => Some(Item {
                             path: f.path.clone(),
                             bytes: f.bytes,
                             folder: None,
+                            is_dir: true,
                         }),
                         TreeRow::File(f, _) => Some(Item {
                             path: f.path.clone(),
                             bytes: f.bytes,
                             folder: None,
+                            is_dir: false,
                         }),
                         _ => None,
                     })
@@ -182,6 +243,7 @@ impl Disco {
                             path: f.path.clone(),
                             bytes: f.bytes,
                             folder: None,
+                            is_dir: false,
                         })
                         .collect()
                 })
@@ -195,6 +257,7 @@ impl Disco {
                     path: f.path.clone(),
                     bytes: f.bytes,
                     folder: None,
+                    is_dir: false,
                 })
                 .collect(),
             View::Cleanup => self
@@ -210,6 +273,7 @@ impl Disco {
                         path: f.path,
                         bytes: f.bytes,
                         folder: id,
+                        is_dir: true,
                     }
                 })
                 .collect(),

@@ -284,6 +284,7 @@ impl eframe::App for Disco {
         self.files.poll(self.scan.report_revision);
         self.poll_new_file(ui.ctx());
         self.sync_file_preview(ui.ctx());
+        self.file_cycle_shortcuts(ui.ctx());
         if let Some(result) = self.recycle.poll(ui.ctx()) {
             self.refresh_drive();
             if result.changed

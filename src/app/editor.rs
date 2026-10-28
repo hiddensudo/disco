@@ -60,6 +60,11 @@ pub(super) enum Action {
     Transition(Bookmark),
     Navigate(PathBuf),
     NewFile(PathBuf),
+    SelectFile {
+        path: PathBuf,
+        bytes: u64,
+        focus_editor: bool,
+    },
     Reload,
     Scan {
         root: String,
@@ -223,6 +228,15 @@ impl Disco {
             Action::Navigate(path) => self.navigate_path(path),
             Action::NewFile(directory) => {
                 self.new_file = Some(super::new_file::Draft::new(directory));
+            }
+            Action::SelectFile {
+                path,
+                bytes,
+                focus_editor,
+            } => {
+                self.select_file(path.clone(), bytes);
+                self.browser.scroll_to = Some(path);
+                self.editor.focus_on_load = focus_editor;
             }
             Action::Scan {
                 root,

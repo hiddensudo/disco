@@ -142,6 +142,24 @@ impl Config {
     pub fn get(&self, key: Category) -> Option<&Collection> {
         self.items.iter().find(|c| c.category() == key)
     }
+    /// Insert at a row boundary; IDs stay stable and the current category is
+    /// unaffected. The fixed Trash shortcut is not part of this list.
+    pub fn reorder(&mut self, source: &str, target: &str, after: bool) -> bool {
+        let Some(from) = self.items.iter().position(|c| c.id == source) else {
+            return false;
+        };
+        let Some(to) = self.items.iter().position(|c| c.id == target) else {
+            return false;
+        };
+        let boundary = to + usize::from(after);
+        let destination = boundary - usize::from(from < boundary);
+        if from == destination {
+            return false;
+        }
+        let item = self.items.remove(from);
+        self.items.insert(destination, item);
+        true
+    }
 }
 pub fn path() -> PathBuf {
     settings::config_dir().join("categories.toml")
@@ -286,6 +304,34 @@ pub struct Manager {
     checked: std::time::Instant,
 }
 impl Manager {
+    pub fn reorder(&mut self, source: &str, target: &str, after: bool) -> Result<bool, String> {
+        // Never publish over a settings draft or externally edited category.
+        if self.draft.is_some() {
+            return Err(crate::tr!(
+                "Спочатку збережи або скасуй редагування категорій.",
+                "Save or cancel category edits first."
+            )
+            .into());
+        }
+        let mut config = self.config.clone();
+        if !config.reorder(source, target, after) {
+            return Ok(false);
+        }
+        if fingerprint() != self.stamp {
+            return Err(crate::tr!(
+                "Категорії змінено ззовні. Перезавантаж їх перед зміною порядку.",
+                "Categories changed externally. Reload them before reordering."
+            )
+            .into());
+        }
+        // Unchanged category documents keep their comments and exact bytes.
+        let saved = store::save(&path(), &config, &self.locations)?;
+        self.config = saved.config;
+        self.locations = saved.locations;
+        self.stamp = Some(saved.stamp);
+        self.revision = self.revision.wrapping_add(1);
+        Ok(true)
+    }
     pub fn load() -> Self {
         let path = path();
         let result = store::open(&path);
