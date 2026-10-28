@@ -95,7 +95,9 @@ pub(in crate::app) fn visual_button(
         t.radius,
         Stroke::new(
             1.,
-            if enabled {
+            if enabled && response.has_focus() {
+                color(&t.accent)
+            } else if enabled {
                 color(&t.border)
             } else {
                 color(&t.border).gamma_multiply(0.65)

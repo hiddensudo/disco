@@ -64,6 +64,15 @@ cargo test --locked
 python3 -m unittest discover -s tests
 ```
 
+## Keyboard workspace
+
+Use **Ctrl+Alt+arrows** to move between categories, the tree, tabs, the editor and search. **F6 / Shift+F6** cycles through available panels; the focused panel has an accent outline. Editor cursor and selection remain where you left them. **Ctrl+arrows** still move through text normally.
+
+- Categories: **Up/Down**, then **Enter**; **Ctrl+Shift+Up/Down** changes their order when unlocked. Trash is the final fixed entry.
+- Tabs: **Left/Right**, then **Enter**; **Ctrl+W** closes the active document with draft protection.
+- **Ctrl+L** focuses scope search; **Ctrl+comma** opens or raises Settings; **Alt+Home** opens the configured Home folder.
+- **Tab / Shift+Tab**, **Space / Enter** and **Escape** operate controls, settings and dialogs. **F6** leaves the code editor without inserting a tab character.
+
 ## Focus tabs
 
 Focus opens files in tabs. Switching files or browsing another category keeps each draft, cursor and scroll position. An existing file activates its existing tab; middle-click or × closes a tab. Unsaved tabs show a dot and ask before closing; closing the app checks inactive drafts too. Auto-save and read-only policies follow the category where the document was opened. Background auto-save continues for inactive text tabs. Only the visible image keeps a decoded texture; up to 64 document tabs can remain open.

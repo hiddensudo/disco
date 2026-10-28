@@ -161,7 +161,7 @@ impl Disco {
                 );
                 let b = ui.interact(r, egui::Id::unique(("settings_nav", i)), Sense::click());
                 let active = self.preferences.page == i;
-                if active || b.hovered() {
+                if active || b.hovered() || b.has_focus() {
                     ui.painter().rect_filled(r, 0, color(&t.raised));
                 }
                 if active {

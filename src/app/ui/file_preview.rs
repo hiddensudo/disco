@@ -109,7 +109,7 @@ impl Disco {
             ui.interact(
                 tree.response.rect,
                 egui::Id::unique("focus-tree-panel"),
-                Sense::hover(),
+                Sense::focusable_noninteractive(),
             );
             ui.painter().vline(
                 tree.response.rect.right(),

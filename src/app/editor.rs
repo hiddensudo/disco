@@ -219,8 +219,7 @@ impl Disco {
     pub(in crate::app) fn sync_file_preview(&mut self, ctx: &egui::Context) {
         self.poll_tabs(ctx);
         self.poll_editor(ctx);
-        let focus_tabs = self.preferences.layout.preview_mode == PreviewMode::Focus
-            && self.browser.view != View::Trash;
+        let focus_tabs = self.preferences.layout.preview_mode == PreviewMode::Focus;
         let mut desired = if self.preferences.layout.preview_mode != PreviewMode::Off
             && self.browser.view != View::Trash
         {

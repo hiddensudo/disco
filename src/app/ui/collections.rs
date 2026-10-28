@@ -140,11 +140,30 @@ impl Disco {
                 let trash = ui
                     .interact(
                         trash_rect,
-                        ui.scope_id().with("trash-shortcut"),
+                        egui::Id::unique("trash-shortcut"),
                         Sense::click(),
                     )
                     .on_hover_text(crate::tr!("Кошик", "Trash"));
-                if trash.hovered() || self.browser.view == View::Trash {
+                if self.keyboard.reveal_category
+                    && self.keyboard.category.as_deref() == Some("__trash")
+                {
+                    trash.request_focus();
+                    self.keyboard.reveal_category = false;
+                }
+                if trash.has_focus() {
+                    self.keyboard.category = Some("__trash".into());
+                    ui.ctx().memory_mut(|m| {
+                        m.set_focus_lock_filter(
+                            trash.id,
+                            egui::EventFilter {
+                                horizontal_arrows: true,
+                                vertical_arrows: true,
+                                ..Default::default()
+                            },
+                        )
+                    });
+                }
+                if trash.hovered() || trash.has_focus() || self.browser.view == View::Trash {
                     ui.painter().rect_filled(trash_rect, 0, color(&t.raised));
                 }
                 self.art.paint(
@@ -263,6 +282,34 @@ impl Disco {
                                 }
                             }
                         }
+                    }
+                    if self.keyboard.reveal_category
+                        && self.keyboard.category.as_deref() == Some(&collection.id)
+                    {
+                        response.scroll_to_me(Some(egui::Align::Center));
+                        response.request_focus();
+                        if ui.clip_rect().contains(rect.center()) {
+                            self.keyboard.reveal_category = false;
+                        }
+                    }
+                    if response.has_focus() {
+                        ui.ctx().memory_mut(|m| {
+                            m.set_focus_lock_filter(
+                                response.id,
+                                egui::EventFilter {
+                                    horizontal_arrows: true,
+                                    vertical_arrows: true,
+                                    ..Default::default()
+                                },
+                            )
+                        });
+                        self.keyboard.category = Some(collection.id.clone());
+                        ui.painter().rect_stroke(
+                            rect.shrink(2.),
+                            t.radius,
+                            egui::Stroke::new(1., color(&t.accent)),
+                            egui::StrokeKind::Inside,
+                        );
                     }
                     let total = self
                         .scan

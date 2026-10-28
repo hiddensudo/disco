@@ -232,7 +232,7 @@ impl Disco {
             ui.allocate_space(Vec2::new(ui.available_width(), 34.));
             return;
         }
-        egui::ScrollArea::horizontal()
+        let tab_strip = egui::ScrollArea::horizontal()
             .id_salt("document-tabs")
             .auto_shrink([false, true])
             .max_height(36.)
@@ -291,6 +291,32 @@ impl Disco {
                             FontId::proportional(13.),
                             color(&t.text),
                         );
+                        if response.has_focus() {
+                            self.keyboard.tab = Some(path.clone());
+                            ui.ctx().memory_mut(|m| {
+                                m.set_focus_lock_filter(
+                                    response.id,
+                                    egui::EventFilter {
+                                        horizontal_arrows: true,
+                                        vertical_arrows: true,
+                                        ..Default::default()
+                                    },
+                                )
+                            });
+                            ui.painter().rect_stroke(
+                                hit.shrink(1.),
+                                t.radius,
+                                Stroke::new(1., color(&t.accent)),
+                                egui::StrokeKind::Inside,
+                            );
+                        }
+                        if self.keyboard.reveal_tab && self.keyboard.tab.as_ref() == Some(path) {
+                            response.scroll_to_me(Some(egui::Align::Center));
+                            response.request_focus();
+                            if ui.clip_rect().contains(rect.center()) {
+                                self.keyboard.reveal_tab = false;
+                            }
+                        }
                         if response.clicked() {
                             activate = Some(path.clone());
                         }
@@ -323,6 +349,11 @@ impl Disco {
                     }
                 });
             });
+        ui.interact(
+            tab_strip.inner_rect,
+            egui::Id::unique("document-tabs-bounds"),
+            Sense::hover(),
+        );
         self.tabs.reveal = false;
         if let Some(path) = activate {
             self.activate_tab(&path, ui.ctx());

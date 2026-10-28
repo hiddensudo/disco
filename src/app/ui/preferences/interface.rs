@@ -151,6 +151,11 @@ pub(super) fn show(
             .color(color(&t.muted)),
         );
     });
+    egui::CollapsingHeader::new(crate::tr!("Клавіатура", "Keyboard")).show(&mut cols[0],|ui|{
+        ui.label(crate::tr!("Ctrl+Alt+стрілки: перейти між областями. F6 / Shift+F6: наступна / попередня область.", "Ctrl+Alt+arrows: move between panels. F6 / Shift+F6: next / previous panel."));
+        ui.label(crate::tr!("У категоріях: ↑/↓ та Enter. Ctrl+Shift+↑/↓: змінити порядок, якщо не закріплено.", "Categories: Up/Down and Enter. Ctrl+Shift+Up/Down: reorder when unlocked."));
+        ui.label(crate::tr!("У вкладках: ←/→ та Enter. Ctrl+W: закрити вкладку. Ctrl+L: пошук. Ctrl+, : налаштування.", "Tabs: Left/Right and Enter. Ctrl+W: close tab. Ctrl+L: search. Ctrl+comma: settings."));
+    });
     cols[1].label(
         RichText::new(crate::tr!("Попередній перегляд", "Preview"))
             .size(12.)

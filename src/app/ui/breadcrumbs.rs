@@ -55,7 +55,7 @@ impl Disco {
                     Sense::click(),
                 )
                 .on_hover_text(crate::tr!("Батьківські папки", "Parent folders"));
-            if response.hovered() {
+            if response.hovered() || response.has_focus() {
                 ui.painter().rect_filled(more, t.radius, color(&t.raised));
             }
             ui.painter().text(
@@ -88,7 +88,7 @@ impl Disco {
                     Sense::click(),
                 )
                 .on_hover_text(nodes[i].display().to_string());
-            if response.hovered() {
+            if response.hovered() || response.has_focus() {
                 ui.painter().rect_filled(button, t.radius, color(&t.raised));
             }
             ui.painter()
@@ -98,7 +98,7 @@ impl Disco {
                     Align2::LEFT_CENTER,
                     &labels[i],
                     font.clone(),
-                    if response.hovered() {
+                    if response.hovered() || response.has_focus() {
                         color(&t.accent)
                     } else {
                         color(&t.text)

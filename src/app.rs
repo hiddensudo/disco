@@ -26,6 +26,7 @@ mod scope;
 mod state;
 mod tabs;
 mod ui;
+mod workspace_keyboard;
 use self::{
     state::{BrowserState, DeletionState, DriveState, PreferencesState, ScanState},
     ui::resize_edges,
@@ -44,6 +45,7 @@ pub(crate) struct Disco {
     file_preview: crate::file_preview::Preview,
     editor: editor::Editor,
     tabs: tabs::Tabs,
+    keyboard: workspace_keyboard::Keyboard,
     scoped: scope::Scope,
     search: crate::file_search::Search,
     live: crate::live_files::LiveFiles,
@@ -215,6 +217,7 @@ impl Disco {
             syntax: crate::syntax::Syntax::default(),
             editor: editor::Editor::default(),
             tabs: tabs::Tabs::default(),
+            keyboard: workspace_keyboard::Keyboard::default(),
             opening_file: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             purge_targets: None,
             purge_fresh: false,
@@ -327,6 +330,7 @@ impl eframe::App for Disco {
         self.files.poll(self.scan.report_revision);
         self.poll_new_file(ui.ctx());
         self.sync_file_preview(ui.ctx());
+        self.workspace_shortcuts(ui.ctx());
         self.file_cycle_shortcuts(ui.ctx());
         if let Some(result) = self.recycle.poll(ui.ctx()) {
             self.refresh_drive();
@@ -361,9 +365,13 @@ impl eframe::App for Disco {
             let (back, forward) = ui.input(|i| {
                 (
                     i.pointer.button_pressed(egui::PointerButton::Extra1)
-                        || (i.modifiers.alt && i.key_pressed(egui::Key::ArrowLeft)),
+                        || (i.modifiers.alt
+                            && !i.modifiers.ctrl
+                            && i.key_pressed(egui::Key::ArrowLeft)),
                     i.pointer.button_pressed(egui::PointerButton::Extra2)
-                        || (i.modifiers.alt && i.key_pressed(egui::Key::ArrowRight)),
+                        || (i.modifiers.alt
+                            && !i.modifiers.ctrl
+                            && i.key_pressed(egui::Key::ArrowRight)),
                 )
             });
             if back {
@@ -409,7 +417,7 @@ impl eframe::App for Disco {
             .frame(egui::Frame::NONE)
             .show(ui, |ui| self.footer(ui));
         if self.preferences.layout.categories {
-            egui::Panel::left("categories")
+            let categories = egui::Panel::left("categories")
                 .exact_size(if self.preferences.layout.category_labels {
                     self.preferences.layout.category_width
                 } else {
@@ -418,13 +426,18 @@ impl eframe::App for Disco {
                 .resizable(false)
                 .frame(egui::Frame::new().fill(color(&t.panel)).inner_margin(0.))
                 .show(ui, |ui| self.sidebar(ui));
+            ui.interact(
+                categories.response.rect,
+                egui::Id::unique("category-panel-bounds"),
+                egui::Sense::hover(),
+            );
         }
         if self.preferences.layout.preview_mode == settings::PreviewMode::Overview
             || self.browser.view == View::Trash
         {
             self.show_inspector_panel(ui);
         }
-        egui::CentralPanel::default()
+        let browser_panel = egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(color(&t.background)).inner_margin(
                 if self.preferences.layout.preview_mode == settings::PreviewMode::Focus {
                     egui::Margin::ZERO
@@ -473,6 +486,11 @@ impl eframe::App for Disco {
                     self.browser_content(ui);
                 });
             });
+        ui.interact(
+            browser_panel.response.rect,
+            egui::Id::unique("browser-panel-bounds"),
+            egui::Sense::focusable_noninteractive(),
+        );
         if self.browser.view == View::Trash
             && previous_location.view != View::Trash
             && !self.demo
@@ -482,6 +500,7 @@ impl eframe::App for Disco {
             self.recycle.refresh(&ctx);
         }
         self.keyboard_navigation(ui);
+        self.workspace_focus_ui(ui);
         self.auto_save_tick(&ctx);
         self.confirmation(&ctx);
         self.bin_confirmation(&ctx);

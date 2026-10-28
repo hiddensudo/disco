@@ -1200,3 +1200,173 @@ fn focus_tabs_keep_drafts_cursors_policies_and_guard_all_closes() {
     frame(&mut app, &ctx, &mut time, vec![]);
     assert!(app.tabs.order.is_empty() && app.editor.path.is_none());
 }
+
+#[test]
+fn keyboard_workspace_walk_preserves_words_drafts_and_reorders_categories() {
+    let Ok(root) = std::env::var("DISCO_WORKSPACE_KEYS_FIXTURE") else {
+        let root =
+            std::env::temp_dir().join(format!("disco-workspace-keys-{}", std::process::id()));
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::create_dir_all(root.join("files")).unwrap();
+        fs::write(root.join("files/a.txt"), "one two three").unwrap();
+        fs::write(root.join("files/b.txt"), "second").unwrap();
+        fs::write(
+            root.join("config/layout.toml"),
+            "save_scan=false\nsearch_home_fallback=false\npreview_mode='focus'\nanimations=false\n",
+        )
+        .unwrap();
+        let out=Command::new(std::env::current_exe().unwrap()).args(["--exact","app::ui::interaction_tests::keyboard_workspace_walk_preserves_words_drafts_and_reorders_categories","--nocapture"])
+            .env("DISCO_WORKSPACE_KEYS_FIXTURE",&root).env("DISCO_CONFIG_DIR",root.join("config")).env("XDG_DATA_HOME",root.join("data")).output().unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            out.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return;
+    };
+    use crate::app::workspace_keyboard::Area;
+    use egui::{Key, Modifiers};
+    let root = PathBuf::from(root);
+    let files = root.join("files");
+    let a = files.join("a.txt");
+    let b = files.join("b.txt");
+    let ctx = egui::Context::default();
+    let mut time = 0.;
+    let mut app = Disco::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+    let report = crate::scan::scan(&files, &crate::scan::Control::default(), |_| {}).unwrap();
+    app.scan.index = crate::index::Index::new(&report);
+    app.scan.report = Some(std::sync::Arc::new(report));
+    app.browser.root = files.display().to_string();
+    app.browser.category = Category::All;
+    app.expand_folder(0);
+    app.select_file(a.clone(), 4096);
+    wait_document(&mut app, &ctx, &mut time);
+    app.select_file(b.clone(), 4096);
+    wait_document(&mut app, &ctx, &mut time);
+    app.activate_tab(&a, &ctx);
+    wait_document(&mut app, &ctx, &mut time);
+    let editor_id = Id::unique(("file-editor", Some(a.clone())));
+    app.focus_area(Area::Editor, &ctx);
+    press_key(&mut app, &ctx, &mut time, Key::End, Modifiers::CTRL);
+    let before = egui::TextEdit::load_state(&ctx, editor_id)
+        .unwrap()
+        .cursor
+        .char_range()
+        .unwrap()
+        .primary
+        .index
+        .0;
+    press_key(&mut app, &ctx, &mut time, Key::ArrowLeft, Modifiers::CTRL);
+    let after = egui::TextEdit::load_state(&ctx, editor_id)
+        .unwrap()
+        .cursor
+        .char_range()
+        .unwrap()
+        .primary
+        .index
+        .0;
+    assert!(after < before, "Ctrl+Left retains standard word movement");
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Text("draft".into())],
+    );
+    let draft = app.editor.document.as_ref().unwrap().text.clone();
+    let cursor = egui::TextEdit::load_state(&ctx, editor_id)
+        .unwrap()
+        .cursor
+        .char_range();
+    let panel = Modifiers::CTRL | Modifiers::ALT;
+    press_key(&mut app, &ctx, &mut time, Key::ArrowLeft, panel);
+    assert!(app.keyboard.area == Area::Tree);
+    press_key(&mut app, &ctx, &mut time, Key::ArrowLeft, panel);
+    assert!(app.keyboard.area == Area::Categories);
+    app.keyboard.category = Some("games".into());
+    app.focus_area(Area::Categories, &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    press_key(&mut app, &ctx, &mut time, Key::ArrowDown, Modifiers::NONE);
+    assert_eq!(app.keyboard.category.as_deref(), Some("development"));
+    assert_eq!(
+        app.browser.category,
+        Category::All,
+        "arrow navigation doesn't activate until Enter"
+    );
+    press_key(&mut app, &ctx, &mut time, Key::Enter, Modifiers::NONE);
+    assert_eq!(app.browser.category, Category::Development);
+    assert!(app.editor.pending.is_none());
+    assert_eq!(app.editor.document.as_ref().unwrap().text, draft);
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        Key::ArrowUp,
+        Modifiers::CTRL | Modifiers::SHIFT,
+    );
+    assert_eq!(app.collections.config.items[0].id, "development");
+    assert_eq!(
+        crate::categories::Manager::load().config.items[0].id,
+        "development"
+    );
+    app.preferences.layout.categories_locked = true;
+    let order = app.collections.config.clone();
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        Key::ArrowDown,
+        Modifiers::CTRL | Modifiers::SHIFT,
+    );
+    assert_eq!(app.collections.config, order);
+    app.preferences.layout.categories_locked = false;
+    press_key(&mut app, &ctx, &mut time, Key::ArrowRight, panel);
+    assert!(app.keyboard.area == Area::Tree);
+    press_key(&mut app, &ctx, &mut time, Key::ArrowRight, panel);
+    assert!(app.keyboard.area == Area::Editor);
+    assert_eq!(ctx.memory(|m| m.focused()), Some(editor_id));
+    assert_eq!(
+        egui::TextEdit::load_state(&ctx, editor_id)
+            .unwrap()
+            .cursor
+            .char_range(),
+        cursor
+    );
+    press_key(&mut app, &ctx, &mut time, Key::F6, Modifiers::NONE);
+    assert!(app.keyboard.area == Area::Search);
+    assert_eq!(
+        ctx.memory(|m| m.focused()),
+        Some(Id::unique("folder-search"))
+    );
+    press_key(&mut app, &ctx, &mut time, Key::F6, Modifiers::SHIFT);
+    assert!(app.keyboard.area == Area::Editor);
+    press_key(&mut app, &ctx, &mut time, Key::ArrowUp, panel);
+    assert!(app.keyboard.area == Area::Tabs);
+    press_key(&mut app, &ctx, &mut time, Key::ArrowRight, Modifiers::NONE);
+    assert_eq!(app.keyboard.tab.as_ref(), Some(&b));
+    press_key(&mut app, &ctx, &mut time, Key::Enter, Modifiers::NONE);
+    assert_eq!(app.editor.path.as_ref(), Some(&b));
+    assert!(app.keyboard.area == Area::Editor);
+    press_key(&mut app, &ctx, &mut time, Key::W, Modifiers::CTRL);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert!(!app.tabs.order.contains(&b));
+    assert_eq!(app.editor.path.as_ref(), Some(&a));
+    assert!(app.editor.dirty());
+    press_key(&mut app, &ctx, &mut time, Key::W, Modifiers::CTRL);
+    assert!(matches!(app.editor.pending, Some(Action::CloseTab(_))));
+    press_key(&mut app, &ctx, &mut time, Key::Escape, Modifiers::NONE);
+    assert!(app.editor.pending.is_none());
+    press_key(&mut app, &ctx, &mut time, Key::Comma, Modifiers::CTRL);
+    assert!(app.preferences.open);
+    press_key(&mut app, &ctx, &mut time, Key::Escape, Modifiers::NONE);
+    assert!(!app.preferences.open);
+    assert!(app.editor.dirty());
+    app.keyboard.category = Some("__trash".into());
+    app.focus_area(Area::Categories, &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    press_key(&mut app, &ctx, &mut time, Key::Enter, Modifiers::NONE);
+    assert!(app.browser.view == crate::app::state::View::Trash);
+    assert!(app.editor.pending.is_none());
+    assert_eq!(app.editor.document.as_ref().unwrap().text, draft);
+}

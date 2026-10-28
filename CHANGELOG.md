@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## Unreleased
 
+- Keyboard workspace navigation uses Ctrl+Alt+arrows and F6/Shift+F6 with visible focus; categories and tabs have arrow/Enter navigation, category reordering respects the lock, and Ctrl+L/Ctrl+comma/Ctrl+W expose search, Settings and safe tab close. Standard editor Ctrl+arrows remain intact.
+
 - Focus file tabs retain separate drafts, cursor and scroll positions across categories; inactive documents keep their original policies and background auto-save. Tab/app closing checks all unsaved documents.
 
 - Settings use one separate native window with left-hand sections, resizing, Save/Cancel and safe restoration of the main editor context.

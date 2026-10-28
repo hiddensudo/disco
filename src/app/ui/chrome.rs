@@ -87,6 +87,14 @@ impl Disco {
                 Rect::from_center_size(r.center(), Vec2::splat(if slot == 3 { 19. } else { 15. })),
                 color(&t.text),
             );
+            if b.has_focus() {
+                ui.painter().rect_stroke(
+                    r.shrink(1.),
+                    t.radius,
+                    Stroke::new(1., color(&t.accent)),
+                    egui::StrokeKind::Inside,
+                );
+            }
             if b.clicked() {
                 match slot {
                     0 => self.request_close(ui.ctx()),
