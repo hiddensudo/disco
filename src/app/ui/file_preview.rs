@@ -1,7 +1,6 @@
 use crate::{
     app::{Disco, editor::Action, state::View},
     file_preview::Content,
-    format::{label, shorten},
     settings::{self, PreviewMode, Theme, color},
 };
 use eframe::egui::{self, Align2, FontId, Pos2, Rect, RichText, Sense, Stroke, Vec2};
@@ -124,22 +123,7 @@ impl Disco {
                         .inner_margin(egui::Margin::symmetric(12, 8)),
                 )
                 .show(ui, |ui| {
-                    let (head, _) = ui
-                        .allocate_exact_size(Vec2::new(ui.available_width(), 36.), Sense::hover());
-                    let title = self
-                        .browser
-                        .properties
-                        .as_ref()
-                        .filter(|p| !p.is_dir)
-                        .map(|p| label(&p.path))
-                        .unwrap_or_else(|| crate::tr!("Документ", "Document").into());
-                    ui.painter().with_clip_rect(head).text(
-                        head.left_center(),
-                        Align2::LEFT_CENTER,
-                        shorten(&title, ((head.width() - 8.) / 8.).max(5.) as usize),
-                        FontId::proportional(16.),
-                        color(&t.text),
-                    );
+                    self.document_tabs_ui(ui);
                     ui.add_space(4.);
                     let height = ui.available_height();
                     self.file_preview_ui(ui, false, height);
@@ -173,7 +157,7 @@ impl Disco {
     ) {
         let t = self.preferences.theme.clone();
         let path = self.file_preview.path.clone();
-        let read_only = self.category_read_only();
+        let read_only = self.editor_read_only();
         if path.is_none() {
             let (r, _) = ui.allocate_exact_size(
                 Vec2::new(ui.available_width(), available_height.max(100.)),

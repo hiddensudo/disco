@@ -474,7 +474,7 @@ mod tests {
             for dir in ["config", "bin", "data/applications", "files/child"] {
                 fs::create_dir_all(root.join(dir)).unwrap();
             }
-            fs::write(root.join("config/layout.toml"),"save_scan=false\nauto_refresh=false\nsearch_home_fallback=false\npreview_mode='workspace'\nopen_files_on_double_click=false\n").unwrap();
+            fs::write(root.join("config/layout.toml"),"save_scan=false\nauto_refresh=false\nsearch_home_fallback=false\npreview_mode='overview'\nopen_files_on_double_click=false\n").unwrap();
             fs::write(root.join("files/a.txt"), "original\n").unwrap();
             fs::write(root.join("files/b.txt"), "second\n").unwrap();
             fs::write(

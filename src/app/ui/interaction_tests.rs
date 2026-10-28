@@ -672,7 +672,7 @@ fn category_drag_lock_blank_editor_and_ctrl_tab_use_real_window_input() {
         vec![egui::Event::Text("!".into())],
     );
     assert_eq!(app.editor.document.as_ref().unwrap().text, "first\nlast λ!");
-    // Ctrl+Tab asks about the draft and never adds/removes indentation.
+    // Focus switches documents without losing the other tab's draft.
     press_key(
         &mut app,
         &ctx,
@@ -680,17 +680,23 @@ fn category_drag_lock_blank_editor_and_ctrl_tab_use_real_window_input() {
         egui::Key::Tab,
         egui::Modifiers::CTRL,
     );
-    assert!(matches!(&app.editor.pending, Some(Action::SelectFile { path, .. }) if path==&b));
-    assert_eq!(app.editor.path.as_ref(), Some(&a));
-    assert_eq!(app.editor.document.as_ref().unwrap().text, "first\nlast λ!");
-    press_key(
-        &mut app,
-        &ctx,
-        &mut time,
-        egui::Key::Escape,
-        egui::Modifiers::NONE,
-    );
+    wait_document(&mut app, &ctx, &mut time);
     assert!(app.editor.pending.is_none());
+    assert_eq!(app.editor.path.as_ref(), Some(&b));
+    assert_eq!(
+        app.tabs
+            .inactive
+            .get(&a)
+            .unwrap()
+            .editor
+            .document
+            .as_ref()
+            .unwrap()
+            .text,
+        "first\nlast λ!"
+    );
+    app.activate_tab(&a, &ctx);
+    wait_document(&mut app, &ctx, &mut time);
     app.save_editor(&ctx);
     wait_document(&mut app, &ctx, &mut time);
     ctx.memory_mut(|m| m.request_focus(id));
@@ -998,4 +1004,199 @@ fn detached_settings_save_cancel_and_reopen_keep_the_editor_draft() {
         original.categories_locked
     );
     assert_eq!(fs::read_to_string(file).unwrap(), "original");
+}
+
+#[test]
+fn focus_tabs_keep_drafts_cursors_policies_and_guard_all_closes() {
+    let Ok(root) = std::env::var("DISCO_TABS_FIXTURE") else {
+        let root = std::env::temp_dir().join(format!("disco-tabs-ui-{}", std::process::id()));
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::create_dir_all(root.join("files")).unwrap();
+        fs::write(root.join("files/a.rs"), "fn first() {}\n").unwrap();
+        fs::write(root.join("files/b.txt"), "second\n").unwrap();
+        fs::write(
+            root.join("config/layout.toml"),
+            "save_scan=false\nsearch_home_fallback=false\npreview_mode='focus'\nanimations=false\n",
+        )
+        .unwrap();
+        let out=Command::new(std::env::current_exe().unwrap()).args(["--exact","app::ui::interaction_tests::focus_tabs_keep_drafts_cursors_policies_and_guard_all_closes","--nocapture"])
+            .env("DISCO_TABS_FIXTURE",&root).env("DISCO_CONFIG_DIR",root.join("config")).env("XDG_DATA_HOME",root.join("data")).output().unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            out.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return;
+    };
+    let root = PathBuf::from(root);
+    let files = root.join("files");
+    let a = files.join("a.rs");
+    let b = files.join("b.txt");
+    let ctx = egui::Context::default();
+    let mut time = 0.;
+    let mut app = Disco::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+    let report = crate::scan::scan(&files, &crate::scan::Control::default(), |_| {}).unwrap();
+    app.scan.index = crate::index::Index::new(&report);
+    app.scan.report = Some(std::sync::Arc::new(report));
+    app.browser.root = files.display().to_string();
+    app.browser.category = Category::Documents;
+    app.expand_folder(0);
+    app.select_file(a.clone(), 4096);
+    wait_document(&mut app, &ctx, &mut time);
+    let id = Id::unique(("file-editor", Some(a.clone())));
+    ctx.memory_mut(|m| m.request_focus(id));
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Text("draft-a".into())],
+    );
+    let cursor = egui::TextEdit::load_state(&ctx, id)
+        .unwrap()
+        .cursor
+        .char_range();
+    let draft = app.editor.document.as_ref().unwrap().text.clone();
+    app.browser.category = Category::Games;
+    app.select_file(b.clone(), 4096);
+    wait_document(&mut app, &ctx, &mut time);
+    assert!(app.editor.pending.is_none());
+    assert_eq!(app.tabs.order.len(), 2);
+    assert_eq!(
+        app.tabs.inactive[&a].editor.document.as_ref().unwrap().text,
+        draft
+    );
+    frame(&mut app, &ctx, &mut time, vec![]);
+    click(&mut app, &ctx, &mut time, Id::unique(("document-tab", &a)));
+    assert_eq!(app.editor.origin, Some(Category::Documents));
+    assert_eq!(app.browser.category, Category::Documents);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, draft);
+    assert_eq!(
+        egui::TextEdit::load_state(&ctx, id)
+            .unwrap()
+            .cursor
+            .char_range(),
+        cursor
+    );
+    assert_eq!(
+        app.tabs.order.len(),
+        2,
+        "opening an existing tab never duplicates it"
+    );
+    app.browser.category = Category::Games;
+    app.browser.properties = None;
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert_eq!(
+        app.editor.path.as_ref(),
+        Some(&a),
+        "browsing another category keeps the document"
+    );
+    app.collections
+        .config
+        .items
+        .iter_mut()
+        .find(|c| c.category() == Category::Documents)
+        .unwrap()
+        .read_only = true;
+    assert!(
+        app.editor_read_only(),
+        "a tab retains its origin policy across category changes"
+    );
+    let before = app.editor.document.as_ref().unwrap().text.clone();
+    ctx.memory_mut(|m| m.request_focus(id));
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Paste("forbidden".into())],
+    );
+    assert_eq!(app.editor.document.as_ref().unwrap().text, before);
+    app.collections
+        .config
+        .items
+        .iter_mut()
+        .find(|c| c.category() == Category::Documents)
+        .unwrap()
+        .read_only = false;
+    // Closing a dirty tab offers confirmation. Escape retains both tabs and draft.
+    click(
+        &mut app,
+        &ctx,
+        &mut time,
+        Id::unique(("close-document-tab", &a)),
+    );
+    assert!(matches!(app.editor.pending,Some(Action::CloseTab(ref path)) if path==&a));
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        egui::Key::Escape,
+        egui::Modifiers::NONE,
+    );
+    assert_eq!(app.tabs.order.len(), 2);
+    assert!(app.editor.dirty());
+    // Auto-save also finishes for an inactive document, using its own category.
+    app.collections
+        .config
+        .items
+        .iter_mut()
+        .find(|c| c.category() == Category::Documents)
+        .unwrap()
+        .auto_save = true;
+    app.note_editor_change(&ctx);
+    app.activate_tab(&b, &ctx);
+    for _ in 0..25 {
+        frame(&mut app, &ctx, &mut time, vec![]);
+    }
+    let start = Instant::now();
+    while app.tabs.inactive[&a].editor.saving.is_some() && start.elapsed() < Duration::from_secs(3)
+    {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(fs::read_to_string(&a).unwrap(), draft);
+    assert!(!app.tabs.inactive[&a].editor.dirty());
+    app.activate_tab(&a, &ctx);
+    wait_document(&mut app, &ctx, &mut time);
+    app.collections
+        .config
+        .items
+        .iter_mut()
+        .find(|c| c.category() == Category::Documents)
+        .unwrap()
+        .auto_save = false;
+    app.editor
+        .document
+        .as_mut()
+        .unwrap()
+        .text
+        .push_str("unsaved");
+    app.activate_tab(&b, &ctx);
+    wait_document(&mut app, &ctx, &mut time);
+    // Native/app close must inspect inactive drafts as well as the active file.
+    app.request_close(&ctx);
+    assert_eq!(app.editor.path.as_ref(), Some(&a));
+    assert!(matches!(app.editor.pending, Some(Action::Close)));
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        egui::Key::Escape,
+        egui::Modifiers::NONE,
+    );
+    assert!(app.editor.dirty());
+    app.request_close_tab(&a, &ctx);
+    app.save_editor(&ctx);
+    let start = Instant::now();
+    while app.tabs.order.contains(&a) && start.elapsed() < Duration::from_secs(3) {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(!app.tabs.order.contains(&a));
+    assert_eq!(app.editor.path.as_ref(), Some(&b));
+    assert!(fs::read_to_string(&a).unwrap().ends_with("unsaved"));
+    app.request_close_tab(&b, &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert!(app.tabs.order.is_empty() && app.editor.path.is_none());
 }

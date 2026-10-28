@@ -64,6 +64,10 @@ cargo test --locked
 python3 -m unittest discover -s tests
 ```
 
+## Focus tabs
+
+Focus opens files in tabs. Switching files or browsing another category keeps each draft, cursor and scroll position. An existing file activates its existing tab; middle-click or × closes a tab. Unsaved tabs show a dot and ask before closing; closing the app checks inactive drafts too. Auto-save and read-only policies follow the category where the document was opened. Background auto-save continues for inactive text tabs. Only the visible image keeps a decoded texture; up to 64 document tabs can remain open.
+
 ## Settings window
 
 Settings open in a separate resizable window with sections on the left. Reopening activates the same window and keeps its draft. Save applies the settings permanently; Cancel, Escape or the close button restores the previous settings. Your file draft, cursor and folder context stay in the main window.
@@ -129,7 +133,7 @@ In the file list/tree:
 | Ctrl+Tab / Ctrl+Shift+Tab | Preview the next / previous visible file, skipping folders |
 | Escape | Leave text editing or clear the search without changing layout |
 
-List navigation shortcuts are disabled while typing in an editor or search field. **Ctrl+S** remains the save shortcut. **Ctrl+Tab / Ctrl+Shift+Tab** also work inside the editor and search: they follow the current tree/list order, skip collapsed folders, and stop at the first/last file. Unsaved changes trigger the ordinary Save/Discard/Cancel confirmation. They switch previews, not tabs.
+List navigation shortcuts are disabled while typing in an editor or search field. **Ctrl+S** remains the save shortcut. **Ctrl+Tab / Ctrl+Shift+Tab** also work inside the editor and search: they follow the current tree/list order, skip collapsed folders, and stop at the first/last file. In Overview, unsaved changes trigger Save/Discard/Cancel. In Focus, the document remains in its tab while the adjacent file becomes active. The shortcuts follow the file list, not tab order.
 
 **Ctrl+S** keeps the editor focused, including while the save runs in the background. You can keep typing; any newer changes remain unsaved until the next save. System **Ctrl+C / Ctrl+X / Ctrl+V** works in editable text fields on Wayland and X11.
 

@@ -24,6 +24,7 @@ mod jobs;
 mod new_file;
 mod scope;
 mod state;
+mod tabs;
 mod ui;
 use self::{
     state::{BrowserState, DeletionState, DriveState, PreferencesState, ScanState},
@@ -42,6 +43,7 @@ pub(crate) struct Disco {
     files: crate::directory_files::Files,
     file_preview: crate::file_preview::Preview,
     editor: editor::Editor,
+    tabs: tabs::Tabs,
     scoped: scope::Scope,
     search: crate::file_search::Search,
     live: crate::live_files::LiveFiles,
@@ -54,7 +56,7 @@ pub(crate) struct Disco {
     started: Instant,
     demo: bool,
     screenshot: Option<String>,
-    qa_preview_file: Option<PathBuf>,
+    qa_preview_files: std::collections::VecDeque<PathBuf>,
     shots: usize,
 }
 impl Disco {
@@ -212,6 +214,7 @@ impl Disco {
             live: crate::live_files::LiveFiles::default(),
             syntax: crate::syntax::Syntax::default(),
             editor: editor::Editor::default(),
+            tabs: tabs::Tabs::default(),
             opening_file: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             purge_targets: None,
             purge_fresh: false,
@@ -219,9 +222,14 @@ impl Disco {
             started: Instant::now(),
             demo,
             screenshot: argument("--screenshot"),
-            qa_preview_file: argument("--screenshot")
-                .and_then(|_| argument("--preview-file"))
-                .map(PathBuf::from),
+            qa_preview_files: if argument("--screenshot").is_some() {
+                args.windows(2)
+                    .filter(|pair| pair[0] == "--preview-file")
+                    .map(|pair| PathBuf::from(&pair[1]))
+                    .collect()
+            } else {
+                Default::default()
+            },
             shots: 0,
         };
         if demo {
@@ -292,7 +300,9 @@ impl eframe::App for Disco {
         self.poll_scope(ui.ctx());
         self.update_collections();
         if self.scan.restore_requested_root.is_none() && !self.scan.busy {
-            if let Some(path) = self.qa_preview_file.take() {
+            if (self.editor.path.is_none() || self.file_preview.content.is_some())
+                && let Some(path) = self.qa_preview_files.pop_front()
+            {
                 if let Some((report, parent)) = self.scan.report.as_ref().and_then(|r| {
                     r.folders
                         .iter()

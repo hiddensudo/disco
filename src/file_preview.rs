@@ -220,6 +220,12 @@ impl Preview {
         self.zoom = 1.;
         self.waiting_since = self.path.as_ref().map(|_| Instant::now());
     }
+    pub fn restore_text(&mut self, path: std::path::PathBuf, revision: u64, content: Content) {
+        self.select(Some(path), revision);
+        self.waiting_since = None;
+        self.job = None;
+        self.content = Some(content);
+    }
     pub fn poll(&mut self, ctx: &eframe::egui::Context) {
         if let Some(rx) = &self.job {
             match rx.try_recv() {

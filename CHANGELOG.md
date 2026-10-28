@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## Unreleased
 
+- Focus file tabs retain separate drafts, cursor and scroll positions across categories; inactive documents keep their original policies and background auto-save. Tab/app closing checks all unsaved documents.
+
 - Settings use one separate native window with left-hand sections, resizing, Save/Cancel and safe restoration of the main editor context.
 
 - Optional per-category auto-save after one second without typing; background writes preserve focus, read-only rules and conflicting drafts. Saved/unsaved/saving states are visible in the editor.

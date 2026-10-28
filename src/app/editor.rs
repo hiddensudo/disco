@@ -73,22 +73,24 @@ pub(super) enum Action {
         automatic: bool,
     },
     Delete(Vec<(PathBuf, u64)>),
+    CloseTab(PathBuf),
     Close,
 }
 #[derive(Default)]
 pub(super) struct Editor {
     pub path: Option<PathBuf>,
+    pub origin: Option<Category>,
     pub document: Option<Document>,
     pub focused: bool,
     pub focus_on_load: bool,
-    keep_cursor: bool,
+    pub(super) keep_cursor: bool,
     preview_disk: Option<Stamp>,
     pub pending: Option<Action>,
     pub error: String,
     pub confirm_fresh: bool,
     pub saving: Option<Receiver<Result<(Stamp, Document), String>>>,
     bookmark: Option<Bookmark>,
-    revision: u64,
+    pub(super) revision: u64,
     pub auto_save_at: Option<f64>,
     pub last_saved_at: Option<f64>,
 }
@@ -97,13 +99,59 @@ impl Editor {
         self.document.as_ref().is_some_and(Document::dirty)
     }
 }
+impl Editor {
+    pub(super) fn save_in_background(&mut self, ctx: &egui::Context) {
+        if self.saving.is_some() || !self.dirty() {
+            return;
+        }
+        let (Some(path), Some(document)) = (self.path.clone(), self.document.clone()) else {
+            return;
+        };
+        self.error.clear();
+        self.auto_save_at = None;
+        let (tx, rx) = mpsc::channel();
+        self.saving = Some(rx);
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let result = crate::text_editor::save(&path, &document).map(|stamp| (stamp, document));
+            let _ = tx.send(result);
+            ctx.request_repaint();
+        });
+    }
+    pub(super) fn poll_save(&mut self, ctx: &egui::Context) -> Option<bool> {
+        let result = self.saving.as_ref().and_then(|rx| match rx.try_recv() {
+            Ok(value) => Some(value),
+            Err(mpsc::TryRecvError::Empty) => None,
+            Err(mpsc::TryRecvError::Disconnected) => Some(Err(crate::tr!(
+                "Не вдалося зберегти файл",
+                "Could not save the file"
+            )
+            .into())),
+        })?;
+        self.saving = None;
+        match result {
+            Ok((stamp, saved)) => {
+                if let Some(doc) = &mut self.document {
+                    doc.accept_saved(stamp, &saved);
+                }
+                self.last_saved_at = Some(ctx.input(|i| i.time));
+                Some(true)
+            }
+            Err(error) => {
+                self.error = error;
+                Some(false)
+            }
+        }
+    }
+}
+
 impl Disco {
     pub(in crate::app) fn auto_save_enabled(&self) -> bool {
-        !self.category_read_only()
+        !self.editor_read_only()
             && self
                 .collections
                 .config
-                .get(self.browser.category)
+                .get(self.editor_category())
                 .map(|c| c.auto_save)
                 .unwrap_or(self.preferences.layout.all_files_auto_save)
     }
@@ -169,8 +217,11 @@ impl Disco {
         ctx.request_repaint();
     }
     pub(in crate::app) fn sync_file_preview(&mut self, ctx: &egui::Context) {
+        self.poll_tabs(ctx);
         self.poll_editor(ctx);
-        let desired = if self.preferences.layout.preview_mode != PreviewMode::Off
+        let focus_tabs = self.preferences.layout.preview_mode == PreviewMode::Focus
+            && self.browser.view != View::Trash;
+        let mut desired = if self.preferences.layout.preview_mode != PreviewMode::Off
             && self.browser.view != View::Trash
         {
             self.browser
@@ -181,8 +232,23 @@ impl Disco {
         } else {
             None
         };
+        let restore_cached = !self.editor.dirty()
+            && self.editor.saving.is_none()
+            && desired
+                .as_ref()
+                .is_some_and(|path| self.tabs.inactive.contains_key(path));
+        if focus_tabs || restore_cached {
+            if focus_tabs {
+                desired = desired.or_else(|| self.editor.path.clone());
+            }
+            if let Some(path) = &desired {
+                if !self.open_focus_document(path.clone(), ctx) {
+                    return;
+                }
+            }
+        }
         let protected = self.editor.dirty() || self.editor.saving.is_some();
-        if protected && desired != self.editor.path {
+        if !focus_tabs && protected && desired != self.editor.path {
             if self.editor.pending.is_none() {
                 self.editor.pending = Some(Action::Transition(Bookmark::capture(self)));
                 self.editor.confirm_fresh = true;
@@ -192,7 +258,7 @@ impl Disco {
             }
             return;
         }
-        if protected {
+        if protected && !focus_tabs {
             if let Some(bookmark) = &mut self.editor.bookmark {
                 bookmark.table = self.browser.table_root;
                 bookmark.mode = self.preferences.layout.preview_mode;
@@ -200,13 +266,17 @@ impl Disco {
             }
             return;
         }
-        if self.editor.path != desired || self.editor.revision != self.scan.report_revision {
+        if !protected
+            && (self.editor.path != desired
+                || (!focus_tabs && self.editor.revision != self.scan.report_revision))
+        {
             self.editor.auto_save_at = None;
             self.editor.last_saved_at = None;
             self.editor.document = None;
             self.editor.error.clear();
             self.editor.bookmark = None;
             self.editor.path = desired.clone();
+            self.editor.origin = Some(self.browser.category);
             self.editor.preview_disk = desired
                 .as_ref()
                 .and_then(|path| std::fs::symlink_metadata(path).ok())
@@ -247,7 +317,12 @@ impl Disco {
         }
     }
     pub(in crate::app) fn editor_action(&mut self, action: Action, ctx: &egui::Context) {
-        if self.editor.dirty() || self.editor.saving.is_some() {
+        let browsing = self.preferences.layout.preview_mode == PreviewMode::Focus
+            && matches!(
+                action,
+                Action::SelectFile { .. } | Action::Navigate(_) | Action::NewFile(_)
+            );
+        if !browsing && (self.editor.dirty() || self.editor.saving.is_some()) {
             self.editor.pending = Some(action);
             self.editor.confirm_fresh = true;
             ctx.request_repaint();
@@ -292,12 +367,13 @@ impl Disco {
             Action::Delete(targets) => {
                 self.request_delete(targets);
             }
-            Action::Close => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            Action::CloseTab(path) => self.close_tab_now(&path, ctx),
+            Action::Close => self.request_close(ctx),
         }
         ctx.request_repaint();
     }
     pub(in crate::app) fn save_editor(&mut self, ctx: &egui::Context) {
-        if self.category_read_only() {
+        if self.editor_read_only() {
             self.editor.error = crate::tr!(
                 "Редагування заборонене для цієї категорії",
                 "Editing is disabled for this category"
@@ -308,73 +384,35 @@ impl Disco {
         if self.demo || self.editor.saving.is_some() || !self.editor.dirty() {
             return;
         }
-        let Some(path) = self.editor.path.clone() else {
-            return;
-        };
-        let Some(document) = self.editor.document.clone() else {
-            return;
-        };
-        self.editor.error.clear();
-        self.editor.auto_save_at = None;
-        let (tx, rx) = mpsc::channel();
-        self.editor.saving = Some(rx);
-        let ctx = ctx.clone();
-        std::thread::spawn(move || {
-            let result = crate::text_editor::save(&path, &document).map(|stamp| (stamp, document));
-            let _ = tx.send(result);
-            ctx.request_repaint();
-        });
+        self.editor.save_in_background(ctx);
     }
     fn poll_editor(&mut self, ctx: &egui::Context) {
-        let result = self
-            .editor
-            .saving
-            .as_ref()
-            .and_then(|rx| match rx.try_recv() {
-                Ok(result) => Some(result),
-                Err(mpsc::TryRecvError::Empty) => None,
-                Err(mpsc::TryRecvError::Disconnected) => Some(Err(crate::tr!(
-                    "Не вдалося зберегти файл",
-                    "Could not save the file"
-                )
-                .into())),
-            });
-        if let Some(result) = result {
-            self.editor.saving = None;
-            match result {
-                Ok((stamp, saved)) => {
-                    self.editor.last_saved_at = Some(ctx.input(|i| i.time));
-                    if let Some(doc) = &mut self.editor.document {
-                        doc.accept_saved(stamp, &saved);
-                    }
-                    if let Some(path) = self.editor.path.clone() {
-                        if let Ok(m) = std::fs::metadata(&path) {
-                            if self
-                                .browser
-                                .properties
-                                .as_ref()
-                                .is_some_and(|p| p.path == path)
-                            {
-                                self.browser.properties = Some(Properties::load(
-                                    path.clone(),
-                                    crate::scan::allocated(&m),
-                                    None,
-                                    false,
-                                ));
-                            }
-                        }
-                        if let Some(parent) = path.parent() {
-                            self.files.invalidate(parent);
-                        }
-                    }
-                    self.message = crate::tr!("Файл збережено", "File saved").into();
-                    if !self.editor.dirty() {
-                        if let Some(action) = self.editor.pending.take() {
-                            self.apply_editor_action(action, ctx);
-                        }
+        if self.editor.poll_save(ctx) == Some(true) {
+            if let Some(path) = self.editor.path.clone() {
+                if let Ok(m) = std::fs::metadata(&path) {
+                    if self
+                        .browser
+                        .properties
+                        .as_ref()
+                        .is_some_and(|p| p.path == path)
+                    {
+                        self.browser.properties = Some(Properties::load(
+                            path.clone(),
+                            crate::scan::allocated(&m),
+                            None,
+                            false,
+                        ));
                     }
                 }
-                Err(error) => self.editor.error = error,
+                if let Some(parent) = path.parent() {
+                    self.files.invalidate(parent);
+                }
+            }
+            self.message = crate::tr!("Файл збережено", "File saved").into();
+            if !self.editor.dirty() {
+                if let Some(action) = self.editor.pending.take() {
+                    self.apply_editor_action(action, ctx);
+                }
             }
         }
     }
@@ -402,14 +440,27 @@ impl Disco {
         true
     }
     pub(in crate::app) fn request_close(&mut self, ctx: &egui::Context) {
-        self.editor_action(Action::Close, ctx);
+        if self.editor.dirty() || self.editor.saving.is_some() {
+            self.editor_action(Action::Close, ctx);
+        } else if let Some(path) = self
+            .tabs
+            .inactive
+            .iter()
+            .find(|(_, tab)| tab.editor.dirty() || tab.editor.saving.is_some())
+            .map(|(path, _)| path.clone())
+        {
+            self.activate_tab(&path, ctx);
+            self.editor_action(Action::Close, ctx);
+        } else {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
     }
     pub(in crate::app) fn guard_native_close(&mut self, ctx: &egui::Context) {
         if ctx.input(|i| i.viewport().close_requested())
-            && (self.editor.dirty() || self.editor.saving.is_some())
+            && (self.editor.dirty() || self.editor.saving.is_some() || self.tabs.has_unsaved())
         {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.editor_action(Action::Close, ctx);
+            self.request_close(ctx);
         }
     }
 }
