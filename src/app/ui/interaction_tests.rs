@@ -917,3 +917,85 @@ fn autosave_debounces_by_category_and_preserves_conflicting_drafts() {
     assert!(restored.config.get(Category::Documents).unwrap().auto_save);
     assert!(!restored.config.get(Category::Games).unwrap().auto_save);
 }
+
+#[test]
+fn detached_settings_save_cancel_and_reopen_keep_the_editor_draft() {
+    let Ok(root) = std::env::var("DISCO_SETTINGS_FIXTURE") else {
+        let root = std::env::temp_dir().join(format!("disco-settings-ui-{}", std::process::id()));
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::create_dir_all(root.join("files")).unwrap();
+        fs::write(root.join("files/a.txt"), "original").unwrap();
+        fs::write(
+            root.join("config/layout.toml"),
+            "save_scan=false\npreview_mode='focus'\nanimations=false\n",
+        )
+        .unwrap();
+        let out=Command::new(std::env::current_exe().unwrap()).args(["--exact","app::ui::interaction_tests::detached_settings_save_cancel_and_reopen_keep_the_editor_draft","--nocapture"])
+            .env("DISCO_SETTINGS_FIXTURE",&root).env("DISCO_CONFIG_DIR",root.join("config")).env("XDG_DATA_HOME",root.join("data")).output().unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            out.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return;
+    };
+    let root = PathBuf::from(root);
+    let file = root.join("files/a.txt");
+    let ctx = egui::Context::default();
+    let mut time = 0.;
+    let mut app = Disco::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+    app.select_file(file.clone(), 4096);
+    wait_document(&mut app, &ctx, &mut time);
+    app.editor.document.as_mut().unwrap().text.push_str("draft");
+    let original = app.preferences.layout.clone();
+    click(&mut app, &ctx, &mut time, Id::unique("open-settings"));
+    assert!(app.preferences.open);
+    app.preferences.layout.categories_locked = !original.categories_locked;
+    app.preferences.page = 1;
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert!(ctx.read_response(Id::unique(("settings_nav", 1))).is_some());
+    click(&mut app, &ctx, &mut time, Id::unique("open-settings"));
+    assert_ne!(
+        app.preferences.layout.categories_locked, original.categories_locked,
+        "reopening does not reset preview changes"
+    );
+    click(
+        &mut app,
+        &ctx,
+        &mut time,
+        Id::unique("settings-cancel-bounds"),
+    );
+    assert!(!app.preferences.open);
+    assert_eq!(app.preferences.layout, original);
+    assert!(app.editor.dirty());
+    assert_eq!(app.editor.path.as_ref(), Some(&file));
+    click(&mut app, &ctx, &mut time, Id::unique("open-settings"));
+    app.preferences.layout.categories_locked = !original.categories_locked;
+    frame(&mut app, &ctx, &mut time, vec![]);
+    click(
+        &mut app,
+        &ctx,
+        &mut time,
+        Id::unique("settings-save-bounds"),
+    );
+    assert!(!app.preferences.open);
+    assert!(app.editor.dirty());
+    assert_ne!(
+        settings::read_layout(&root.join("config/layout.toml"))
+            .unwrap()
+            .categories_locked,
+        original.categories_locked
+    );
+    click(&mut app, &ctx, &mut time, Id::unique("open-settings"));
+    app.preferences.layout.categories_locked = original.categories_locked;
+    frame(&mut app, &ctx, &mut time, vec![]);
+    click(&mut app, &ctx, &mut time, Id::unique("close_preferences"));
+    assert!(!app.preferences.open);
+    assert_ne!(
+        app.preferences.layout.categories_locked,
+        original.categories_locked
+    );
+    assert_eq!(fs::read_to_string(file).unwrap(), "original");
+}

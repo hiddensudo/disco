@@ -59,7 +59,15 @@ impl Disco {
                 Vec2::new(42., 36.),
             );
             let b = ui
-                .interact(r, ui.scope_id().with(("chrome", slot)), Sense::click())
+                .interact(
+                    r,
+                    if slot == 3 {
+                        egui::Id::unique("open-settings")
+                    } else {
+                        ui.scope_id().with(("chrome", slot))
+                    },
+                    Sense::click(),
+                )
                 .on_hover_text(help);
             let hover = motion::hover(ui, ("chrome-hover", slot), b.hovered());
             if hover > 0. {
@@ -90,6 +98,12 @@ impl Disco {
                     2 => ui
                         .ctx()
                         .send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
+                    _ if self.preferences.open => {
+                        ui.ctx().send_viewport_cmd_to(
+                            Self::settings_viewport_id(),
+                            egui::ViewportCommand::Focus,
+                        );
+                    }
                     _ => {
                         self.preferences.snapshot = Some((
                             self.preferences.theme.clone(),

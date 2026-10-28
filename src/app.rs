@@ -71,6 +71,12 @@ impl Disco {
         // QA-only override: exercise fractional DPI in screenshots without
         // changing the user's desktop settings or stored application layout.
         if argument("--screenshot").is_some() {
+            // The glow backend does not drain screenshot requests for immediate
+            // child windows. Exercise the identical settings UI in its embedded
+            // fallback for QA captures; normal launches always use native windows.
+            if argument("--settings").is_some() {
+                cc.egui_ctx.set_embed_viewports(true);
+            }
             if let Ok(scale) = std::env::var("DISCO_QA_SCALE")
                 .unwrap_or_default()
                 .parse::<f32>()
@@ -247,6 +253,33 @@ impl Disco {
         }
         s.apply_style(&cc.egui_ctx);
         s
+    }
+}
+impl Disco {
+    fn capture_qa(&mut self, ctx: &egui::Context) {
+        if let Some(path) = self.screenshot.clone() {
+            if self.shots == 0
+                && self.scan.restore_requested_root.is_none()
+                && self.started.elapsed() > Duration::from_millis(1500)
+            {
+                self.shots = 1;
+                let c = ctx.clone();
+                ctx.request_screenshot(move |image| {
+                    let data: Vec<u8> = image.pixels.iter().flat_map(|p| p.to_array()).collect();
+                    if let Err(e) = image::save_buffer(
+                        &path,
+                        &data,
+                        image.size[0] as u32,
+                        image.size[1] as u32,
+                        image::ColorType::Rgba8,
+                    ) {
+                        eprintln!("{e}");
+                    }
+                    c.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Close);
+                });
+            }
+            ctx.request_repaint_after(Duration::from_millis(120));
+        }
     }
 }
 impl eframe::App for Disco {
@@ -468,30 +501,11 @@ impl eframe::App for Disco {
             probe.tick(ui, frame.info().cpu_usage);
         }
         resize_edges(ui);
-        if let Some(path) = self.screenshot.clone() {
-            if self.shots == 0
-                && self.scan.restore_requested_root.is_none()
-                && self.started.elapsed() > Duration::from_millis(1500)
-            {
-                self.shots = 1;
-                let c = ctx.clone();
-                ctx.request_screenshot(move |image| {
-                    let data: Vec<u8> = image.pixels.iter().flat_map(|p| p.to_array()).collect();
-                    if let Err(e) = image::save_buffer(
-                        &path,
-                        &data,
-                        image.size[0] as u32,
-                        image.size[1] as u32,
-                        image::ColorType::Rgba8,
-                    ) {
-                        eprintln!("{e}");
-                    }
-                    c.send_viewport_cmd(egui::ViewportCommand::Close);
-                });
-            }
-            ctx.request_repaint_after(Duration::from_millis(120));
+        if !self.preferences.open {
+            self.capture_qa(&ctx);
         }
     }
+
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.scan.control.cancel.store(true, Ordering::Relaxed);
     }

@@ -64,6 +64,10 @@ cargo test --locked
 python3 -m unittest discover -s tests
 ```
 
+## Settings window
+
+Settings open in a separate resizable window with sections on the left. Reopening activates the same window and keeps its draft. Save applies the settings permanently; Cancel, Escape or the close button restores the previous settings. Your file draft, cursor and folder context stay in the main window.
+
 ## Auto-save
 
 Auto-save is off by default. Enable it per category under **Settings → Categories**, or for All folders under **Interface → Panels, Home & search**. Changes are saved after one second without typing, using the same background writer and conflict checks as Ctrl+S. The editor stays focused. Read-only categories never write; a failed save keeps the draft and shows the error without repeatedly retrying. Save/Discard/Cancel still protects a draft when leaving before its deadline.

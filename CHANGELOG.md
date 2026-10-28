@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## Unreleased
 
+- Settings use one separate native window with left-hand sections, resizing, Save/Cancel and safe restoration of the main editor context.
+
 - Optional per-category auto-save after one second without typing; background writes preserve focus, read-only rules and conflicting drafts. Saved/unsaved/saving states are visible in the editor.
 
 ## 0.2.0 — 2026-10-28
