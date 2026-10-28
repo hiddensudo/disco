@@ -22,6 +22,7 @@ use std::time::{Duration, Instant};
 
 mod editor;
 mod jobs;
+mod new_file;
 mod state;
 mod ui;
 use self::{
@@ -30,6 +31,7 @@ use self::{
 };
 pub(crate) struct Disco {
     art: art::Art,
+    collections: crate::categories::Manager,
     frame_probe: Option<frame_probe::FrameProbe>,
     scan: ScanState,
     browser: BrowserState,
@@ -40,6 +42,7 @@ pub(crate) struct Disco {
     files: crate::directory_files::Files,
     file_preview: crate::file_preview::Preview,
     editor: editor::Editor,
+    new_file: Option<new_file::Draft>,
     opening_file: Arc<std::sync::atomic::AtomicBool>,
     purge_targets: Option<Vec<recycle::Item>>,
     purge_fresh: bool,
@@ -73,7 +76,8 @@ impl Disco {
                 }
             }
         }
-        let (theme, layout, message) = settings::load();
+        let (theme, mut layout, message) = settings::load();
+        layout.normalize_file_mode();
         i18n::set_current(layout.language);
         let root = argument("--folder")
             .unwrap_or_else(|| std::env::var("HOME").unwrap_or_else(|_| "/home".into()));
@@ -109,14 +113,15 @@ impl Disco {
                 true,
             )
         });
-        let settings_page = if argument("--settings").as_deref() == Some("layout") {
-            1
-        } else {
-            0
+        let settings_page = match argument("--settings").as_deref() {
+            Some("layout") => 1,
+            Some("categories") => 2,
+            _ => 0,
         };
         let settings_open = argument("--settings").is_some();
         let mut s = Self {
             art: art::Art::load(&cc.egui_ctx),
+            collections: crate::categories::Manager::load(),
             frame_probe: if demo {
                 argument("--frame-probe")
                     .map(|p| frame_probe::FrameProbe::new(p.into(), index.folder_count()))
@@ -192,6 +197,7 @@ impl Disco {
             recycle: recycle::Bin::default(),
             files: crate::directory_files::Files::default(),
             file_preview: crate::file_preview::Preview::default(),
+            new_file: None,
             editor: editor::Editor::default(),
             opening_file: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             purge_targets: None,
@@ -238,10 +244,12 @@ impl Disco {
 }
 impl eframe::App for Disco {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        self.preferences.layout.normalize_file_mode();
         self.guard_native_close(ui.ctx());
         self.editor.focused = false;
         self.browser.text_input_focused = false;
         self.poll();
+        self.update_collections();
         if self.scan.restore_requested_root.is_none() && !self.scan.busy {
             if let Some(path) = self.qa_preview_file.take() {
                 if let Some((report, parent)) = self.scan.report.as_ref().and_then(|r| {
@@ -266,6 +274,7 @@ impl eframe::App for Disco {
             }
         }
         self.files.poll(self.scan.report_revision);
+        self.poll_new_file(ui.ctx());
         self.sync_file_preview(ui.ctx());
         if let Some(result) = self.recycle.poll(ui.ctx()) {
             self.refresh_drive();
@@ -292,6 +301,7 @@ impl eframe::App for Disco {
             && !self.scan.busy
             && !self.recycle.busy
             && self.editor.pending.is_none()
+            && self.new_file.is_none()
             && self.editor.saving.is_none()
         {
             let (back, forward) = ui.input(|i| {
@@ -334,46 +344,33 @@ impl eframe::App for Disco {
             .show(ui, |ui| self.footer(ui));
         if self.preferences.layout.categories {
             egui::Panel::left("categories")
-                .exact_size(self.preferences.layout.category_width)
+                .exact_size(if self.preferences.layout.category_labels {
+                    self.preferences.layout.category_width
+                } else {
+                    52.
+                })
                 .resizable(false)
                 .frame(egui::Frame::new().fill(color(&t.panel)).inner_margin(0.))
                 .show(ui, |ui| self.sidebar(ui));
         }
-        if self.preferences.layout.properties
-            || (self.preferences.layout.preview_mode == settings::PreviewMode::Inspector
-                && self.browser.properties.as_ref().is_some_and(|p| !p.is_dir))
+        if self.preferences.layout.preview_mode == settings::PreviewMode::Overview
+            || self.browser.view == View::Trash
         {
-            let inspector_width =
-                if self.preferences.layout.preview_mode == settings::PreviewMode::Workspace {
-                    self.preferences
-                        .layout
-                        .property_width
-                        .min((ui.available_width() - 570.).max(240.))
-                } else {
-                    self.preferences.layout.property_width
-                };
-            egui::Panel::right("inspector")
-                .exact_size(inspector_width)
-                .resizable(false)
-                .frame(
-                    egui::Frame::new()
-                        .fill(color(&t.panel))
-                        .inner_margin(egui::Margin::symmetric(18, 12)),
-                )
-                .show(ui, |ui| self.inspector(ui));
+            self.show_inspector_panel(ui);
         }
         egui::CentralPanel::default()
-            .frame(
-                egui::Frame::new()
-                    .fill(color(&t.background))
-                    .inner_margin(egui::Margin::symmetric(12, 8)),
-            )
+            .frame(egui::Frame::new().fill(color(&t.background)).inner_margin(
+                if self.preferences.layout.preview_mode == settings::PreviewMode::Focus {
+                    egui::Margin::ZERO
+                } else {
+                    egui::Margin::symmetric(12, 8)
+                },
+            ))
             .show(ui, |ui| {
                 if self.browser.view == View::Trash {
                     self.recycle_content(ui);
                     return;
                 }
-                self.scope_controls(ui);
                 if !self.preferences.layout.categories {
                     ui.horizontal(|ui| {
                         for cat in [
@@ -395,7 +392,6 @@ impl eframe::App for Disco {
                         }
                     });
                 }
-                ui.add_space(8.);
                 let enter = motion::enter(
                     ui,
                     "content-enter",
@@ -425,6 +421,7 @@ impl eframe::App for Disco {
         self.bin_confirmation(&ctx);
         self.settings_window(&ctx);
         self.editor_confirmation(&ctx);
+        self.new_file_dialog(&ctx);
         if i18n::current() != self.preferences.layout.language {
             i18n::set_current(self.preferences.layout.language);
             self.message.clear();
@@ -445,6 +442,7 @@ impl eframe::App for Disco {
             && !self.editor.dirty()
             && self.editor.saving.is_none()
             && self.editor.pending.is_none()
+            && self.new_file.is_none()
             && self.browser.selected.is_empty()
             && self.browser.view != View::Duplicates
             && self.scan.report.as_ref().is_some_and(|r| {

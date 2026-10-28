@@ -1,13 +1,12 @@
 use crate::app::Disco;
 use crate::app::state::{NavState, View};
-use crate::app::ui::widgets::{mix, visual_button};
-use crate::art;
+use crate::app::ui::widgets::visual_button;
 use crate::filesystem::date;
 use crate::format::display_size;
 use crate::index::Category;
 use crate::motion;
 use crate::settings::color;
-use eframe::egui::{self, Align2, Color32 as C, FontId, Pos2, Rect, RichText, Sense, Vec2};
+use eframe::egui::{self, FontId, Pos2, Rect, RichText, Sense, Vec2};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -29,7 +28,13 @@ impl Disco {
         };
         if let Some(target) = target {
             self.browser.view = target.view;
-            self.browser.category = target.category;
+            self.browser.category = if matches!(target.category, Category::Custom(_))
+                && self.collections.config.get(target.category).is_none()
+            {
+                Category::All
+            } else {
+                target.category
+            };
             self.browser.table_root = target.folder;
             self.browser.filter.clear();
             self.browser.properties = None;
@@ -39,10 +44,42 @@ impl Disco {
             }
         }
     }
+    pub(in crate::app) fn breadcrumb_directory(&self) -> PathBuf {
+        if let Some(p) = &self.browser.properties {
+            if p.is_dir {
+                return p.path.clone();
+            }
+            if let Some(parent) = p.path.parent() {
+                return parent.to_path_buf();
+            }
+        }
+        self.browser
+            .table_root
+            .and_then(|id| {
+                self.scan
+                    .report
+                    .as_ref()
+                    .and_then(|r| r.folders.get(id))
+                    .map(|f| f.path.clone())
+            })
+            .or_else(|| {
+                self.scan
+                    .index
+                    .roots(self.browser.category)
+                    .first()
+                    .and_then(|id| self.scan.report.as_ref().and_then(|r| r.folders.get(*id)))
+                    .map(|f| f.path.clone())
+            })
+            .unwrap_or_else(|| PathBuf::from(&self.browser.root))
+    }
     pub(in crate::app) fn scope_controls(&mut self, ui: &mut egui::Ui) {
         let t = self.preferences.theme.clone();
         let width = ui.available_width();
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 36.), Sense::hover());
+        let narrow = width < 600.;
+        let (rect, _) = ui.allocate_exact_size(
+            Vec2::new(width, if narrow { 76. } else { 36. }),
+            Sense::hover(),
+        );
         for (offset, icon, forward, enabled, help) in [
             (
                 0.,
@@ -92,7 +129,7 @@ impl Disco {
         }
         let home_rect = Rect::from_min_size(rect.min + Vec2::new(68., 0.), Vec2::new(28., 34.));
         let home = ui
-            .interact(home_rect, ui.scope_id().with("root_folder"), Sense::click())
+            .interact(home_rect, egui::Id::unique("folder-root"), Sense::click())
             .on_hover_text(crate::tr!(
                 "Усі папки · корінь сканування",
                 "All folders · scan root"
@@ -112,97 +149,119 @@ impl Disco {
             self.browser.table_root = None;
             self.browser.view = View::Folders;
             self.expand_folder(0);
+            self.browser.properties = None;
+            self.select_folder(0);
             self.browser.filter.clear();
+            ui.ctx().request_repaint();
         }
-        let path = self
+        let path = self.breadcrumb_directory();
+        let scan_width = if narrow { 34. } else { 145. };
+        let scan = Rect::from_min_size(
+            Pos2::new(
+                rect.right() - scan_width,
+                rect.top() + if narrow { 40. } else { 0. },
+            ),
+            Vec2::new(scan_width, 34.),
+        );
+        let search = if narrow {
+            Rect::from_min_max(
+                Pos2::new(rect.left(), rect.top() + 40.),
+                Pos2::new(scan.left() - 50., rect.top() + 74.),
+            )
+        } else {
+            Rect::from_min_max(
+                Pos2::new(scan.left() - 249., rect.top()),
+                Pos2::new(scan.left() - 50., rect.top() + 34.),
+            )
+        };
+        let crumb_rect = Rect::from_min_max(
+            rect.min + Vec2::new(106., 0.),
+            Pos2::new(
+                if narrow {
+                    rect.right()
+                } else {
+                    search.left() - 8.
+                },
+                rect.top() + 36.,
+            ),
+        );
+        self.breadcrumb_path(ui, crumb_rect, &path);
+        // Semantic bounds keep narrow-panel spacing testable without pixel guesses.
+        ui.interact(rect, egui::Id::unique("folder-toolbar"), Sense::hover());
+        ui.interact(
+            search,
+            egui::Id::unique("folder-search-bounds"),
+            Sense::hover(),
+        );
+        ui.interact(
+            scan,
+            egui::Id::unique("folder-refresh-bounds"),
+            Sense::hover(),
+        );
+        let was_searching = !self.browser.filter.is_empty();
+        let search_response = ui.put(
+            search,
+            egui::TextEdit::singleline(&mut self.browser.filter)
+                .id(egui::Id::unique("folder-search"))
+                .hint_text(crate::tr!("Пошук у папці…", "Search in folder…"))
+                .font(FontId::proportional(14.))
+                .margin(egui::Margin {
+                    left: 29,
+                    right: 6,
+                    top: 8,
+                    bottom: 6,
+                }),
+        );
+        self.browser.text_input_focused = search_response.has_focus();
+        let scope = self
             .browser
             .table_root
-            .and_then(|i| self.scan.report.as_ref().map(|r| r.folders[i].path.clone()))
-            .or_else(|| {
-                if self.browser.category != Category::All {
-                    self.scan
-                        .index
-                        .roots(self.browser.category)
-                        .first()
-                        .and_then(|i| {
-                            self.scan
-                                .report
-                                .as_ref()
-                                .map(|r| r.folders[*i].path.clone())
-                        })
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_else(|| PathBuf::from(&self.browser.root));
-        let crumb_width = (width - 461.).max(65.);
-        let crumb_rect =
-            Rect::from_min_size(rect.min + Vec2::new(106., 0.), Vec2::new(crumb_width, 36.));
-        let mut path_text = path
-            .to_string_lossy()
-            .replace('/', " ")
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join("   ›   ");
-        if path_text.is_empty() {
-            path_text = "/".into();
+            .and_then(|id| self.scan.report.as_ref().and_then(|r| r.folders.get(id)))
+            .map(|f| f.path.display().to_string())
+            .unwrap_or_else(|| self.browser.root.clone());
+        search_response.on_hover_text(crate::tr!(
+            "Пошук у: {scope}\nНатисни знайдену папку, щоб зайти в неї та шукати всередині.",
+            "Search in: {scope}\nClick a matching folder to enter it and search inside.",
+            scope = scope
+        ));
+        if was_searching && self.browser.filter.is_empty() {
+            self.reveal_browser_selection();
         }
-        let max = ((crumb_width - 10.) / 7.).max(8.) as usize;
-        if path_text.chars().count() > max {
-            path_text = format!(
-                "…{}",
-                path_text
-                    .chars()
-                    .rev()
-                    .take(max - 1)
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .rev()
-                    .collect::<String>()
-            );
-        }
-        ui.painter().with_clip_rect(crumb_rect).text(
-            crumb_rect.left_center(),
-            Align2::LEFT_CENTER,
-            path_text,
-            FontId::proportional(14.),
-            color(&t.text),
-        );
-        let scan = Rect::from_min_size(
-            Pos2::new(rect.right() - 145., rect.top()),
-            Vec2::new(145., 34.),
-        );
-        let search = Rect::from_min_max(
-            Pos2::new(scan.left() - 207., rect.top()),
-            Pos2::new(scan.left() - 8., rect.bottom() - 2.),
-        );
-        self.browser.text_input_focused = ui
-            .put(
-                search,
-                egui::TextEdit::singleline(&mut self.browser.filter)
-                    .id(egui::Id::unique("folder-search"))
-                    .hint_text(crate::tr!("Пошук у цій папці…", "Search in this folder…"))
-                    .font(FontId::proportional(14.))
-                    .margin(egui::Margin {
-                        left: 29,
-                        right: 6,
-                        top: 8,
-                        bottom: 6,
-                    }),
-            )
-            .has_focus();
         self.art.paint(
             ui,
             9,
             Rect::from_min_size(search.min + Vec2::new(9., 9.), Vec2::splat(15.)),
             color(&t.muted),
         );
+        let new_rect = Rect::from_min_size(
+            Pos2::new(scan.left() - 42., scan.top()),
+            Vec2::new(34., 34.),
+        );
+        if visual_button(
+            ui,
+            &self.art,
+            new_rect,
+            30,
+            "",
+            !self.demo
+                && !self.scan.busy
+                && self.browser.view != View::Trash
+                && self.deletion.rx.is_none()
+                && !self.recycle.busy
+                && !self.preferences.open,
+            &t,
+        )
+        .on_hover_text(crate::tr!("Новий файл · Ctrl+N", "New file · Ctrl+N"))
+        .clicked()
+        {
+            self.request_new_file(ui.ctx());
+        }
         if visual_button(
             ui,
             &self.art,
             scan,
             11,
-            if self.scan.report.is_some() {
+            if narrow {""} else if self.scan.report.is_some() {
                 crate::tr!("Оновити", "Refresh")
             } else {
                 crate::tr!("Сканувати", "Scan")
@@ -323,148 +382,5 @@ impl Disco {
                 }
             });
         }
-    }
-    pub(in crate::app) fn sidebar(&mut self, ui: &mut egui::Ui) {
-        let t = self.preferences.theme.clone();
-        let row_height = ((ui.available_height() - 20.) / 5.).clamp(60., 72.);
-        egui::ScrollArea::vertical()
-            .id_salt("category-list")
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                ui.spacing_mut().item_spacing.y = 2.;
-                ui.add_space(9.);
-                for (cat, kind) in [
-                    (Category::Games, 1),
-                    (Category::Development, 2),
-                    (Category::Cache, 3),
-                    (Category::Documents, 4),
-                    (Category::Other, 5),
-                ] {
-                    let active = self.browser.view == View::Folders && self.browser.category == cat;
-                    let (rect, response) = ui.allocate_exact_size(
-                        Vec2::new(ui.available_width(), row_height),
-                        Sense::click(),
-                    );
-                    let hover = motion::hover(ui, ("category-hover", kind), response.hovered());
-                    let selected = motion::value(
-                        ui,
-                        ("category-selected", kind),
-                        if active { 1. } else { 0. },
-                        1.,
-                    );
-                    let strength = selected.max(hover * 0.65);
-                    if strength > 0. {
-                        ui.painter().rect_filled(
-                            rect,
-                            0,
-                            mix(color(&t.panel), color(&t.raised), strength),
-                        );
-                    }
-                    if active {
-                        let y = motion::value(ui, "category-rail-y", rect.top(), 1.15);
-                        ui.painter().rect_filled(
-                            Rect::from_min_size(
-                                Pos2::new(rect.left(), y),
-                                Vec2::new(4., rect.height()),
-                            ),
-                            0,
-                            color(&t.accent),
-                        );
-                    }
-                    self.art.paint(
-                        ui,
-                        kind,
-                        Rect::from_center_size(
-                            rect.min + Vec2::new(35., 34.),
-                            Vec2::splat(30. * self.preferences.layout.icon_scale),
-                        ),
-                        C::WHITE,
-                    );
-                    ui.painter().text(
-                        rect.min
-                            + Vec2::new(
-                                64.,
-                                if self.preferences.layout.category_sizes {
-                                    20.
-                                } else {
-                                    28.
-                                },
-                            ),
-                        Align2::LEFT_TOP,
-                        cat.name(),
-                        art::bold(15. * self.preferences.layout.text_scale),
-                        color(&t.text),
-                    );
-                    if self.preferences.layout.category_sizes {
-                        let bytes = self
-                            .scan
-                            .report
-                            .as_ref()
-                            .map(|_| self.scan.index.total(cat));
-                        ui.painter().text(
-                            rect.min + Vec2::new(64., 42.),
-                            Align2::LEFT_TOP,
-                            bytes.map(display_size).unwrap_or_else(|| "—".into()),
-                            FontId::proportional(14.),
-                            color(&t.muted),
-                        );
-                    }
-                    if response.clicked() {
-                        self.browser.category = cat;
-                        self.browser.view = View::Folders;
-                        self.browser.filter.clear();
-                        self.browser.table_root = None;
-                        self.browser.properties = None;
-                        if let Some(id) = self.scan.index.roots(cat).first().copied() {
-                            self.expand_folder(id);
-                            self.select_folder(id);
-                        }
-                    }
-                }
-                ui.add_space(8.);
-                ui.separator();
-                let active = self.browser.view == View::Trash;
-                let (r, response) =
-                    ui.allocate_exact_size(Vec2::new(ui.available_width(), 54.), Sense::click());
-                let hover = motion::hover(ui, "trash-navigation", response.hovered());
-                ui.painter().rect_filled(
-                    r,
-                    0,
-                    mix(
-                        color(&t.panel),
-                        color(&t.raised),
-                        if active { 1. } else { hover * 0.65 },
-                    ),
-                );
-                if active {
-                    let y = motion::value(ui, "category-rail-y", r.top(), 1.15);
-                    ui.painter().rect_filled(
-                        Rect::from_min_size(Pos2::new(r.left(), y), Vec2::new(4., r.height())),
-                        0,
-                        color(&t.accent),
-                    );
-                }
-                self.art.paint(
-                    ui,
-                    23,
-                    Rect::from_center_size(
-                        r.min + Vec2::new(35., 27.),
-                        Vec2::splat(27. * self.preferences.layout.icon_scale),
-                    ),
-                    color(&t.text),
-                );
-                ui.painter().text(
-                    r.min + Vec2::new(64., 18.),
-                    Align2::LEFT_TOP,
-                    crate::tr!("Кошик", "Trash"),
-                    art::bold(15. * self.preferences.layout.text_scale),
-                    color(&t.text),
-                );
-                if response.clicked() {
-                    self.browser.view = View::Trash;
-                    self.browser.filter.clear();
-                    self.browser.properties = None;
-                }
-            });
     }
 }

@@ -121,6 +121,7 @@ impl Disco {
             );
         }
         if response.clicked() {
+            ui.ctx().request_repaint();
             self.select_file(file.path.clone(), file.bytes);
         }
         if response.double_clicked() {

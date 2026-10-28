@@ -1,13 +1,13 @@
 [package]
 name = "disco"
-version = "0.11.0"
+version = "0.11.1"
 edition = "2024"
 rust-version = "1.95"
 description = "Native Linux disk space analyzer with snapshots, cleanup, and trash management"
 repository = "https://github.com/hiddensudo/disco"
 
 [dependencies]
-eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "wayland", "x11", "clipboard"] }
 resvg = { version = "0.45", default-features = false }
 walkdir = "2.5"
 libc = "0.2"

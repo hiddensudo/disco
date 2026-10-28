@@ -23,6 +23,7 @@ pub(super) struct Bookmark {
     filter: String,
     properties: Option<Properties>,
     mode: PreviewMode,
+    show_properties: bool,
     history: History<super::state::NavState>,
 }
 impl Bookmark {
@@ -36,6 +37,7 @@ impl Bookmark {
             filter: app.browser.filter.clone(),
             properties: app.browser.properties.clone(),
             mode: app.preferences.layout.preview_mode,
+            show_properties: app.preferences.layout.properties,
             history: app.browser.history.clone(),
         }
     }
@@ -48,6 +50,7 @@ impl Bookmark {
         app.browser.filter = self.filter;
         app.browser.properties = self.properties;
         app.preferences.layout.preview_mode = self.mode;
+        app.preferences.layout.properties = self.show_properties;
         app.browser.history = self.history;
         app.browser.nav_traversed = true;
         app.browser.scroll_to = app.browser.properties.as_ref().map(|p| p.path.clone());
@@ -55,7 +58,8 @@ impl Bookmark {
 }
 pub(super) enum Action {
     Transition(Bookmark),
-    Mode(PreviewMode),
+    Navigate(PathBuf),
+    NewFile(PathBuf),
     Reload,
     Scan {
         root: String,
@@ -71,10 +75,11 @@ pub(super) struct Editor {
     pub path: Option<PathBuf>,
     pub document: Option<Document>,
     pub focused: bool,
+    pub focus_on_load: bool,
     pub pending: Option<Action>,
     pub error: String,
     pub confirm_fresh: bool,
-    pub saving: Option<Receiver<Result<Stamp, String>>>,
+    pub saving: Option<Receiver<Result<(Stamp, Document), String>>>,
     bookmark: Option<Bookmark>,
     revision: u64,
 }
@@ -109,6 +114,11 @@ impl Disco {
             return;
         }
         if protected {
+            if let Some(bookmark) = &mut self.editor.bookmark {
+                bookmark.table = self.browser.table_root;
+                bookmark.mode = self.preferences.layout.preview_mode;
+                bookmark.show_properties = self.preferences.layout.properties;
+            }
             return;
         }
         if self.editor.path != desired || self.editor.revision != self.scan.report_revision {
@@ -132,12 +142,19 @@ impl Disco {
                         Default::default(),
                     );
                     self.editor.bookmark = Some(Bookmark::capture(self));
+                    if self.editor.focus_on_load {
+                        ctx.memory_mut(|m| {
+                            m.request_focus(egui::Id::unique(("file-editor", &self.editor.path)))
+                        });
+                        self.editor.focus_on_load = false;
+                    }
                 }
             }
         }
         // Layout changes do not constitute leaving the current document.
         if let Some(bookmark) = &mut self.editor.bookmark {
             bookmark.mode = self.preferences.layout.preview_mode;
+            bookmark.show_properties = self.preferences.layout.properties;
         }
     }
     pub(in crate::app) fn editor_action(&mut self, action: Action, ctx: &egui::Context) {
@@ -157,8 +174,9 @@ impl Disco {
                 self.editor.document = None;
                 self.editor.path = None;
             }
-            Action::Mode(mode) => {
-                self.set_preview_mode(mode, ctx);
+            Action::Navigate(path) => self.navigate_path(path),
+            Action::NewFile(directory) => {
+                self.new_file = Some(super::new_file::Draft::new(directory));
             }
             Action::Scan {
                 root,
@@ -195,7 +213,7 @@ impl Disco {
         self.editor.saving = Some(rx);
         let ctx = ctx.clone();
         std::thread::spawn(move || {
-            let result = crate::text_editor::save(&path, &document);
+            let result = crate::text_editor::save(&path, &document).map(|stamp| (stamp, document));
             let _ = tx.send(result);
             ctx.request_repaint();
         });
@@ -217,9 +235,9 @@ impl Disco {
         if let Some(result) = result {
             self.editor.saving = None;
             match result {
-                Ok(stamp) => {
+                Ok((stamp, saved)) => {
                     if let Some(doc) = &mut self.editor.document {
-                        doc.mark_saved(stamp);
+                        doc.accept_saved(stamp, &saved);
                     }
                     if let Some(path) = self.editor.path.clone() {
                         if let Ok(m) = std::fs::metadata(&path) {
@@ -242,8 +260,10 @@ impl Disco {
                         }
                     }
                     self.message = crate::tr!("Файл збережено", "File saved").into();
-                    if let Some(action) = self.editor.pending.take() {
-                        self.apply_editor_action(action, ctx);
+                    if !self.editor.dirty() {
+                        if let Some(action) = self.editor.pending.take() {
+                            self.apply_editor_action(action, ctx);
+                        }
                     }
                 }
                 Err(error) => self.editor.error = error,

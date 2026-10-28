@@ -6,6 +6,7 @@ use crate::settings;
 use crate::settings::{Layout, Theme, color};
 use eframe::egui::{self, Align2, FontId, Pos2, Rect, RichText, Sense, Stroke, Vec2};
 mod appearance;
+mod categories;
 mod interface;
 
 impl Disco {
@@ -63,6 +64,8 @@ impl Disco {
                             crate::tr!("Оформлення", "Appearance")
                         } else if self.preferences.page == 1 {
                             crate::tr!("Інтерфейс", "Interface")
+                        } else if self.preferences.page == 2 {
+                            crate::tr!("Категорії", "Categories")
                         } else {
                             crate::tr!("Про програму", "About")
                         }
@@ -115,7 +118,8 @@ impl Disco {
                 for (i, name, icon) in [
                     (0, crate::tr!("Оформлення", "Appearance"), 6),
                     (1, crate::tr!("Інтерфейс", "Interface"), 7),
-                    (2, crate::tr!("Про програму", "About"), 17),
+                    (2, crate::tr!("Категорії", "Categories"), 0),
+                    (3, crate::tr!("Про програму", "About"), 17),
                 ] {
                     let r = Rect::from_min_size(
                         nav.min + Vec2::new(0., 13. + i as f32 * 45.),
@@ -170,6 +174,8 @@ impl Disco {
                                 crate::tr!("Оформлення", "Appearance")
                             } else if self.preferences.page == 1 {
                                 crate::tr!("Інтерфейс", "Interface")
+                            } else if self.preferences.page == 2 {
+                                crate::tr!("Категорії", "Categories")
                             } else {
                                 crate::tr!("Про програму", "About")
                             })
@@ -200,6 +206,11 @@ impl Disco {
                                         }
                                     });
                                 });
+                        } else if self.preferences.page == 2 {
+                            egui::ScrollArea::vertical()
+                                .id_salt("category-preferences")
+                                .max_height(317.)
+                                .show(ui, |ui| self.categories_preferences(ui));
                         } else {
                             ui.add_space(10.);
                             ui.horizontal(|ui| {
@@ -337,8 +348,14 @@ impl Disco {
         if theme != self.preferences.theme || layout != self.preferences.layout {
             match theme.validate().and_then(|_| layout.validate()) {
                 Ok(()) => {
+                    let entering_focus = layout.preview_mode == settings::PreviewMode::Focus
+                        && self.preferences.layout.preview_mode != layout.preview_mode;
+                    layout.normalize_file_mode();
                     self.preferences.theme = theme;
                     self.preferences.layout = layout;
+                    if entering_focus {
+                        self.prepare_focus_tree();
+                    }
                     self.preferences.error.clear();
                 }
                 Err(e) => self.preferences.error = e,
@@ -395,6 +412,14 @@ impl Disco {
                 .unwrap_or(&self.preferences.theme)
                 .validate()
                 .and_then(|_| self.preferences.layout.validate())
+                .and_then(|_| {
+                    self.collections
+                        .draft
+                        .as_ref()
+                        .map(|c| c.validate())
+                        .unwrap_or(Ok(()))
+                })
+                .and_then(|_| self.collections.save())
                 .and_then(|_| settings::write(&p.join("theme.toml"), &self.preferences.theme))
                 .and_then(|_| settings::write(&p.join("layout.toml"), &self.preferences.layout))
             {
@@ -408,6 +433,8 @@ impl Disco {
             }
         }
         if cancel || !opened {
+            self.collections.draft = None;
+            self.collections.folder_input.clear();
             if let Some((t, l)) = self.preferences.snapshot.take() {
                 self.preferences.theme = t;
                 self.preferences.layout = l;

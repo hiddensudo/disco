@@ -40,6 +40,12 @@ pub fn set_current(language: Language) {
 /// Named formatting values are explicit arguments rather than macro-captured locals.
 #[macro_export]
 macro_rules! tr {
+    ($uk:literal, $en:literal, @language $language:expr, $($args:tt)+) => {{
+        match $language {
+            $crate::i18n::Language::Uk => format!($uk, $($args)+),
+            $crate::i18n::Language::En => format!($en, $($args)+),
+        }
+    }};
     ($uk:literal, $en:literal $(,)?) => {{
         match $crate::i18n::current() {
             $crate::i18n::Language::Uk => $uk,

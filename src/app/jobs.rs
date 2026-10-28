@@ -123,8 +123,10 @@ impl Disco {
             self.scan.tracker = None;
             self.browser.history.clear();
             if !same_snapshot {
+                self.scan.report_revision = self.scan.report_revision.wrapping_add(1);
                 self.scan.report = None;
                 self.scan.index = Index::default();
+                self.browser.properties = None;
             }
             self.scan.dups.clear();
             if !automatic {

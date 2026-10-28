@@ -31,13 +31,31 @@ pub(super) fn fitted_image(original: [u32; 2], viewport: Vec2) -> Vec2 {
     let size = Vec2::new(original[0].max(1) as f32, original[1].max(1) as f32);
     size * (viewport.x / size.x).min(viewport.y / size.y)
 }
+// Consume the remainder after the inner ScrollArea has handled its wheel event.
+// At a document boundary egui normally passes this delta to its scrolling parent.
+fn contain_preview_scroll(ui: &mut egui::Ui, rect: Rect) {
+    if ui.rect_contains_pointer(rect) {
+        ui.input_mut(|input| input.smooth_scroll_delta = Vec2::ZERO);
+    }
+}
 impl Disco {
     pub(in crate::app) fn set_preview_mode(&mut self, mode: PreviewMode, ctx: &egui::Context) {
-        if mode == PreviewMode::Off && (self.editor.dirty() || self.editor.saving.is_some()) {
-            self.editor_action(Action::Mode(mode), ctx);
-            return;
-        }
+        let mode = if mode == PreviewMode::Off {
+            PreviewMode::Overview
+        } else {
+            mode
+        };
+        let entering_focus =
+            mode == PreviewMode::Focus && self.preferences.layout.preview_mode != mode;
         self.preferences.layout.preview_mode = mode;
+        match mode {
+            PreviewMode::Overview => self.preferences.layout.properties = true,
+            PreviewMode::Focus => self.preferences.layout.properties = false,
+            PreviewMode::Off => {}
+        }
+        if entering_focus {
+            self.prepare_focus_tree();
+        }
         if !self.preferences.open {
             if let Err(e) = settings::write(
                 &settings::config_dir().join("layout.toml"),
@@ -52,104 +70,93 @@ impl Disco {
         }
         ctx.request_repaint();
     }
-    pub(in crate::app) fn preview_mode_buttons(&mut self, ui: &mut egui::Ui, rect: Rect) {
-        let t = self.preferences.theme.clone();
-        for (slot, mode, icon, help) in [
-            (
-                0,
-                PreviewMode::Inspector,
-                25,
-                crate::tr!("Прев’ю праворуч", "Preview in the right panel"),
-            ),
-            (
-                1,
-                PreviewMode::Workspace,
-                26,
-                crate::tr!("Прев’ю поруч зі списком", "Preview beside the list"),
-            ),
-            (
-                2,
-                PreviewMode::Off,
-                21,
-                crate::tr!("Закрити прев’ю", "Close preview"),
-            ),
-        ] {
-            let r = Rect::from_min_size(
-                rect.min + Vec2::new(slot as f32 * 32., 0.),
-                Vec2::new(28., 28.),
-            );
-            if command(
-                ui,
-                &self.art,
-                r,
-                icon,
-                "",
-                true,
-                self.preferences.layout.preview_mode == mode && mode != PreviewMode::Off,
-                &t,
-            )
-            .on_hover_text(help)
-            .clicked()
-            {
-                self.set_preview_mode(mode, ui.ctx());
+    pub(in crate::app) fn prepare_focus_tree(&mut self) {
+        self.browser.table_root = None;
+        let mut ancestors = Vec::new();
+        if let (Some(report), Some(p)) = (&self.scan.report, &self.browser.properties) {
+            let parent = if p.is_dir {
+                Some(p.path.as_path())
+            } else {
+                p.path.parent()
+            };
+            let mut current =
+                parent.and_then(|path| report.folders.iter().position(|f| f.path == path));
+            while let Some(id) = current {
+                ancestors.push(id);
+                current = report.folders[id].parent;
             }
         }
+        for id in ancestors {
+            self.expand_folder(id);
+        }
+        self.browser.scroll_to = self.browser.properties.as_ref().map(|p| p.path.clone());
     }
     pub(in crate::app) fn browser_content(&mut self, ui: &mut egui::Ui) {
-        if self.preferences.layout.preview_mode == PreviewMode::Workspace {
-            let width = ui.available_width();
-            egui::Panel::right("content-preview")
-                .default_size((width * 0.52).max(260.))
+        if self.preferences.layout.preview_mode == PreviewMode::Focus {
+            let t = self.preferences.theme.clone();
+            let tree = egui::Panel::left("focus-file-tree")
+                .default_size(300.)
                 .min_size(240.)
-                .max_size((width - 270.).max(240.))
+                .max_size(480.)
                 .resizable(true)
                 .frame(
                     egui::Frame::new()
-                        .fill(color(&self.preferences.theme.panel))
-                        .inner_margin(12.),
+                        .fill(color(&t.background))
+                        .inner_margin(egui::Margin::symmetric(12, 8)),
                 )
                 .show(ui, |ui| {
-                    ui.set_min_height(ui.available_height());
-                    let t = self.preferences.theme.clone();
-                    let (head, _) = ui
-                        .allocate_exact_size(Vec2::new(ui.available_width(), 38.), Sense::hover());
-                    let title = self
-                        .file_preview
-                        .path
-                        .as_ref()
-                        .map(|p| label(p))
-                        .unwrap_or_else(|| crate::tr!("Прев’ю файлу", "File preview").into());
-                    ui.painter()
-                        .with_clip_rect(Rect::from_min_max(
-                            head.min,
-                            Pos2::new(head.right() - 100., head.bottom()),
-                        ))
-                        .text(
-                            head.left_center(),
-                            Align2::LEFT_CENTER,
-                            shorten(&title, ((head.width() - 105.) / 8.).max(5.) as usize),
-                            FontId::proportional(16.),
-                            color(&t.text),
-                        );
-                    self.preview_mode_buttons(
-                        ui,
-                        Rect::from_min_size(
-                            Pos2::new(head.right() - 92., head.top() + 4.),
-                            Vec2::new(92., 28.),
-                        ),
-                    );
-                    ui.add_space(6.);
-                    let h = ui.available_height();
-                    self.file_preview_ui(ui, false, h);
+                    self.file_list_content(ui);
                 });
-            egui::CentralPanel::default()
-                .frame(egui::Frame::NONE)
-                .show(ui, |ui| self.file_list_content(ui));
+            ui.interact(
+                tree.response.rect,
+                egui::Id::unique("focus-tree-panel"),
+                Sense::hover(),
+            );
+            ui.painter().vline(
+                tree.response.rect.right(),
+                tree.response.rect.y_range(),
+                Stroke::new(1., color(&t.border)),
+            );
+            let document = egui::CentralPanel::default()
+                .frame(
+                    egui::Frame::new()
+                        .fill(color(&t.panel))
+                        .inner_margin(egui::Margin::symmetric(12, 8)),
+                )
+                .show(ui, |ui| {
+                    let (head, _) = ui
+                        .allocate_exact_size(Vec2::new(ui.available_width(), 36.), Sense::hover());
+                    let title = self
+                        .browser
+                        .properties
+                        .as_ref()
+                        .filter(|p| !p.is_dir)
+                        .map(|p| label(&p.path))
+                        .unwrap_or_else(|| crate::tr!("Документ", "Document").into());
+                    ui.painter().with_clip_rect(head).text(
+                        head.left_center(),
+                        Align2::LEFT_CENTER,
+                        shorten(&title, ((head.width() - 8.) / 8.).max(5.) as usize),
+                        FontId::proportional(16.),
+                        color(&t.text),
+                    );
+                    ui.add_space(4.);
+                    let height = ui.available_height();
+                    self.file_preview_ui(ui, false, height);
+                });
+            ui.interact(
+                document.response.rect,
+                egui::Id::unique("focus-document-panel"),
+                Sense::hover(),
+            );
         } else {
             self.file_list_content(ui);
         }
     }
     fn file_list_content(&mut self, ui: &mut egui::Ui) {
+        self.scope_controls(ui);
+        ui.add_space(8.);
+        self.unindexed_collection_folders(ui);
         if self.browser.view == View::Folders {
             self.folder_table(ui);
         } else {
@@ -178,6 +185,9 @@ impl Disco {
             );
             return;
         }
+        let bottom = ui.cursor().min.y + available_height;
+        let old_spacing = ui.spacing().item_spacing.y;
+        ui.spacing_mut().item_spacing.y = 0.;
         let width = ui.available_width();
         let (bar, _) = ui.allocate_exact_size(Vec2::new(width, 30.), Sense::hover());
         let refresh = command(
@@ -285,18 +295,32 @@ impl Disco {
         } else {
             58.
         };
+        let has_footer = matches!(
+            self.file_preview.content,
+            Some(Content::Text { .. } | Content::Image { .. })
+        );
+        let footer_height = if has_footer {
+            ui.painter()
+                .layout_no_wrap("UTF-8".into(), FontId::proportional(11.), color(&t.muted))
+                .size()
+                .y
+                + 6.
+        } else {
+            0.
+        };
+        let room = (bottom - ui.cursor().min.y - footer_height - error_height).max(80.);
         let height = if compact {
             match &self.file_preview.content {
                 Some(Content::Image { original, .. }) => {
                     let desired = width * original[1].max(1) as f32 / original[0].max(1) as f32;
-                    desired.clamp(170., (available_height - 70.).max(220.))
+                    desired.max(170.).min(room)
                 }
-                _ => (available_height * 0.65).clamp(180., 340.),
+                _ => room.min(480.),
             }
         } else {
-            (available_height - 68. - error_height).max(140.)
+            room
         };
-        egui::Frame::new()
+        let viewport = egui::Frame::new()
             .fill(color(&t.background))
             .stroke(Stroke::new(1., color(&t.border)))
             .corner_radius(t.radius)
@@ -306,7 +330,9 @@ impl Disco {
                 ui.set_min_size(inner);
                 ui.set_max_width(inner.x);
                 if let Some(doc) = &mut self.editor.document {
-                    let busy = self.editor.saving.is_some() || self.scan.busy;
+                    // Saving snapshots the document; keep this widget enabled
+                    // so focus, cursor, selection and further typing survive IO.
+                    let busy = self.scan.busy;
                     let font = FontId::monospace(13. * self.preferences.layout.text_scale);
                     egui::ScrollArea::both()
                         .id_salt(("editable-content", &path))
@@ -326,7 +352,7 @@ impl Disco {
                                             .frame(egui::Frame::NONE)
                                             .margin(Vec2::new(2., 0.))
                                             .desired_width(f32::INFINITY)
-                                            .desired_rows(8)
+                                            .desired_rows(1)
                                             .char_limit(128 * 1024)
                                             .show(ui)
                                     })
@@ -381,6 +407,7 @@ impl Disco {
                                 .max_height(inner.y)
                                 .show_rows(ui, row_height, lines.len(), |ui, range| {
                                     ui.spacing_mut().item_spacing.y = 0.;
+                                    ui.spacing_mut().interact_size.y = row_height;
                                     for n in range {
                                         ui.horizontal(|ui| {
                                             ui.add_sized(
@@ -426,21 +453,23 @@ impl Disco {
                     }
                 }
             });
+        ui.interact(
+            viewport.response.rect,
+            egui::Id::unique("preview-viewport"),
+            Sense::hover(),
+        );
+        contain_preview_scroll(ui, viewport.response.rect);
         ui.add_space(6.);
-        match &self.file_preview.content {
+        let footer = match &self.file_preview.content {
             Some(Content::Image { original, .. }) => {
-                ui.label(
-                    RichText::new(format!("{} × {} px", original[0], original[1]))
-                        .size(11.)
-                        .color(color(&t.muted)),
-                );
+                Some(format!("{} × {} px", original[0], original[1]))
             }
             Some(Content::Text {
                 encoding,
                 truncated,
                 ..
             }) => {
-                let status = if self.editor.saving.is_some() {
+                let state = if self.editor.saving.is_some() {
                     crate::tr!("Збереження…", "Saving…")
                 } else if self.editor.dirty() {
                     crate::tr!("Незбережені зміни · Ctrl+S", "Unsaved changes · Ctrl+S")
@@ -449,27 +478,35 @@ impl Disco {
                 } else {
                     crate::tr!("Лише перегляд", "Read only")
                 };
-                ui.label(
-                    RichText::new(format!("{encoding} · {status}"))
-                        .size(11.)
-                        .color(color(if self.editor.dirty() {
+                let mut text = format!("{encoding} · {state}");
+                if *truncated {
+                    text.push_str(crate::tr!(
+                        " · Показано початок файлу",
+                        " · Showing a partial file"
+                    ));
+                }
+                Some(text)
+            }
+            _ => None,
+        };
+        if let Some(text) = footer {
+            let response = ui
+                .add(
+                    egui::Label::new(RichText::new(&text).size(11.).color(color(
+                        if self.editor.dirty() {
                             &t.accent
                         } else {
                             &t.muted
-                        })),
-                );
-                if *truncated {
-                    ui.label(
-                        RichText::new(crate::tr!(
-                            "Показано початок файлу · редагування недоступне",
-                            "Showing a partial file · editing is unavailable"
-                        ))
-                        .size(11.)
-                        .color(color(&t.muted)),
-                    );
-                }
-            }
-            _ => {}
+                        },
+                    )))
+                    .truncate(),
+                )
+                .on_hover_text(&text);
+            ui.interact(
+                response.rect,
+                egui::Id::unique("preview-status"),
+                Sense::hover(),
+            );
         }
         if !self.editor.error.is_empty() {
             ui.add(
@@ -481,6 +518,7 @@ impl Disco {
                 .wrap(),
             );
         }
+        ui.spacing_mut().item_spacing.y = old_spacing;
         if refresh {
             self.editor_action(Action::Reload, ui.ctx());
         }
@@ -497,5 +535,83 @@ mod tests {
         let landscape = fitted_image([1920, 1080], Vec2::new(270., 340.));
         assert!((landscape.x - 270.).abs() < 0.01);
         assert!(landscape.y < 160.);
+    }
+    #[test]
+    fn wheel_inside_a_finished_or_short_document_does_not_scroll_the_parent() {
+        for content_height in [40., 1800.] {
+            let ctx = egui::Context::default();
+            let mut time = 0.;
+            let mut render = |pointer: Option<Pos2>, wheel: bool| {
+                time += 0.05;
+                let mut viewport = Rect::NOTHING;
+                let mut parent_offset = 0.;
+                let mut events = vec![];
+                if let Some(pos) = pointer {
+                    events.push(egui::Event::PointerMoved(pos));
+                }
+                if wheel {
+                    events.push(egui::Event::MouseWheel {
+                        unit: egui::MouseWheelUnit::Point,
+                        source: egui::MouseWheelSource::Wheel,
+                        phase: egui::TouchPhase::Move,
+                        delta: Vec2::new(0., -240.),
+                        modifiers: egui::Modifiers::NONE,
+                    });
+                }
+                ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(600., 500.))),
+                        time: Some(time),
+                        events,
+                        ..Default::default()
+                    },
+                    |ui| {
+                        let outer = egui::ScrollArea::vertical()
+                            .id_salt("outer-properties-test")
+                            .max_height(400.)
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                let frame = egui::Frame::NONE.show(ui, |ui| {
+                                    egui::ScrollArea::both()
+                                        .id_salt("inner-document-test")
+                                        .max_height(180.)
+                                        .auto_shrink([false, false])
+                                        .vertical_scroll_offset(10000.)
+                                        .show(ui, |ui| {
+                                            ui.allocate_exact_size(
+                                                Vec2::new(400., content_height),
+                                                Sense::hover(),
+                                            );
+                                        });
+                                });
+                                viewport = frame.response.rect;
+                                contain_preview_scroll(ui, viewport);
+                                ui.allocate_exact_size(Vec2::new(400., 1600.), Sense::hover());
+                            });
+                        parent_offset = outer.state.clamped_offset().y;
+                    },
+                )
+                .drop_without_applying_deltas();
+                (viewport, parent_offset)
+            };
+            let (viewport, _) = render(None, false);
+            let inside = viewport.center();
+            for _ in 0..8 {
+                let (_, offset) = render(Some(inside), true);
+                assert!(
+                    offset.abs() < 0.5,
+                    "document height {content_height}, parent scrolled to {offset}"
+                );
+            }
+            let mut moved = false;
+            for _ in 0..4 {
+                let (_, offset) = render(Some(Pos2::new(100., 300.)), true);
+                moved |= offset > 1.;
+            }
+            assert!(
+                moved,
+                "the properties panel must still scroll outside the preview"
+            );
+        }
     }
 }

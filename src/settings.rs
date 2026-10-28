@@ -103,6 +103,7 @@ pub struct Layout {
     #[serde(default)]
     pub language: crate::i18n::Language,
     pub categories: bool,
+    pub category_labels: bool,
     pub properties: bool,
     pub category_width: f32,
     pub property_width: f32,
@@ -130,14 +131,17 @@ pub struct Layout {
 pub enum PreviewMode {
     Off,
     #[default]
-    Inspector,
-    Workspace,
+    #[serde(rename = "overview", alias = "inspector")]
+    Overview,
+    #[serde(rename = "focus", alias = "workspace")]
+    Focus,
 }
 impl Default for Layout {
     fn default() -> Self {
         Self {
             language: crate::i18n::Language::En,
             categories: true,
+            category_labels: false,
             properties: true,
             category_width: 220.,
             property_width: 300.,
@@ -157,17 +161,26 @@ impl Default for Layout {
             auto_refresh: true,
             animations: true,
             motion_speed: 1.,
-            preview_mode: PreviewMode::Inspector,
+            preview_mode: PreviewMode::Overview,
             open_files_on_double_click: true,
         }
     }
 }
 impl Layout {
+    pub fn normalize_file_mode(&mut self) {
+        // "off" remains readable in old TOML files, but is no longer a third mode.
+        if self.preview_mode == PreviewMode::Off {
+            self.preview_mode = PreviewMode::Overview;
+        }
+        self.properties = self.preview_mode == PreviewMode::Overview;
+    }
+    pub const MIN_PROPERTY_WIDTH: f32 = 240.;
+    pub const MAX_PROPERTY_WIDTH: f32 = 760.;
     pub fn validate(&self) -> Result<(), String> {
         if !self.category_width.is_finite()
             || !(155.0..=280.0).contains(&self.category_width)
             || !self.property_width.is_finite()
-            || !(240.0..=380.0).contains(&self.property_width)
+            || !(Self::MIN_PROPERTY_WIDTH..=Self::MAX_PROPERTY_WIDTH).contains(&self.property_width)
             || !self.text_scale.is_finite()
             || !(0.85..=1.4).contains(&self.text_scale)
             || !self.icon_scale.is_finite()
@@ -358,13 +371,22 @@ drive_name = "My SSD"
     #[test]
     fn preview_preferences_roundtrip_and_older_configs_still_load() {
         let old: Layout = toml::from_str("categories=true").unwrap();
-        assert_eq!(old.preview_mode, PreviewMode::Inspector);
+        assert_eq!(old.preview_mode, PreviewMode::Overview);
+        assert!(!old.category_labels && old.properties);
         assert!(old.open_files_on_double_click);
-        for mode in [
-            PreviewMode::Off,
-            PreviewMode::Inspector,
-            PreviewMode::Workspace,
+        for (old_name, mode, current_name) in [
+            ("inspector", PreviewMode::Overview, "overview"),
+            ("workspace", PreviewMode::Focus, "focus"),
         ] {
+            let restored: Layout = toml::from_str(&format!("preview_mode='{old_name}'")).unwrap();
+            assert_eq!(restored.preview_mode, mode);
+            assert!(
+                toml::to_string(&restored)
+                    .unwrap()
+                    .contains(&format!("preview_mode = \"{current_name}\""))
+            );
+        }
+        for mode in [PreviewMode::Off, PreviewMode::Overview, PreviewMode::Focus] {
             let layout = Layout {
                 preview_mode: mode,
                 open_files_on_double_click: false,

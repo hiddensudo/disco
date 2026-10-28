@@ -24,7 +24,7 @@ def translated_messages():
                 continue
             if not CYRILLIC.search(ukrainian):
                 continue
-            prefix = source[max(0, token.start() - 50):token.start()]
+            prefix = source[max(0, token.start() - 512):token.start()]
             if not re.search(r'crate::tr!\s*\(\s*$', prefix):
                 raise AssertionError(f'Untranslated message in {path.name}: {ukrainian}')
             remaining = source[token.end():]

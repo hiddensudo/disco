@@ -130,9 +130,17 @@ impl Document {
             }
         }
     }
+    #[cfg(test)]
     pub fn mark_saved(&mut self, stamp: Stamp) {
         self.original = self.encoded();
         self.baseline = self.text.clone();
+        self.stamp = stamp;
+    }
+    /// The user can keep typing while the saved snapshot is written in the
+    /// background. Only that snapshot becomes the baseline, never newer edits.
+    pub fn accept_saved(&mut self, stamp: Stamp, saved: &Document) {
+        self.original = saved.encoded();
+        self.baseline = saved.text.clone();
         self.stamp = stamp;
     }
 }
@@ -300,6 +308,25 @@ pub(crate) fn save(path: &Path, doc: &Document) -> Result<Stamp, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn typing_during_save_stays_dirty_and_can_be_saved_again() {
+        let path = std::env::temp_dir().join(format!("disco-save-snapshot-{}", std::process::id()));
+        fs::write(&path, "initial\n").unwrap();
+        let mut doc = Document::from_bytes(b"initial\n", &fs::metadata(&path).unwrap()).unwrap();
+        doc.text.push_str("saved\n");
+        let snapshot = doc.clone();
+        let stamp = save(&path, &snapshot).unwrap();
+        doc.text.push_str("typed while saving\n");
+        doc.accept_saved(stamp, &snapshot);
+        assert!(doc.dirty());
+        assert_eq!(fs::read_to_string(&path).unwrap(), snapshot.text);
+        let second = doc.clone();
+        let stamp = save(&path, &second).unwrap();
+        doc.accept_saved(stamp, &second);
+        assert!(!doc.dirty());
+        assert_eq!(fs::read_to_string(&path).unwrap(), doc.text);
+        fs::remove_file(path).unwrap();
+    }
     #[test]
     fn atomic_saves_preserve_encoding_line_endings_and_permissions_and_reject_conflicts() {
         let root = std::env::temp_dir().join(format!("disco-editor-{}", std::process::id()));

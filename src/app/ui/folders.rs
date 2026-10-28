@@ -1,6 +1,6 @@
 use crate::app::Disco;
 use crate::app::state::{FolderRows, RowsKey, TreeRow};
-use crate::app::ui::widgets::{chevron, mix};
+use crate::app::ui::widgets::mix;
 use crate::filesystem::Properties;
 use crate::format::{display_size, group_digits, label, shorten};
 use crate::index::Category;
@@ -58,25 +58,43 @@ impl Disco {
         };
         if !self.browser.filter.is_empty() {
             let q = self.browser.filter.to_lowercase();
+            let scope = self
+                .browser
+                .table_root
+                .map(|id| r.folders[id].path.as_path());
+            let matches = |path: &std::path::Path| {
+                if scope.is_some_and(|root| !path.starts_with(root)) {
+                    return false;
+                }
+                let name = if q.contains('/') {
+                    scope
+                        .and_then(|root| path.strip_prefix(root).ok())
+                        .unwrap_or(path)
+                } else {
+                    std::path::Path::new(path.file_name().unwrap_or(path.as_os_str()))
+                };
+                name.to_string_lossy().to_lowercase().contains(&q)
+            };
             let mut ids: Vec<_> = r
                 .folders
                 .iter()
                 .enumerate()
                 .filter(|(id, f)| {
-                    self.scan.index.matches_category(*id, self.browser.category)
-                        && f.path.to_string_lossy().to_lowercase().contains(&q)
+                    self.scan.index.matches_category(*id, self.browser.category) && matches(&f.path)
                 })
                 .map(|(i, _)| i)
                 .collect();
             self.sort_ids(&mut ids);
             let mut rows: Vec<_> = ids.into_iter().map(|i| TreeRow::Folder(i, 0)).collect();
             for (id, folder) in r.folders.iter().enumerate() {
-                if !self.scan.index.matches_category(id, self.browser.category) {
+                if !self.scan.index.matches_category(id, self.browser.category)
+                    || scope.is_some_and(|root| !folder.path.starts_with(root))
+                {
                     continue;
                 }
                 if let Some(listing) = self.files.get(&folder.path) {
                     for file in &listing.files {
-                        if file.path.to_string_lossy().to_lowercase().contains(&q) {
+                        if matches(&file.path) {
                             rows.push(TreeRow::File(file.clone(), 0));
                         }
                     }
@@ -168,7 +186,7 @@ impl Disco {
             0.
         };
         let size_width = if ui.available_width() < 500. {
-            95.
+            112.
         } else {
             145.
         };
@@ -190,6 +208,13 @@ impl Disco {
             FontId::proportional(14.),
             color(&t.text),
         );
+        sort_arrow(
+            ui,
+            Pos2::new(h.left() + name_width - 22., h.center().y),
+            self.browser.descending,
+            !self.browser.sort_size,
+            &t,
+        );
         let size_left = h.left() + name_width;
         ui.painter()
             .vline(size_left, h.y_range(), Stroke::new(1., color(&t.border)));
@@ -200,20 +225,17 @@ impl Disco {
             FontId::proportional(14.),
             color(&t.text),
         );
-        chevron(
+        sort_arrow(
             ui,
             Pos2::new(h.right() - count_width - 26., h.center().y),
             self.browser.descending,
-            if self.browser.sort_size {
-                color(&t.accent)
-            } else {
-                color(&t.muted)
-            },
+            self.browser.sort_size,
+            &t,
         );
         if ui
             .interact(
                 Rect::from_min_max(h.min, Pos2::new(size_left, h.bottom())),
-                ui.scope_id().with("sort_name"),
+                egui::Id::unique("sort-name"),
                 Sense::click(),
             )
             .clicked()
@@ -228,7 +250,7 @@ impl Disco {
         if ui
             .interact(
                 Rect::from_min_max(Pos2::new(size_left, h.top()), h.max),
-                ui.scope_id().with("sort_size"),
+                egui::Id::unique("sort-size"),
                 Sense::click(),
             )
             .clicked()
@@ -343,6 +365,11 @@ impl Disco {
                     current
                 };
                 area = area.vertical_scroll_offset(offset.max(0.));
+            } else if path
+                .parent()
+                .is_some_and(|parent| self.files.get(parent).is_none())
+            {
+                self.browser.scroll_to = Some(path);
             }
         }
         let scroll = area.show_rows(ui, height, rows.len(), |ui, range| {
@@ -376,8 +403,13 @@ impl Disco {
                 };
                 let f = self.scan.report.as_ref().unwrap().folders[id].clone();
                 self.files.touch(&f.path);
-                let (rect, response) =
-                    ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click());
+                let (rect, _) =
+                    ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::hover());
+                let response = ui.interact(
+                    rect,
+                    egui::Id::unique(("folder-row", &f.path)),
+                    Sense::click(),
+                );
                 if self.preferences.layout.striped_rows && n % 2 == 1 {
                     ui.painter().rect_filled(
                         rect,
@@ -470,7 +502,11 @@ impl Disco {
                     {
                         child_clicked = true;
                         ui.ctx().request_repaint();
-                        self.toggle_folder(id);
+                        if self.browser.filter.is_empty() {
+                            self.toggle_folder(id);
+                        } else {
+                            self.enter_folder(id);
+                        }
                     }
                 }
                 x += 29.;
@@ -519,13 +555,19 @@ impl Disco {
                     );
                 }
                 if response.clicked() && !child_clicked {
-                    self.select_folder(id);
-                    if self.preferences.layout.single_click_expand
-                        && !response.double_clicked()
-                        && self.folder_can_expand(id)
-                    {
-                        ui.ctx().request_repaint();
-                        self.toggle_folder(id);
+                    ui.ctx().request_repaint();
+                    if !self.browser.filter.is_empty() {
+                        // A search result is an entry point into a directory,
+                        // not a transient selection in the global tree.
+                        self.enter_folder(id);
+                    } else {
+                        self.select_folder(id);
+                        if self.preferences.layout.single_click_expand
+                            && !response.double_clicked()
+                            && self.folder_can_expand(id)
+                        {
+                            self.toggle_folder(id);
+                        }
                     }
                 }
                 if response.double_clicked()
@@ -542,4 +584,16 @@ impl Disco {
         self.browser.scroll_offset = scroll.state.clamped_offset().y;
         self.browser.scroll_height = scroll.inner_rect.height();
     }
+}
+
+fn sort_arrow(ui: &egui::Ui, c: Pos2, descending: bool, active: bool, t: &crate::settings::Theme) {
+    let direction = if descending { 1. } else { -1. };
+    ui.painter().add(egui::Shape::line(
+        vec![
+            c + Vec2::new(-4., -2. * direction),
+            c + Vec2::new(0., 2. * direction),
+            c + Vec2::new(4., -2. * direction),
+        ],
+        Stroke::new(1.5, color(if active { &t.accent } else { &t.muted })),
+    ));
 }

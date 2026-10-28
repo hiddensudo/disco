@@ -73,10 +73,7 @@ impl Disco {
                         C::WHITE,
                     );
                     let text_x = if p.is_dir { 84. } else { 62. };
-                    let has_controls = !p.is_dir
-                        && self.preferences.layout.preview_mode
-                            != crate::settings::PreviewMode::Workspace;
-                    let title_width = rect.width() - text_x - if has_controls { 98. } else { 0. };
+                    let title_width = rect.width() - text_x;
                     ui.painter()
                         .with_clip_rect(Rect::from_min_max(
                             rect.min,
@@ -92,33 +89,31 @@ impl Disco {
                             art::bold(if p.is_dir { 22. } else { 18. }),
                             color(&t.text),
                         );
-                    let path = shorten(
-                        &p.path.to_string_lossy(),
-                        ((rect.width() - text_x - 2.) / 6.2) as usize,
-                    );
-                    ui.painter().text(
+                    let path_rect = Rect::from_min_max(
                         rect.min + Vec2::new(text_x, if p.is_dir { 44. } else { 35. }),
-                        Align2::LEFT_TOP,
-                        path,
-                        FontId::proportional(12.),
-                        color(&t.muted),
+                        Pos2::new(rect.right(), rect.top() + if p.is_dir { 66. } else { 55. }),
                     );
+                    ui.put(
+                        path_rect,
+                        egui::Label::new(
+                            RichText::new(p.path.to_string_lossy())
+                                .size(12.)
+                                .color(color(&t.muted)),
+                        )
+                        .truncate(),
+                    )
+                    .on_hover_text(p.path.to_string_lossy());
                     ui.interact(rect, ui.scope_id().with("property_path"), Sense::hover())
                         .on_hover_text(p.path.to_string_lossy());
-                    if has_controls {
-                        self.preview_mode_buttons(
-                            ui,
-                            Rect::from_min_size(
-                                Pos2::new(rect.right() - 92., rect.top() + 3.),
-                                Vec2::new(92., 28.),
-                            ),
-                        );
-                    }
                     if !p.is_dir
                         && self.preferences.layout.preview_mode
-                            == crate::settings::PreviewMode::Inspector
+                            == crate::settings::PreviewMode::Overview
                     {
-                        self.file_preview_ui(ui, true, (action_area.height() - 108.).max(220.));
+                        // The scroll viewport is fixed even when its content is
+                        // scrolled; using the current cursor would resize the
+                        // preview while scrolling the properties panel.
+                        let preview_height = (ui.clip_rect().height() - 80.).max(160.);
+                        self.file_preview_ui(ui, true, preview_height);
                         ui.add_space(6.);
                     }
                     ui.add_space(3.);

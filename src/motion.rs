@@ -251,3 +251,35 @@ mod tests {
         );
     }
 }
+
+/// One damped hover response; no continuous motion while the pointer stays put.
+pub fn jelly(ui: &Ui, id: impl Hash, hovered: bool) -> Vec2 {
+    #[derive(Clone, Default)]
+    struct Jelly {
+        hovered: bool,
+        started: Option<f64>,
+    }
+    let now = ui.input(|i| i.time);
+    let enabled = ui.style().animation_time > 0.;
+    let started = ui.ctx().data_mut(|data| {
+        let state = data.get_temp_mut_or_default::<Jelly>(Id::unique(("jelly", key(id))));
+        if hovered && !state.hovered {
+            state.started = Some(now);
+        }
+        state.hovered = hovered;
+        if !enabled {
+            state.started = None;
+        }
+        state.started
+    });
+    let Some(started) = started else {
+        return Vec2::splat(1.);
+    };
+    let t = ((now - started) / 0.55).clamp(0., 1.) as f32;
+    if t >= 1. {
+        return Vec2::splat(1.);
+    }
+    ui.ctx().request_repaint();
+    let wobble = (t * std::f32::consts::TAU * 2.5).sin() * (-5. * t).exp() * 0.22;
+    Vec2::new(1. + wobble, 1. - wobble * 0.8)
+}

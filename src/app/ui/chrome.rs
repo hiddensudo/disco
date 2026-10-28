@@ -41,6 +41,13 @@ impl Disco {
             FontId::proportional(11.),
             color(&t.muted),
         );
+        self.file_mode_buttons(
+            ui,
+            Rect::from_min_size(
+                Pos2::new(rect.right() - 386., rect.top() + 6.),
+                Vec2::new(190., 30.),
+            ),
+        );
         for (slot, icon, help) in [
             (0, 21, crate::tr!("Закрити", "Close")),
             (1, 20, crate::tr!("Розгорнути", "Maximize")),

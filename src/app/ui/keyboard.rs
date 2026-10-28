@@ -17,8 +17,13 @@ impl Disco {
             || self.deletion.confirm
             || self.purge_targets.is_some()
             || self.editor.pending.is_some()
+            || self.new_file.is_some()
             || egui::Popup::is_any_open(ctx)
         {
+            return;
+        }
+        if ctx.input_mut(|i| i.consume_key(Modifiers::CTRL, Key::N)) {
+            self.request_new_file(ctx);
             return;
         }
         if ctx.input_mut(|i| i.consume_key(Modifiers::CTRL, Key::S)) {
@@ -34,6 +39,12 @@ impl Disco {
             return;
         }
         if self.browser.text_input_focused {
+            if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
+                self.browser.filter.clear();
+                self.reveal_browser_selection();
+                ctx.memory_mut(|m| m.surrender_focus(egui::Id::unique("folder-search")));
+                ctx.request_repaint();
+            }
             return;
         }
         if self.scan.busy
@@ -44,10 +55,9 @@ impl Disco {
             return;
         }
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
-            if self.preferences.layout.preview_mode == crate::settings::PreviewMode::Workspace {
-                self.set_preview_mode(crate::settings::PreviewMode::Inspector, ctx);
-            } else if !self.browser.filter.is_empty() {
+            if !self.browser.filter.is_empty() {
                 self.browser.filter.clear();
+                self.reveal_browser_selection();
             }
             return;
         }
@@ -239,6 +249,30 @@ impl Disco {
         self.select_folder(id);
         self.browser.scroll_to = self.browser.properties.as_ref().map(|p| p.path.clone());
     }
+    /// Clearing a query must reveal the selected result in the same scope,
+    /// including ancestors that were collapsed before the search.
+    pub(in crate::app) fn reveal_browser_selection(&mut self) {
+        let Some(p) = &self.browser.properties else {
+            return;
+        };
+        let path = p.path.clone();
+        let folder = if p.is_dir {
+            Some(path.as_path())
+        } else {
+            path.parent()
+        };
+        let mut current = folder.and_then(|path| {
+            self.scan
+                .report
+                .as_ref()
+                .and_then(|r| r.folders.iter().position(|f| f.path == path))
+        });
+        while let Some(id) = current {
+            current = self.scan.report.as_ref().unwrap().folders[id].parent;
+            self.expand_folder(id);
+        }
+        self.browser.scroll_to = Some(path);
+    }
     fn select_parent(&mut self) {
         let parent = self
             .browser
@@ -352,7 +386,15 @@ mod tests {
             frame(app, ctx, time, vec![]).drop_without_applying_deltas();
             std::thread::sleep(Duration::from_millis(10));
         }
-        assert!(ready(app));
+        assert!(
+            ready(app),
+            "path={:?}, document={}, new_file={:?}, pending={}, focus={:?}",
+            app.editor.path,
+            app.editor.document.is_some(),
+            app.new_file,
+            app.editor.pending.is_some(),
+            ctx.memory(|m| m.focused())
+        );
     }
     #[test]
     fn keyboard_editor_and_unsaved_transitions_work_without_touching_real_files() {
@@ -417,7 +459,7 @@ mod tests {
             &mut app,
             &ctx,
             &mut time,
-            vec![egui::Event::Text("edited".into())],
+            vec![egui::Event::Paste("edited".into())],
         )
         .drop_without_applying_deltas();
         assert!(app.editor.focused && app.editor.dirty());
@@ -437,6 +479,26 @@ mod tests {
             fs::read(&a).unwrap(),
             app.editor.document.as_ref().unwrap().encoded()
         );
+        assert_eq!(
+            ctx.memory(|m| m.focused()),
+            Some(editor_id),
+            "Ctrl+S must preserve editor focus"
+        );
+        frame(
+            &mut app,
+            &ctx,
+            &mut time,
+            vec![egui::Event::Text("more".into())],
+        )
+        .drop_without_applying_deltas();
+        assert!(
+            app.editor.focused && app.editor.dirty(),
+            "typing continues after saving"
+        );
+        press(&mut app, &ctx, &mut time, Key::S, Modifiers::CTRL);
+        settle(&mut app, &ctx, &mut time, |a| {
+            a.editor.saving.is_none() && !a.editor.dirty()
+        });
         press(&mut app, &ctx, &mut time, Key::Escape, Modifiers::NONE);
         settle(&mut app, &ctx, &mut time, |a| {
             a.files.get(&folder).is_some()
@@ -537,5 +599,90 @@ mod tests {
         press(&mut app, &ctx, &mut time, Key::Delete, Modifiers::NONE);
         assert!(app.deletion.confirm);
         assert!(b.exists());
+        // Create from the real Ctrl+N modal, paste a custom extension and
+        // immediately type into the newly focused empty editor.
+        app.deletion.confirm = false;
+        app.enter_folder(0);
+        press(&mut app, &ctx, &mut time, Key::N, Modifiers::CTRL);
+        assert!(app.new_file.is_some());
+        frame(
+            &mut app,
+            &ctx,
+            &mut time,
+            vec![egui::Event::Paste("../outside.txt".into())],
+        )
+        .drop_without_applying_deltas();
+        press(&mut app, &ctx, &mut time, Key::Enter, Modifiers::NONE);
+        settle(&mut app, &ctx, &mut time, |a| {
+            a.new_file.as_ref().is_some_and(|draft| draft.has_error())
+        });
+        assert_eq!(
+            ctx.memory(|m| m.focused()),
+            Some(egui::Id::unique("new-file-name")),
+            "invalid input keeps the dialog and input focused"
+        );
+        assert!(!root.join("outside.txt").exists());
+        press(
+            &mut app,
+            &ctx,
+            &mut time,
+            Key::A,
+            Modifiers {
+                ctrl: true,
+                command: true,
+                ..Modifiers::NONE
+            },
+        );
+        frame(
+            &mut app,
+            &ctx,
+            &mut time,
+            vec![egui::Event::Paste("/new_folder/sub/fresh.custom".into())],
+        )
+        .drop_without_applying_deltas();
+        press(&mut app, &ctx, &mut time, Key::Enter, Modifiers::NONE);
+        let fresh = folder.join("new_folder/sub/fresh.custom");
+        settle(&mut app, &ctx, &mut time, |a| {
+            a.new_file.is_none()
+                && a.editor.path.as_ref() == Some(&fresh)
+                && a.editor.document.is_some()
+        });
+        assert!(fresh.is_file());
+        assert_eq!(
+            app.browser.root,
+            folder.to_string_lossy(),
+            "creating folders preserves the original scan root"
+        );
+        let parent_id = app.browser.table_root.unwrap();
+        assert_eq!(
+            app.scan.report.as_ref().unwrap().folders[parent_id].path,
+            fresh.parent().unwrap()
+        );
+        assert!(
+            app.scan
+                .index
+                .children(0)
+                .iter()
+                .any(|id| app.scan.report.as_ref().unwrap().folders[*id].path
+                    == folder.join("new_folder"))
+        );
+        assert_eq!(
+            ctx.memory(|m| m.focused()),
+            Some(egui::Id::unique(("file-editor", Some(fresh.clone()))))
+        );
+        frame(
+            &mut app,
+            &ctx,
+            &mut time,
+            vec![egui::Event::Paste("new text".into())],
+        )
+        .drop_without_applying_deltas();
+        assert!(app.editor.dirty());
+        assert_eq!(fs::read(&fresh).unwrap(), b"");
+        press(&mut app, &ctx, &mut time, Key::S, Modifiers::CTRL);
+        settle(&mut app, &ctx, &mut time, |a| {
+            a.editor.saving.is_none() && !a.editor.dirty()
+        });
+        assert_eq!(fs::read_to_string(&fresh).unwrap(), "new text");
     }
 }

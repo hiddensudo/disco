@@ -91,6 +91,9 @@ impl Default for Files {
 impl Files {
     pub fn invalidate(&mut self, path: &Path) {
         self.cache.remove(path);
+        // Discard reads that began before a save/create. Otherwise an old
+        // in-flight listing can repopulate the invalidated directory.
+        self.epoch = self.epoch.wrapping_add(1);
         self.revision = self.revision.wrapping_add(1);
     }
 
@@ -199,5 +202,16 @@ mod tests {
         files.poll(1);
         assert_eq!(files.cache.len(), DIRECTORY_LIMIT);
         assert!(files.get(Path::new("/39")).is_some());
+        let old_epoch = files.epoch;
+        files.invalidate(Path::new("/39"));
+        files
+            .tx
+            .send((old_epoch, "/39".into(), Listing::default()))
+            .unwrap();
+        files.poll(1);
+        assert!(
+            files.get(Path::new("/39")).is_none(),
+            "a read from before file creation is stale"
+        );
     }
 }

@@ -13,6 +13,7 @@ pub(crate) enum Category {
     Documents,
     Other,
     Trash,
+    Custom(u64),
 }
 impl Category {
     pub(crate) fn name(self) -> &'static str {
@@ -24,6 +25,7 @@ impl Category {
             Self::Documents => crate::tr!("Документи", "Documents"),
             Self::Other => crate::tr!("Інше", "Other"),
             Self::Trash => crate::tr!("Кошик", "Trash"),
+            Self::Custom(_) => crate::tr!("Власна категорія", "Custom category"),
         }
     }
 }
@@ -68,15 +70,100 @@ pub(crate) struct Index {
     cleanup_ids: Vec<usize>,
     classes: Vec<Category>,
     contains_trash: Vec<bool>,
+    collections: HashMap<Category, Vec<u64>>,
+    collection_roots: HashMap<Category, Vec<usize>>,
+    collection_totals: HashMap<Category, u64>,
 }
 impl Index {
     pub(crate) fn new(r: &Report) -> Self {
         Self::with_trash_roots(r, &recycle::scan_roots())
     }
     pub(crate) fn matches_category(&self, id: usize, category: Category) -> bool {
+        if let Some(members) = self.collections.get(&category) {
+            return members
+                .get(id / 64)
+                .is_some_and(|bits| bits & (1 << (id % 64)) != 0);
+        }
         category == Category::All
             || (self.classes[id] == category
                 && !(category == Category::Other && self.contains_trash[id]))
+    }
+    pub(crate) fn apply_collections(
+        &mut self,
+        report: &Report,
+        config: &crate::categories::Config,
+    ) -> HashMap<Category, Vec<PathBuf>> {
+        // Called once per report/config revision, never per row or frame.
+        self.collections.clear();
+        self.collection_roots.clear();
+        self.collection_totals.clear();
+        let wanted: HashSet<_> = config
+            .items
+            .iter()
+            .flat_map(|c| c.folders.iter().map(PathBuf::as_path))
+            .collect();
+        // Index only requested roots. Ordinary built-in categories do no extra
+        // scan-wide pass, and custom categories do not clone every report path.
+        let paths: HashMap<_, _> = if wanted.is_empty() {
+            HashMap::new()
+        } else {
+            report
+                .folders
+                .iter()
+                .enumerate()
+                .filter(|(_, f)| wanted.contains(f.path.as_path()))
+                .map(|(i, f)| (f.path.as_path(), i))
+                .collect()
+        };
+        let mut missing = HashMap::new();
+        for collection in &config.items {
+            if collection.builtin() && collection.folders.is_empty() {
+                continue;
+            }
+            let category = collection.category();
+            missing.insert(
+                category,
+                collection
+                    .folders
+                    .iter()
+                    .filter(|p| !paths.contains_key(p.as_path()))
+                    .cloned()
+                    .collect(),
+            );
+            let mut roots: Vec<_> = collection
+                .folders
+                .iter()
+                .filter_map(|p| paths.get(p.as_path()).copied())
+                .collect();
+            roots.sort_by_key(|i| report.folders[*i].path.components().count());
+            let mut unique = Vec::new();
+            for id in roots {
+                if !unique.iter().any(|i: &usize| {
+                    report.folders[id]
+                        .path
+                        .starts_with(&report.folders[*i].path)
+                }) {
+                    unique.push(id);
+                }
+            }
+            let mut members = if unique.is_empty() {
+                vec![]
+            } else {
+                vec![0u64; report.folders.len().div_ceil(64)]
+            };
+            let mut stack = unique.clone();
+            while let Some(id) = stack.pop() {
+                members[id / 64] |= 1 << (id % 64);
+                stack.extend_from_slice(&self.children[id]);
+            }
+            self.collection_totals.insert(
+                category,
+                unique.iter().map(|i| report.folders[*i].bytes).sum(),
+            );
+            self.collection_roots.insert(category, unique);
+            self.collections.insert(category, members);
+        }
+        missing
     }
     pub(crate) fn folder_count(&self) -> usize {
         self.children.len()
@@ -85,10 +172,18 @@ impl Index {
         &self.children[id]
     }
     pub(crate) fn roots(&self, category: Category) -> &[usize] {
-        self.roots.get(&category).map(Vec::as_slice).unwrap_or(&[])
+        self.collection_roots
+            .get(&category)
+            .or_else(|| self.roots.get(&category))
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
     }
     pub(crate) fn total(&self, category: Category) -> u64 {
-        self.totals.get(&category).copied().unwrap_or(0)
+        self.collection_totals
+            .get(&category)
+            .or_else(|| self.totals.get(&category))
+            .copied()
+            .unwrap_or(0)
     }
     pub(crate) fn cleanup_ids(&self) -> &[usize] {
         &self.cleanup_ids
@@ -293,5 +388,47 @@ mod tests {
             classify(Path::new("/home/me/Documents/Trash"), &roots),
             Category::Documents
         );
+    }
+}
+
+#[cfg(test)]
+mod collection_tests {
+    use super::*;
+    #[test]
+    fn collections_are_overlays_and_nested_roots_are_counted_once() {
+        let report = crate::demo::report();
+        let cache = report.folders[3].path.clone();
+        let nested = report.folders[6].path.clone();
+        let mut config = crate::categories::Config::default();
+        let mut item = crate::categories::Collection {
+            id: "my-cache".into(),
+            name: "My cache".into(),
+            icon: "folder".into(),
+            folders: vec![nested, cache.clone(), cache, "/not-scanned".into()],
+        };
+        let category = item.category();
+        config.items.push(item.clone());
+        let mut index = Index::new(&report);
+        let baseline = index.total(Category::Cache);
+        index.apply_collections(&report, &config);
+        assert_eq!(index.roots(category), &[3]);
+        assert_eq!(index.total(category), report.folders[3].bytes);
+        assert_eq!(index.total(Category::Cache), baseline);
+        assert!(index.matches_category(6, category));
+        assert!(!index.matches_category(1, category));
+        // Unrelated or missing roots cannot leak other files into a collection.
+        item.folders = vec!["/not-scanned".into()];
+        config.items[5] = item;
+        index.apply_collections(&report, &config);
+        assert!(index.roots(category).is_empty());
+        assert_eq!(index.total(category), 0);
+        assert!(!index.matches_category(6, category));
+        config.items[2].folders = vec![report.folders[6].path.clone()];
+        index.apply_collections(&report, &config);
+        assert_eq!(index.total(Category::Cache), report.folders[6].bytes);
+        config.items[2].folders.clear();
+        index.apply_collections(&report, &config);
+        assert_eq!(index.total(Category::Cache), baseline);
+        assert_eq!(index.roots(Category::Cache), &[3]);
     }
 }

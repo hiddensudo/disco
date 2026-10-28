@@ -1,0 +1,33 @@
+# ~/.config/disco/categories.toml — the shared category index.
+# Paths are relative to the directory containing this file.
+# Keep version = 2. File order is the order in the sidebar.
+version = 2
+files = [
+    "categories/games.toml",
+    "categories/development.toml",
+    "categories/caches.toml",
+    "categories/documents.toml",
+    "categories/other.toml",
+    "categories/photos.toml",
+]
+
+# An individual category file, e.g. ~/.config/disco/categories/photos.toml:
+# version = 1
+# id = "photos"
+# name = "Photography"
+# icon = "camera"
+# folders = ["/home/user/Pictures", "/mnt/photos/Archive"]
+#
+# Settings → Categories edits these files. The robot in that editor copies a
+# prompt in the interface language for this particular file and category.
+# Built-in IDs: games, development, caches, documents, other.
+# With folders = [] they use automatic classification. Adding explicit paths
+# replaces those rules for that category only.
+#
+# Icon names (38 choices):
+# folder, game, code, cache, document, other, monitor, drive, home, image,
+# music, video, camera, archive, cloud, download, heart, star, briefcase, book,
+# package, film, brush, palette, headphones, network, database, chip, terminal,
+# git, lock, shield, folder-star, folder-code, folder-photo, coffee, bolt, globe.
+# Import custom SVG/PNG/JPEG/WebP in Settings; disco copies them into icons/
+# under its config directory and writes the content-addressed relative icon path.
