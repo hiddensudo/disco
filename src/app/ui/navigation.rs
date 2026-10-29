@@ -53,6 +53,9 @@ impl Disco {
                 return parent.to_path_buf();
             }
         }
+        if let Some(untitled) = &self.editor.untitled {
+            return untitled.directory.clone();
+        }
         self.browser
             .table_root
             .and_then(|id| {

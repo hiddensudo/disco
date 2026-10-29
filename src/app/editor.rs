@@ -27,7 +27,7 @@ pub(super) struct Bookmark {
     history: History<super::state::NavState>,
 }
 impl Bookmark {
-    fn capture(app: &Disco) -> Self {
+    pub(super) fn capture(app: &Disco) -> Self {
         Self {
             root: app.browser.root.clone(),
             table: app.browser.table_root,
@@ -60,6 +60,7 @@ pub(super) enum Action {
     Transition(Bookmark),
     Navigate(PathBuf),
     NewFile(PathBuf),
+    NewTextTab(PathBuf),
     SelectFile {
         path: PathBuf,
         bytes: u64,
@@ -79,6 +80,7 @@ pub(super) enum Action {
 #[derive(Default)]
 pub(super) struct Editor {
     pub path: Option<PathBuf>,
+    pub untitled: Option<super::untitled::Untitled>,
     pub origin: Option<Category>,
     pub document: Option<Document>,
     pub focused: bool,
@@ -89,7 +91,7 @@ pub(super) struct Editor {
     pub error: String,
     pub confirm_fresh: bool,
     pub saving: Option<Receiver<Result<(Stamp, Document), String>>>,
-    bookmark: Option<Bookmark>,
+    pub(super) bookmark: Option<Bookmark>,
     pub(super) revision: u64,
     pub auto_save_at: Option<f64>,
     pub last_saved_at: Option<f64>,
@@ -101,7 +103,7 @@ impl Editor {
 }
 impl Editor {
     pub(super) fn save_in_background(&mut self, ctx: &egui::Context) {
-        if self.saving.is_some() || !self.dirty() {
+        if self.untitled.is_some() || self.saving.is_some() || !self.dirty() {
             return;
         }
         let (Some(path), Some(document)) = (self.path.clone(), self.document.clone()) else {
@@ -147,7 +149,8 @@ impl Editor {
 
 impl Disco {
     pub(in crate::app) fn auto_save_enabled(&self) -> bool {
-        !self.editor_read_only()
+        self.editor.untitled.is_none()
+            && !self.editor_read_only()
             && self
                 .collections
                 .config
@@ -192,7 +195,7 @@ impl Disco {
         self.reload_changed_document(ctx);
     }
     pub(in crate::app) fn reload_changed_document(&mut self, ctx: &egui::Context) {
-        if self.editor.saving.is_some() {
+        if self.editor.untitled.is_some() || self.editor.saving.is_some() {
             return;
         }
         let Some(path) = self.editor.path.clone() else {
@@ -239,7 +242,12 @@ impl Disco {
             && desired
                 .as_ref()
                 .is_some_and(|path| self.tabs.inactive.contains_key(path));
-        if focus_tabs || restore_cached {
+        if self.editor.untitled.is_some() && !focus_tabs && desired.is_none() {
+            // Overview may hide an untitled document without abandoning its
+            // buffer. Selecting another file stashes it as an ordinary tab.
+            return;
+        }
+        if focus_tabs || restore_cached || self.editor.untitled.is_some() {
             if focus_tabs {
                 desired = desired.or_else(|| self.editor.path.clone());
             }
@@ -286,6 +294,16 @@ impl Disco {
                 .map(Stamp::of);
             self.editor.revision = self.scan.report_revision;
         }
+        if self.editor.untitled.is_some() {
+            if let Some(path) = self.editor.path.clone() {
+                self.file_preview.restore_text(
+                    path,
+                    self.scan.report_revision,
+                    super::untitled::content(),
+                );
+            }
+            return;
+        }
         self.file_preview.select(desired, self.scan.report_revision);
         self.file_preview.poll(ctx);
         if self.editor.document.is_none() {
@@ -319,11 +337,15 @@ impl Disco {
         }
     }
     pub(in crate::app) fn editor_action(&mut self, action: Action, ctx: &egui::Context) {
-        let browsing = self.preferences.layout.preview_mode == PreviewMode::Focus
-            && matches!(
-                action,
-                Action::SelectFile { .. } | Action::Navigate(_) | Action::NewFile(_)
-            );
+        let browsing = matches!(action, Action::NewTextTab(_))
+            || (self.preferences.layout.preview_mode == PreviewMode::Focus
+                && matches!(
+                    action,
+                    Action::SelectFile { .. }
+                        | Action::Navigate(_)
+                        | Action::NewFile(_)
+                        | Action::NewTextTab(_)
+                ));
         if !browsing && (self.editor.dirty() || self.editor.saving.is_some()) {
             self.editor.pending = Some(action);
             self.editor.confirm_fresh = true;
@@ -336,11 +358,13 @@ impl Disco {
         self.editor.error.clear();
         match action {
             Action::Transition(bookmark) => {
+                self.editor.untitled = None;
                 bookmark.restore(self);
                 self.editor.document = None;
                 self.editor.path = None;
             }
             Action::Navigate(path) => self.navigate_path(path),
+            Action::NewTextTab(directory) => self.open_empty_tab(directory, ctx),
             Action::NewFile(directory) => {
                 self.new_file = Some(super::new_file::Draft::new(directory));
             }
@@ -381,6 +405,10 @@ impl Disco {
                 "Editing is disabled for this category"
             )
             .into();
+            return;
+        }
+        if self.editor.untitled.is_some() {
+            self.request_save_as(ctx);
             return;
         }
         if self.demo || self.editor.saving.is_some() || !self.editor.dirty() {
@@ -458,6 +486,10 @@ impl Disco {
         }
     }
     pub(in crate::app) fn guard_native_close(&mut self, ctx: &egui::Context) {
+        if self.save_as.is_some() && ctx.input(|i| i.viewport().close_requested()) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            return;
+        }
         if ctx.input(|i| i.viewport().close_requested())
             && (self.editor.dirty() || self.editor.saving.is_some() || self.tabs.has_unsaved())
         {

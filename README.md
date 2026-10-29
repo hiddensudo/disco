@@ -57,7 +57,7 @@ The bottom-left **···** menu contains Large files, Cleanup and Duplicates. De
 ## What else can it do?
 
 - Preview images and text; edit complete text files with conflict checks.
-- Keep drafts in tabs, with optional auto-save after one second without typing.
+- Start a blank text tab with Ctrl+T; choose its path on the first Ctrl+S. Existing text files support optional auto-save.
 - Refresh the current scope; enable live updates and read-only mode per category.
 - Create custom categories, import icons, and configure them with separate TOML files.
 - Restore items from Trash and see its size separately; Trash refreshes without rescanning folders.
@@ -69,6 +69,7 @@ The bottom-left **···** menu contains Large files, Cleanup and Duplicates. De
 | --- | --- |
 | ↑ / ↓, Enter | Select a file or enter a folder |
 | Ctrl+L / F5 | Search / refresh the current scope |
+| Ctrl+T | New in-memory text tab; Ctrl+S chooses its first save path |
 | Ctrl+S / Ctrl+N | Save / create a file, including `new_folder/file.txt` |
 | Ctrl+Tab / Ctrl+Shift+Tab | Preview the next / previous visible file |
 | Ctrl+Alt+arrows | Move focus between panels |

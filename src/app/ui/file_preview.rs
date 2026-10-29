@@ -183,7 +183,7 @@ impl Disco {
             Rect::from_min_size(Pos2::new(bar.right() - 30., bar.top()), Vec2::splat(30.)),
             11,
             "",
-            self.editor.saving.is_none(),
+            self.editor.saving.is_none() && self.editor.untitled.is_none(),
             false,
             &t,
         )
@@ -237,7 +237,10 @@ impl Disco {
                     } else {
                         ""
                     },
-                    self.editor.dirty() && self.editor.saving.is_none() && !self.demo && !read_only,
+                    (self.editor.dirty() || self.editor.untitled.is_some())
+                        && self.editor.saving.is_none()
+                        && !self.demo
+                        && !read_only,
                     false,
                     &t,
                 )

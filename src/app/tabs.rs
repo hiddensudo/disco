@@ -24,6 +24,7 @@ pub(super) struct Tab {
 #[derive(Default)]
 pub(super) struct Tabs {
     pub order: Vec<PathBuf>,
+    pub next_untitled: u64,
     pub inactive: HashMap<PathBuf, Tab>,
     /// At most one replaceable tab, requested only by keyboard file browsing.
     pub preview: Option<PathBuf>,
@@ -192,7 +193,11 @@ impl Disco {
         self.browser.view = View::Folders;
         self.browser.table_root = None;
         self.browser.filter.clear();
-        self.browser.properties = Some(Properties::load(path.to_path_buf(), 0, None, self.demo));
+        self.browser.properties = if path.is_absolute() {
+            Some(Properties::load(path.to_path_buf(), 0, None, self.demo))
+        } else {
+            None
+        };
         if self.open_focus_document(path.to_path_buf(), ctx) {
             self.reveal_browser_selection();
             if self.editor.document.is_some() {
@@ -266,7 +271,8 @@ impl Disco {
             let auto = collection
                 .map(|c| c.auto_save)
                 .unwrap_or(self.preferences.layout.all_files_auto_save);
-            if !read_only
+            if editor.untitled.is_none()
+                && !read_only
                 && auto
                 && editor.dirty()
                 && editor.error.is_empty()
@@ -306,7 +312,10 @@ impl Disco {
                         };
                         let dirty = editor.is_some_and(Editor::dirty);
                         let error = editor.is_some_and(|e| !e.error.is_empty());
-                        let name = crate::format::label(path);
+                        let name = editor
+                            .and_then(|e| e.untitled.as_ref())
+                            .map(|u| u.label())
+                            .unwrap_or_else(|| crate::format::label(path));
                         let width = (name.chars().count() as f32 * 7.5 + 58.).clamp(115., 230.);
                         let (rect, _) =
                             ui.allocate_exact_size(Vec2::new(width, 33.), Sense::hover());
@@ -395,7 +404,14 @@ impl Disco {
                         }
                         response.on_hover_text(format!(
                             "{}{}{}",
-                            path.display(),
+                            editor
+                                .and_then(|e| e.untitled.as_ref())
+                                .map(|u| crate::tr!(
+                                    "Не збережено · {directory}",
+                                    "Not saved · {directory}",
+                                    directory = u.directory.display()
+                                ))
+                                .unwrap_or_else(|| path.display().to_string()),
                             if temporary {
                                 crate::tr!(
                                     "\nТимчасовий перегляд · Enter або → — закріпити",

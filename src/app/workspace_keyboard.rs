@@ -260,6 +260,7 @@ impl Disco {
             || self.deletion.confirm
             || self.purge_targets.is_some()
             || self.editor.pending.is_some()
+            || self.save_as.is_some()
             || self.new_file.is_some()
             || egui::Popup::is_any_open(ctx)
         {
@@ -268,6 +269,7 @@ impl Disco {
         for command in crate::shortcuts::Command::ALL {
             if self.preferences.layout.shortcuts.get(command).consume(ctx) {
                 match command {
+                    crate::shortcuts::Command::NewTab => self.request_empty_tab(ctx),
                     crate::shortcuts::Command::Terminal => {
                         if self.browser.view != View::Trash {
                             self.toggle_terminal(ctx);
@@ -297,6 +299,7 @@ impl Disco {
             || self.deletion.confirm
             || self.purge_targets.is_some()
             || self.editor.pending.is_some()
+            || self.save_as.is_some()
             || self.new_file.is_some()
             || egui::Popup::is_any_open(ctx)
         {

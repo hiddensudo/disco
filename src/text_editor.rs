@@ -50,6 +50,25 @@ pub(crate) struct Document {
     pub crlf: bool,
 }
 impl Document {
+    pub fn empty() -> Self {
+        Self {
+            text: String::new(),
+            baseline: String::new(),
+            original: vec![],
+            stamp: Stamp {
+                dev: 0,
+                ino: 0,
+                len: 0,
+                mtime: 0,
+                mn: 0,
+                ctime: 0,
+                cn: 0,
+            },
+            encoding: Encoding::Utf8,
+            crlf: false,
+        }
+    }
+
     pub fn from_bytes(bytes: &[u8], m: &fs::Metadata) -> Option<Self> {
         if bytes.len() > 128 * 1024 {
             return None;

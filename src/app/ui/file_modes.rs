@@ -45,7 +45,18 @@ impl Disco {
             let r = Rect::from_min_size(rect.min + Vec2::new(offset, 0.), Vec2::new(width, 30.));
             let response = ui
                 .interact(r, egui::Id::unique(id), Sense::click())
-                .on_hover_text(help);
+                .on_hover_text(format!(
+                    "{help} · {}",
+                    self.preferences
+                        .layout
+                        .shortcuts
+                        .get(if mode == PreviewMode::Overview {
+                            crate::shortcuts::Command::Overview
+                        } else {
+                            crate::shortcuts::Command::Focus
+                        })
+                        .label()
+                ));
             let active =
                 self.browser.view != View::Trash && self.preferences.layout.preview_mode == mode;
             if active || response.hovered() {

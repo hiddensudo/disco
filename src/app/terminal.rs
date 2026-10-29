@@ -33,6 +33,7 @@ impl Disco {
                         p.path.parent().unwrap_or(&p.path).into()
                     }
                 })
+                .or_else(|| self.editor.untitled.as_ref().map(|u| u.directory.clone()))
                 .or_else(|| {
                     self.scan
                         .report
@@ -119,15 +120,20 @@ impl Disco {
             self.toggle_terminal(ui.ctx());
         }
         response.on_hover_text(if enabled {
-            crate::tr!(
-                "Відкрити або сховати термінал · сесія зберігається",
-                "Open or hide terminal · session stays alive"
+            format!(
+                "{} · {}",
+                crate::tr!(
+                    "Відкрити або сховати термінал · сесія зберігається",
+                    "Open or hide terminal · session stays alive"
+                ),
+                self.preferences.layout.shortcuts.terminal.label()
             )
         } else {
             crate::tr!(
                 "Перейдіть до файлів, щоб відкрити термінал",
                 "Switch to files to open terminal"
             )
+            .to_string()
         });
     }
     pub(in crate::app) fn terminal_panel(&mut self, ui: &mut egui::Ui) {

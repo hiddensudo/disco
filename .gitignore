@@ -6,3 +6,6 @@
 __pycache__/
 *.pyc
 .DS_Store
+
+/disco-unstable
+/disco-unstable.sha256

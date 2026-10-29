@@ -32,10 +32,20 @@ impl Draft {
 impl Disco {
     /// Extend the current snapshot with directories created by this operation.
     /// Folder IDs stay stable; no home-directory rescan replaces the user's view.
-    fn integrate_created_directories(&mut self, created: &crate::file_creation::Created) {
+    pub(in crate::app) fn integrate_created_directories(
+        &mut self,
+        created: &crate::file_creation::Created,
+    ) {
         let Some(report) = &mut self.scan.report else {
             return;
         };
+        if report
+            .folders
+            .first()
+            .is_none_or(|f| !created.path.starts_with(&f.path))
+        {
+            return;
+        }
         let report = std::sync::Arc::make_mut(report);
         let mut added = false;
         for directory in &created.directories {
@@ -70,12 +80,14 @@ impl Disco {
             .folders
             .iter()
             .position(|f| Some(f.path.as_path()) == created.path.parent());
+        let bytes = crate::scan::allocated(&created.metadata);
         while let Some(id) = at {
+            report.folders[id].bytes = report.folders[id].bytes.saturating_add(bytes);
             report.folders[id].files = report.folders[id].files.saturating_add(1);
             at = report.folders[id].parent;
         }
         report.entries = report.entries.saturating_add(1);
-        if added {
+        if added || bytes > 0 {
             self.scan.index = crate::index::Index::new(report);
             self.collections.indexed = None;
         }

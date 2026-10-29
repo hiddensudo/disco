@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- Ctrl+T opens an in-memory text tab. Its first Ctrl+S asks for a path relative to the folder selected at creation, or accepts a literal absolute path. Pasting, nested directories, conflict-safe first writes, tab switching and unsaved-close protection are supported. New tab is also available in the shortcut recorder.
+
 - Added a Shortcuts settings section with key recording, collision checks, reset and KDE conflict hints. Local defaults: Ctrl+Alt+T terminal, Ctrl+Alt+F Focus, Ctrl+Alt+V Overview.
 
 - Title-bar Overview, Focus and Terminal controls use compact icons by default. Interface settings can restore labels; spacing is shared with the window controls.

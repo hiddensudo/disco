@@ -3,14 +3,16 @@ use eframe::egui::{self, Key, Modifiers};
 use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Command {
+    NewTab,
     Terminal,
     Focus,
     Overview,
 }
 impl Command {
-    pub const ALL: [Self; 3] = [Self::Terminal, Self::Focus, Self::Overview];
+    pub const ALL: [Self; 4] = [Self::NewTab, Self::Terminal, Self::Focus, Self::Overview];
     pub fn label(self) -> &'static str {
         match self {
+            Self::NewTab => crate::tr!("Нова вкладка", "New tab"),
             Self::Terminal => crate::tr!("Термінал", "Terminal"),
             Self::Focus => crate::tr!("Фокус", "Focus"),
             Self::Overview => crate::tr!("Огляд", "Overview"),
@@ -52,8 +54,19 @@ impl Binding {
         )
     }
     pub fn consume(&self, ctx: &egui::Context) -> bool {
-        Key::from_name(&self.key)
-            .is_some_and(|key| ctx.input_mut(|i| i.consume_key(self.modifiers(), key)))
+        let Some(key) = Key::from_name(&self.key) else {
+            return false;
+        };
+        ctx.input_mut(|i| {
+            let mut matched = false;
+            i.events.retain(|event| {
+                let consume = matches!(event, egui::Event::Key { key: actual, modifiers, pressed: true, .. }
+                    if *actual == key && modifiers.matches_exact(self.modifiers()));
+                matched |= consume;
+                !consume
+            });
+            matched
+        })
     }
     fn validate(&self) -> Result<(), String> {
         let key = Key::from_name(&self.key)
@@ -74,7 +87,7 @@ impl Binding {
             && !self.alt
             && matches!(
                 key,
-                Key::S | Key::N | Key::W | Key::L | Key::T | Key::Tab | Key::Comma
+                Key::S | Key::N | Key::W | Key::L | Key::Tab | Key::Comma
             ))
             || (self.ctrl
                 && self.alt
@@ -97,6 +110,7 @@ impl Binding {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Shortcuts {
+    pub new_tab: Binding,
     pub terminal: Binding,
     pub focus: Binding,
     pub overview: Binding,
@@ -105,6 +119,7 @@ impl Default for Shortcuts {
     fn default() -> Self {
         let mods = Modifiers::CTRL | Modifiers::ALT;
         Self {
+            new_tab: Binding::new(Key::T, Modifiers::CTRL),
             terminal: Binding::new(Key::T, mods),
             focus: Binding::new(Key::F, mods),
             overview: Binding::new(Key::V, mods),
@@ -114,6 +129,7 @@ impl Default for Shortcuts {
 impl Shortcuts {
     pub fn get(&self, command: Command) -> &Binding {
         match command {
+            Command::NewTab => &self.new_tab,
             Command::Terminal => &self.terminal,
             Command::Focus => &self.focus,
             Command::Overview => &self.overview,
@@ -132,6 +148,7 @@ impl Shortcuts {
             ));
         }
         match command {
+            Command::NewTab => self.new_tab = binding,
             Command::Terminal => self.terminal = binding,
             Command::Focus => self.focus = binding,
             Command::Overview => self.overview = binding,

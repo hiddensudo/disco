@@ -21,6 +21,7 @@ impl Disco {
             || self.deletion.confirm
             || self.purge_targets.is_some()
             || self.editor.pending.is_some()
+            || self.save_as.is_some()
             || self.new_file.is_some()
             || egui::Popup::is_any_open(ctx)
         {
@@ -84,6 +85,7 @@ impl Disco {
             || self.deletion.confirm
             || self.purge_targets.is_some()
             || self.editor.pending.is_some()
+            || self.save_as.is_some()
             || self.new_file.is_some()
             || egui::Popup::is_any_open(ctx)
         {

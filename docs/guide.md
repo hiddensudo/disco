@@ -49,6 +49,25 @@ All panel routes below use **Ctrl+Alt** with an arrow. Plain arrows remain termi
 
 The PTY uses the Alacritty terminal engine with native egui rendering. Terminal colors follow the app theme; system monospace and symbol fonts are loaded on first use. A launcher-inherited `NO_COLOR` is cleared only for the PTY subprocess. Shell configuration remains your own. Compatibility and implementation notes: [development guide](development.md#terminal).
 
+## Untitled text tabs (0.2.3 preview)
+
+![In-memory text tab](screenshots/scratch-023.png)
+
+**Ctrl+T** opens a blank text tab in Focus without creating anything on disk. Type or paste normally. Multiple untitled tabs keep independent buffers; closing a modified tab or the app asks before discarding it. Untitled buffers do not auto-save until you choose a file path.
+
+The first **Ctrl+S** opens Save new file. The proposed base is the folder selected when the tab was created, or a selected file's parent; otherwise it uses the current scope root. Selecting `/workspace/dotfiles` therefore proposes that folder, not `/workspace`.
+
+| Input | Result with base `/workspace/dotfiles` |
+| --- | --- |
+| `notes.txt` | `/workspace/dotfiles/notes.txt` |
+| `nested/notes.txt` | `/workspace/dotfiles/nested/notes.txt` |
+| `../notes.txt` | `/workspace/notes.txt` |
+| `/tmp/notes.txt` | `/tmp/notes.txt` |
+
+Paste paths into the field, or choose a different base folder. Missing parent folders are created. Existing files are never overwritten, and symbolic parent directories are not followed. Invalid paths or write errors retain the dialog, input focus and draft. Cancel returns to the buffer. After saving, the tab becomes a normal named document; subsequent Ctrl+S saves it directly.
+
+This Save As dialog uses standard absolute-path semantics. The older **Ctrl+N** file-creation dialog retains its existing rule that a leading `/` stays relative to the chosen folder.
+
 ## Preview, edit and keep tabs
 
 Select a file to preview it. Images preserve their proportions and support fit/zoom; portrait images use a taller canvas. Double-click opens an installed default application, when one is associated. Disable double-click opening under Settings → Interface → Default file view.
@@ -147,7 +166,9 @@ Settings open in one separate, resizable window. Reopening raises it with its dr
 
 ## Custom shortcuts
 
-Settings → Shortcuts records a combination when you click its field and press the keys. Escape cancels capture; Reset restores defaults. Save persists changes and Cancel restores the prior bindings. Defaults are Ctrl+Alt+T for the terminal, Ctrl+Alt+F for Focus and Ctrl+Alt+V for Overview. Conflicting app bindings and reserved editor/navigation commands are rejected. KDE global assignments are highlighted: a compositor shortcut may intercept the key before disco receives it; reassign it in disco or system settings. No global shortcuts are modified.
+![Shortcut recorder settings](screenshots/shortcuts-023.png)
+
+Settings → Shortcuts records a combination when you click its field and press the keys. Escape cancels capture; Reset restores defaults. Save persists changes and Cancel restores the prior bindings. The new-tab default is Ctrl+T. Other defaults are Ctrl+Alt+T for the terminal, Ctrl+Alt+F for Focus and Ctrl+Alt+V for Overview. Conflicting app bindings and reserved editor/navigation commands are rejected. KDE global assignments are highlighted: a compositor shortcut may intercept the key before disco receives it; reassign it in disco or system settings. No global shortcuts are modified.
 
 ## Keyboard reference
 

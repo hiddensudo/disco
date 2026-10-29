@@ -27,6 +27,7 @@ mod state;
 mod tabs;
 mod terminal;
 mod ui;
+mod untitled;
 mod workspace_keyboard;
 use self::{
     state::{BrowserState, DeletionState, DriveState, PreferencesState, ScanState},
@@ -53,6 +54,7 @@ pub(crate) struct Disco {
     live: crate::live_files::LiveFiles,
     syntax: crate::syntax::Syntax,
     new_file: Option<new_file::Draft>,
+    save_as: Option<untitled::SaveAs>,
     opening_file: Arc<std::sync::atomic::AtomicBool>,
     purge_targets: Option<Vec<recycle::Item>>,
     purge_fresh: bool,
@@ -216,6 +218,7 @@ impl Disco {
             files: crate::directory_files::Files::default(),
             file_preview: crate::file_preview::Preview::default(),
             new_file: None,
+            save_as: None,
             scoped: scope::Scope::default(),
             search: crate::file_search::Search::default(),
             live: crate::live_files::LiveFiles::default(),
@@ -272,6 +275,9 @@ impl Disco {
             });
         }
         s.apply_style(&cc.egui_ctx);
+        if args.iter().any(|a| a == "--new-tab") {
+            s.request_empty_tab(&cc.egui_ctx);
+        }
         s
     }
 }
@@ -343,6 +349,7 @@ impl eframe::App for Disco {
         }
         self.files.poll(self.scan.report_revision);
         self.poll_new_file(ui.ctx());
+        self.poll_save_as(ui.ctx());
         self.sync_file_preview(ui.ctx());
         let shown = self.terminal_shown();
         self.terminal.poll(&self.preferences.theme, shown);
@@ -533,6 +540,7 @@ impl eframe::App for Disco {
         self.settings_window(&ctx);
         self.editor_confirmation(&ctx);
         self.new_file_dialog(&ctx);
+        self.save_as_dialog(&ctx);
         if i18n::current() != self.preferences.layout.language {
             i18n::set_current(self.preferences.layout.language);
             self.message.clear();

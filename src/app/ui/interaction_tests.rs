@@ -2212,3 +2212,247 @@ fn title_controls_are_compact_by_default_and_labels_can_be_restored() {
     let restored: crate::settings::Layout = toml::from_str(&saved).unwrap();
     assert!(restored.title_button_labels);
 }
+
+#[test]
+fn untitled_tabs_paste_keep_drafts_and_save_relative_absolute_without_overwrite() {
+    let Ok(root) = std::env::var("DISCO_UNTITLED_FIXTURE") else {
+        let root = std::env::temp_dir().join(format!("disco-untitled-{}", std::process::id()));
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::create_dir_all(root.join("workspace/dotfiles")).unwrap();
+        fs::write(root.join("workspace/dotfiles/existing.txt"), "keep me").unwrap();
+        fs::write(root.join("config/layout.toml"), "language='en'\nsave_scan=false\nauto_refresh=false\nall_files_auto_save=true\nanimations=false\n").unwrap();
+        let out = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "app::ui::interaction_tests::untitled_tabs_paste_keep_drafts_and_save_relative_absolute_without_overwrite", "--nocapture"])
+            .env("DISCO_UNTITLED_FIXTURE", &root).env("DISCO_CONFIG_DIR", root.join("config"))
+            .env("XDG_DATA_HOME", root.join("data")).output().unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            out.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return;
+    };
+    use egui::{Key, Modifiers};
+    let root = PathBuf::from(root);
+    let workspace = root.join("workspace");
+    let dotfiles = workspace.join("dotfiles");
+    let ctx = egui::Context::default();
+    let mut time = 0.;
+    let mut app = Disco::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+    let report = crate::scan::scan(&workspace, &crate::scan::Control::default(), |_| {}).unwrap();
+    let directory = report
+        .folders
+        .iter()
+        .position(|f| f.path == dotfiles)
+        .unwrap();
+    app.scan.index = crate::index::Index::new(&report);
+    app.scan.report = Some(std::sync::Arc::new(report));
+    app.browser.root = workspace.display().to_string();
+    app.select_folder(directory);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    press_key(&mut app, &ctx, &mut time, Key::T, Modifiers::CTRL);
+    assert_eq!(app.preferences.layout.preview_mode, PreviewMode::Focus);
+    assert_eq!(app.editor.untitled.as_ref().unwrap().directory, dotfiles);
+    let first = app.editor.path.clone().unwrap();
+    assert!(!first.is_absolute());
+    assert_eq!(app.tabs.order.len(), 1);
+    assert_eq!(fs::read_dir(&dotfiles).unwrap().count(), 1);
+    let text = "Hello 世界 🦀\nfirst draft\n";
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Paste(text.into())],
+    );
+    assert_eq!(app.editor.document.as_ref().unwrap().text, text);
+    for _ in 0..30 {
+        frame(&mut app, &ctx, &mut time, vec![]);
+    }
+    assert!(
+        app.save_as.is_none(),
+        "auto-save must not prompt or write an untitled tab"
+    );
+    assert_eq!(fs::read_dir(&dotfiles).unwrap().count(), 1);
+    press_key(&mut app, &ctx, &mut time, Key::T, Modifiers::CTRL);
+    let second = app.editor.path.clone().unwrap();
+    assert_ne!(first, second);
+    assert_eq!(app.tabs.order.len(), 2);
+    assert_eq!(
+        app.tabs.inactive[&first]
+            .editor
+            .document
+            .as_ref()
+            .unwrap()
+            .text,
+        text
+    );
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Paste("second draft".into())],
+    );
+    app.request_close_tab(&second, &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert!(app.editor.pending.is_some());
+    press_key(&mut app, &ctx, &mut time, Key::Escape, Modifiers::NONE);
+    assert!(app.tabs.order.contains(&second));
+    app.activate_tab(&first, &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, text);
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        Key::V,
+        Modifiers::CTRL | Modifiers::ALT,
+    );
+    for _ in 0..3 {
+        frame(&mut app, &ctx, &mut time, vec![]);
+    }
+    assert_eq!(app.preferences.layout.preview_mode, PreviewMode::Overview);
+    assert!(app.editor.pending.is_none());
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        Key::F,
+        Modifiers::CTRL | Modifiers::ALT,
+    );
+    assert_eq!(app.editor.document.as_ref().unwrap().text, text);
+    press_key(&mut app, &ctx, &mut time, Key::S, Modifiers::CTRL);
+    assert_eq!(app.save_as.as_ref().unwrap().directory, dotfiles);
+    assert_eq!(
+        ctx.memory(|m| m.focused()),
+        Some(Id::unique("save-as-path"))
+    );
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Paste("nested/note.txt".into())],
+    );
+    assert_eq!(app.save_as.as_ref().unwrap().input, "nested/note.txt");
+    press_key(&mut app, &ctx, &mut time, Key::Enter, Modifiers::NONE);
+    let wait = |app: &mut Disco, time: &mut f64, error: bool| {
+        let start = Instant::now();
+        while app.save_as.as_ref().is_some_and(|s| s.error.is_empty())
+            && start.elapsed() < Duration::from_secs(4)
+        {
+            frame(app, &ctx, time, vec![]);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        if error {
+            assert!(
+                !app.save_as
+                    .as_ref()
+                    .expect("failed path must retain dialog")
+                    .error
+                    .is_empty()
+            );
+            frame(app, &ctx, time, vec![]);
+            assert_eq!(
+                ctx.memory(|m| m.focused()),
+                Some(Id::unique("save-as-path"))
+            );
+        } else {
+            assert!(
+                app.save_as.is_none(),
+                "input={:?} error={:?} path={:?} pending={}",
+                app.save_as.as_ref().map(|s| &s.input),
+                app.save_as.as_ref().map(|s| &s.error),
+                app.editor.path,
+                app.editor.pending.is_some()
+            );
+        }
+    };
+    wait(&mut app, &mut time, false);
+    let target = dotfiles.join("nested/note.txt");
+    assert_eq!(fs::read_to_string(&target).unwrap(), text);
+    assert_eq!(app.editor.path.as_ref(), Some(&target));
+    assert!(!app.editor.dirty());
+    assert!(app.editor.untitled.is_none());
+    assert!(!app.tabs.order.contains(&first));
+    assert!(app.tabs.order.contains(&target));
+    app.activate_tab(&second, &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, "second draft");
+    press_key(&mut app, &ctx, &mut time, Key::S, Modifiers::CTRL);
+    app.save_as.as_mut().unwrap().input = target.display().to_string();
+    app.submit_save_as(&ctx);
+    wait(&mut app, &mut time, true);
+    assert_eq!(fs::read_to_string(&target).unwrap(), text);
+    app.save_as.as_mut().unwrap().input = "/".into();
+    app.submit_save_as(&ctx);
+    wait(&mut app, &mut time, true);
+    let absolute = root.join("absolute/second.txt");
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        Key::A,
+        Modifiers::CTRL | Modifiers::COMMAND,
+    );
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Paste(absolute.display().to_string())],
+    );
+    assert_eq!(
+        app.save_as.as_ref().unwrap().input,
+        absolute.display().to_string()
+    );
+    app.submit_save_as(&ctx);
+    wait(&mut app, &mut time, false);
+    assert_eq!(fs::read_to_string(&absolute).unwrap(), "second draft");
+    // A blank tab can be saved, while cancelling Save As retains its buffer.
+    app.browser.properties = Some(crate::filesystem::Properties::load(
+        dotfiles.clone(),
+        0,
+        None,
+        false,
+    ));
+    press_key(&mut app, &ctx, &mut time, Key::T, Modifiers::CTRL);
+    let third = app.editor.path.clone().unwrap();
+    press_key(&mut app, &ctx, &mut time, Key::S, Modifiers::CTRL);
+    assert!(app.save_as.is_some());
+    press_key(&mut app, &ctx, &mut time, Key::Escape, Modifiers::NONE);
+    assert!(app.save_as.is_none());
+    assert_eq!(app.editor.path.as_ref(), Some(&third));
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Paste("save before closing".into())],
+    );
+    app.request_close_tab(&third, &ctx);
+    app.save_editor(&ctx);
+    app.save_as.as_mut().unwrap().input = "closed.txt".into();
+    app.submit_save_as(&ctx);
+    wait(&mut app, &mut time, false);
+    assert_eq!(
+        fs::read_to_string(dotfiles.join("closed.txt")).unwrap(),
+        "save before closing"
+    );
+    assert!(!app.tabs.order.contains(&third));
+    assert!(!app.tabs.order.contains(&dotfiles.join("closed.txt")));
+    assert!(app.tabs.order.contains(&target));
+    assert!(app.tabs.order.contains(&absolute));
+    app.activate_tab(&target, &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Paste("edited again".into())],
+    );
+    let expected = app.editor.document.as_ref().unwrap().text.clone();
+    press_key(&mut app, &ctx, &mut time, Key::S, Modifiers::CTRL);
+    wait_document(&mut app, &ctx, &mut time);
+    assert_eq!(fs::read_to_string(&target).unwrap(), expected);
+    assert!(!app.editor.dirty());
+    assert!(app.editor.untitled.is_none());
+}

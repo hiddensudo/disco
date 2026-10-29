@@ -2,7 +2,7 @@ use crate::app::Disco;
 use eframe::egui::{self, RichText};
 impl Disco {
     pub(in crate::app) fn editor_confirmation(&mut self, ctx: &egui::Context) {
-        if self.editor.pending.is_none() {
+        if self.save_as.is_some() || self.editor.pending.is_none() {
             return;
         }
         let mut save = false;
@@ -15,8 +15,22 @@ impl Disco {
             ui.heading(crate::tr!("Зберегти зміни?", "Save changes?"));
             ui.add_space(8.);
             if let Some(path) = &self.editor.path {
-                ui.label(RichText::new(crate::format::label(path)).strong());
-                ui.label(path.to_string_lossy());
+                let title = self
+                    .editor
+                    .untitled
+                    .as_ref()
+                    .map(|u| u.label())
+                    .unwrap_or_else(|| crate::format::label(path));
+                ui.label(RichText::new(title).strong());
+                if let Some(untitled) = &self.editor.untitled {
+                    ui.label(crate::tr!(
+                        "Не збережено · {directory}",
+                        "Not saved · {directory}",
+                        directory = untitled.directory.display()
+                    ));
+                } else {
+                    ui.label(path.to_string_lossy());
+                }
             }
             ui.add_space(8.);
             ui.label(crate::tr!(
@@ -61,6 +75,16 @@ impl Disco {
         if cancel {
             self.editor.pending = None;
         } else if discard {
+            if self.editor.untitled.take().is_some()
+                && !matches!(
+                    self.editor.pending,
+                    Some(crate::app::editor::Action::CloseTab(_))
+                )
+                && let Some(path) = &self.editor.path
+            {
+                self.tabs.order.retain(|p| p != path);
+                self.tabs.inactive.remove(path);
+            }
             self.editor.document = None;
             self.editor.path = None;
             self.file_preview.reload();

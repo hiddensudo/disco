@@ -22,6 +22,7 @@ The installer links the selected binary into `~/.local/bin/disco` and creates it
 
 ```sh
 ./target/release/disco --version
+./target/release/disco --new-tab       # in-memory text tab
 ./target/release/disco --demo          # sample storage data
 ./target/release/disco --trash         # open Trash
 ./target/release/disco --scan /path    # CLI scan
@@ -73,3 +74,7 @@ A window-level regression covers Overview/Focus transitions, resizing and 100%, 
 - Local Trash library patch: [notes and license](../vendor/trash/DISCO-PATCH.md).
 
 Only source, documentation and sample screenshots belong in Git. Local binaries, config, scan caches and private fixtures stay outside release commits. Ask the author for the exact version number before bumping or tagging; preserve existing tags.
+
+## Testing the 0.2.3 preview
+
+Keep the stable launcher separate. Build this branch and run `DISCO_CONFIG_DIR=/tmp/disco-unstable ./target/release/disco` to try it with isolated settings. The preview version is `0.2.3-unstable`; main and stable tags remain unchanged during preparation.
