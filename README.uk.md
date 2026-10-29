@@ -1,6 +1,6 @@
 # disco
 
-**Розробка: 0.2.3-unstable.** Зміни готуються в `codex/disco-0.2.3-unstable`; [main](https://github.com/hiddensudo/disco) залишається стабільним.
+**Розробка: 0.2.3-unstable.** Зміни готуються в `disco-0.2.3-unstable`; [main](https://github.com/hiddensudo/disco) залишається стабільним.
 
 Нативний аналізатор місця на диску для Linux із прев’ю файлів, редагуванням тексту та вбудованим терміналом. Rust + egui, без фонового індексатора.
 

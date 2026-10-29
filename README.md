@@ -1,6 +1,6 @@
 # disco
 
-**Development: 0.2.3-unstable.** Work is staged on `codex/disco-0.2.3-unstable`; [main](https://github.com/hiddensudo/disco) remains stable.
+**Development: 0.2.3-unstable.** Work is staged on `disco-0.2.3-unstable`; [main](https://github.com/hiddensudo/disco) remains stable.
 
 A native Linux disk space analyzer with file previews, text editing, and an integrated terminal. Built with Rust and egui, without a background indexing service.
 
