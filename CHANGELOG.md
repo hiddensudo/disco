@@ -2,6 +2,10 @@
 
 Release history for disco, including earlier development checkpoints.
 
+## Unreleased
+
+- Focus includes a lazy, resizable terminal column with a title-bar toggle. Hiding retains the PTY; closing kills its shell and session jobs, frees its buffers and returns the column to the document. Keyboard input is isolated from file actions; colors and system symbol fonts follow the tested native prototype.
+
 ## 0.2.1 — 2026-10-28
 
 - Keyboard file navigation reuses a single italic preview tab. Enter or Right first retains it; subsequent Enter launches an existing file association and subsequent Right focuses the document. Editing retains the draft automatically; clean replaced previews release their undo state.

@@ -44,8 +44,15 @@ impl Disco {
         self.file_mode_buttons(
             ui,
             Rect::from_min_size(
-                Pos2::new(rect.right() - 386., rect.top() + 6.),
+                Pos2::new(rect.right() - 506., rect.top() + 6.),
                 Vec2::new(190., 30.),
+            ),
+        );
+        self.terminal_button(
+            ui,
+            Rect::from_min_size(
+                Pos2::new(rect.right() - 310., rect.top() + 6.),
+                Vec2::new(112., 30.),
             ),
         );
         for (slot, icon, help) in [

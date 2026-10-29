@@ -23,6 +23,7 @@ mod scoped_refresh;
 mod settings;
 mod snapshot;
 mod syntax;
+mod terminal;
 mod text_editor;
 
 use eframe::egui;

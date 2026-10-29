@@ -299,6 +299,14 @@ pub fn bold(size: f32) -> egui::FontId {
     egui::FontId::new(size, egui::FontFamily::Name("Inter Bold".into()))
 }
 pub fn fonts(ctx: &egui::Context) {
+    install_fonts(ctx, false);
+}
+
+pub fn terminal_fonts(ctx: &egui::Context) {
+    install_fonts(ctx, true);
+}
+
+fn install_fonts(ctx: &egui::Context, terminal: bool) {
     let mut f = egui::FontDefinitions::default();
     f.font_data.insert(
         "Inter".into(),
@@ -316,6 +324,36 @@ pub fn fonts(ctx: &egui::Context) {
         egui::FontFamily::Name("Inter Bold".into()),
         vec!["Inter Bold".into(), "Inter".into()],
     );
+    if terminal {
+        let mut names = Vec::new();
+        for (index, pattern) in ["monospace", ":charset=1fb00", "Symbols Nerd Font Mono"]
+            .iter()
+            .enumerate()
+        {
+            if let Ok(out) = std::process::Command::new("fc-match")
+                .args(["-f", "%{file}", pattern])
+                .output()
+            {
+                if !out.status.success() {
+                    continue;
+                }
+                if let Ok(bytes) = std::fs::read(String::from_utf8_lossy(&out.stdout).trim()) {
+                    let name = format!("terminal-system-{index}");
+                    f.font_data
+                        .insert(name.clone(), egui::FontData::from_owned(bytes).into());
+                    names.push(name);
+                }
+            }
+        }
+        names.extend(
+            f.families
+                .get(&egui::FontFamily::Monospace)
+                .cloned()
+                .unwrap_or_default(),
+        );
+        f.families
+            .insert(egui::FontFamily::Name("Terminal".into()), names);
+    }
     ctx.set_fonts(f);
 }
 

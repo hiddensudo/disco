@@ -1568,3 +1568,189 @@ fn keyboard_preview_reuses_one_tab_and_enter_right_keep_before_opening_or_focusi
     assert!(app.keyboard.area == Area::Editor);
     assert_eq!(app.tabs.order.len(), 4);
 }
+
+#[test]
+fn focus_terminal_toggle_close_and_keyboard_isolation_use_real_pty() {
+    let Ok(root) = std::env::var("DISCO_TERMINAL_FIXTURE") else {
+        let root =
+            std::env::temp_dir().join(format!("disco-terminal-integrated-{}", std::process::id()));
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::create_dir_all(root.join("files")).unwrap();
+        fs::write(root.join("files/example.rs"), "fn main() {}\n").unwrap();
+        fs::write(
+            root.join("config/layout.toml"),
+            "preview_mode='focus'\nsave_scan=false\nauto_refresh=false\nanimations=false\n",
+        )
+        .unwrap();
+        let result=Command::new(std::env::current_exe().unwrap()).args(["--exact","app::ui::interaction_tests::focus_terminal_toggle_close_and_keyboard_isolation_use_real_pty","--nocapture"])
+            .env("DISCO_TERMINAL_FIXTURE",&root).env("DISCO_CONFIG_DIR",root.join("config")).env("XDG_DATA_HOME",root.join("data")).env("SHELL","/bin/sh").env("NO_COLOR","1").output().unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            result.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        );
+        return;
+    };
+    use crate::app::workspace_keyboard::Area;
+    use egui::{Key, Modifiers};
+    use egui_term::BackendCommand;
+    let root = PathBuf::from(root);
+    let files = root.join("files");
+    let file = files.join("example.rs");
+    let ctx = egui::Context::default();
+    let mut time = 0.;
+    let mut app = Disco::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+    let report = crate::scan::scan(&files, &crate::scan::Control::default(), |_| {}).unwrap();
+    app.scan.index = crate::index::Index::new(&report);
+    app.scan.report = Some(std::sync::Arc::new(report));
+    app.browser.root = files.display().to_string();
+    app.browser.category = Category::All;
+    app.select_file(file.clone(), 4096);
+    wait_document(&mut app, &ctx, &mut time);
+    let width_before = ctx
+        .read_response(Id::unique("focus-document-panel"))
+        .unwrap()
+        .rect
+        .width();
+    assert!(!app.terminal.exists());
+    click(&mut app, &ctx, &mut time, Id::unique("toggle-terminal"));
+    let pid = app.terminal.pid().unwrap();
+    assert_eq!(app.terminal.cwd, files);
+    assert!(app.terminal_shown());
+    assert!(app.keyboard.area == Area::Terminal);
+    let width_with = ctx
+        .read_response(Id::unique("focus-document-panel"))
+        .unwrap()
+        .rect
+        .width();
+    assert!(width_before - width_with > 290.);
+    app.terminal
+        .backend()
+        .unwrap()
+        .process_command(BackendCommand::Write(
+            b"test -z ${NO_COLOR+x} && printf '\\103\\117\\114\\117\\122\\137\\117\\113\\n'\r"
+                .to_vec(),
+        ));
+    let start = Instant::now();
+    while start.elapsed() < Duration::from_secs(3) {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        let output: String = app
+            .terminal
+            .backend()
+            .unwrap()
+            .sync()
+            .grid
+            .display_iter()
+            .map(|c| c.c)
+            .collect();
+        if output.contains("COLOR_OK") {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let output: String = app
+        .terminal
+        .backend()
+        .unwrap()
+        .sync()
+        .grid
+        .display_iter()
+        .map(|c| c.c)
+        .collect();
+    assert!(output.contains("COLOR_OK"));
+    for (key, mods) in [
+        (Key::W, Modifiers::CTRL),
+        (Key::S, Modifiers::CTRL),
+        (Key::N, Modifiers::CTRL),
+        (Key::Delete, Modifiers::NONE),
+        (Key::Enter, Modifiers::NONE),
+    ] {
+        press_key(&mut app, &ctx, &mut time, key, mods);
+    }
+    assert_eq!(app.editor.path, Some(file.clone()));
+    assert!(app.editor.pending.is_none());
+    assert!(app.new_file.is_none());
+    assert!(!app.deletion.confirm);
+    click(&mut app, &ctx, &mut time, Id::unique("toggle-terminal"));
+    assert!(!app.terminal_shown());
+    assert_eq!(app.terminal.pid(), Some(pid));
+    click(&mut app, &ctx, &mut time, Id::unique("toggle-terminal"));
+    assert!(app.terminal_shown());
+    assert_eq!(app.terminal.pid(), Some(pid));
+    // Overview allocates no terminal column, without discarding its live session.
+    click(&mut app, &ctx, &mut time, Id::unique("file-mode-overview"));
+    assert!(!app.terminal_shown());
+    assert_eq!(app.terminal.pid(), Some(pid));
+    click(&mut app, &ctx, &mut time, Id::unique("file-mode-focus"));
+    assert!(app.terminal_shown());
+    assert_eq!(app.terminal.pid(), Some(pid));
+    // Ctrl+S above is intentionally passed to the PTY (XOFF). Resume output
+    // before asking the interactive shell to draw/read its next command.
+    app.terminal
+        .backend()
+        .unwrap()
+        .process_command(BackendCommand::Write(vec![17]));
+    std::thread::sleep(Duration::from_millis(30));
+    let jobfile = root.join("job.pid");
+    let command = format!(
+        "set -m; sh -c 'trap {q}{q} HUP TERM; echo $$ > {path}; sleep 60' &{cr}",
+        q = '"',
+        path = jobfile.display(),
+        cr = char::from(13)
+    );
+    app.terminal
+        .backend()
+        .unwrap()
+        .process_command(BackendCommand::Write(command.into_bytes()));
+    let start = Instant::now();
+    while !jobfile.exists() && start.elapsed() < Duration::from_secs(3) {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(
+        jobfile.exists(),
+        "background job not started: {}",
+        app.terminal
+            .backend()
+            .unwrap()
+            .sync()
+            .grid
+            .display_iter()
+            .map(|c| c.c)
+            .collect::<String>()
+    );
+    let job: u32 = fs::read_to_string(&jobfile)
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    click(&mut app, &ctx, &mut time, Id::unique("close-terminal"));
+    assert!(!app.terminal.exists());
+    assert!(!app.terminal_shown());
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert!(
+        (ctx.read_response(Id::unique("focus-document-panel"))
+            .unwrap()
+            .rect
+            .width()
+            - width_before)
+            .abs()
+            < 2.
+    );
+    let running = |pid| {
+        fs::read_to_string(format!("/proc/{pid}/stat"))
+            .ok()
+            .is_some_and(|s| !s.rsplit_once(')').unwrap().1.trim_start().starts_with('Z'))
+    };
+    let start = Instant::now();
+    while (running(pid) || running(job)) && start.elapsed() < Duration::from_secs(3) {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(!running(pid));
+    assert!(!running(job));
+    click(&mut app, &ctx, &mut time, Id::unique("toggle-terminal"));
+    assert_ne!(app.terminal.pid(), Some(pid));
+    app.terminal.shutdown();
+}

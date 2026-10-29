@@ -2,6 +2,14 @@
 
 Current release: **0.2.1** ([source tag](https://github.com/hiddensudo/disco/tree/v0.2.1)).
 
+### Terminal in Focus
+
+The **Terminal** button beside Overview/Focus opens a resizable right-hand terminal in Focus. It starts the system shell in the selected folder, or the selected file's parent. The shell starts only on first opening. Browsing elsewhere does not change an existing session's working directory.
+
+The title-bar button and the terminal header's **–** hide the panel while preserving the shell and its output. The header's **×** ends the shell and its foreground/background processes and returns the column to the document. Opening again starts a fresh session. Closing disco also ends its terminal session. Switching to Overview hides this column; terminal placement in Overview is not yet implemented.
+
+Terminal input stays local: Enter/Delete/Ctrl+S/Ctrl+N/Ctrl+W do not act on files. **Ctrl+Alt+Left** returns to the document, and **Ctrl+Alt+Right** from the document focuses the visible terminal. **Ctrl+Shift+C/V** copy/paste; **Ctrl+C** interrupts. System monospace/symbol fonts are loaded through Fontconfig on first use, and launcher-inherited `NO_COLOR` is removed only from the PTY subprocess environment. Existing shells keep their own configuration. No language server is started by this feature.
+
 **English** · [Українська](README.uk.md)
 
 A native disk space analyzer for Linux. Built with Rust and egui, with a dark interface and no always-running indexing service.

@@ -12,6 +12,7 @@ pub(super) enum Area {
     Tabs,
     Editor,
     Search,
+    Terminal,
 }
 #[derive(Default)]
 pub(super) struct Keyboard {
@@ -45,6 +46,7 @@ impl Disco {
                 }
             }
             Area::Search => "folder-search-bounds",
+            Area::Terminal => "terminal-panel-bounds",
         };
         ctx.read_response(Id::unique(name)).map(|r| r.rect)
     }
@@ -64,6 +66,9 @@ impl Disco {
                 areas.push(Area::Editor);
             }
             areas.push(Area::Search);
+        }
+        if self.terminal_shown() {
+            areas.push(Area::Terminal);
         }
         areas
     }
@@ -85,6 +90,10 @@ impl Disco {
                 self.keyboard.area = Area::Editor;
                 return;
             }
+            if id == Id::unique("terminal-view") && self.terminal_shown() {
+                self.keyboard.area = Area::Terminal;
+                return;
+            }
             if id == Id::unique("folder-search") {
                 self.keyboard.area = Area::Search;
                 return;
@@ -95,6 +104,7 @@ impl Disco {
             response.rect.center()
         };
         for area in [
+            Area::Terminal,
             Area::Search,
             Area::Tabs,
             Area::Categories,
@@ -190,6 +200,7 @@ impl Disco {
             }
             Area::Tree => Id::unique("tree-keyboard-focus"),
             Area::Search => Id::unique("folder-search"),
+            Area::Terminal => Id::unique("terminal-view"),
         };
         ctx.memory_mut(|m| {
             m.move_focus(egui::FocusDirection::None);
@@ -254,6 +265,12 @@ impl Disco {
             return;
         }
         self.infer_workspace_area(ctx);
+        if self.terminal_focused(ctx) {
+            if ctx.input_mut(|i| i.consume_key(Modifiers::CTRL | Modifiers::ALT, Key::ArrowLeft)) {
+                self.focus_area(Area::Editor, ctx);
+            }
+            return;
+        }
         if ctx.input_mut(|i| i.consume_key(Modifiers::CTRL, Key::Comma)) {
             self.open_preferences_keyboard(ctx);
             return;
@@ -300,6 +317,8 @@ impl Disco {
         ] {
             if ctx.input_mut(|i| i.consume_key(Modifiers::CTRL | Modifiers::ALT, key)) {
                 let target = match (self.keyboard.area, key) {
+                    (Area::Terminal, Key::ArrowLeft) => Area::Editor,
+                    (Area::Editor, Key::ArrowRight) if self.terminal_shown() => Area::Terminal,
                     (Area::Editor | Area::Tabs, Key::ArrowLeft) => Area::Tree,
                     (_, Key::ArrowLeft) => Area::Categories,
                     (Area::Categories, Key::ArrowRight) => Area::Tree,

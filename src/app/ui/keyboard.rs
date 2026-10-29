@@ -14,6 +14,9 @@ struct Item {
 impl Disco {
     /// Run before TextEdit: its code-editor Tab handling also accepts Ctrl+Tab.
     pub(in crate::app) fn file_cycle_shortcuts(&mut self, ctx: &egui::Context) {
+        if self.terminal_focused(ctx) {
+            return;
+        }
         if (self.preferences.open && ctx.embed_viewports())
             || self.deletion.confirm
             || self.purge_targets.is_some()
@@ -74,6 +77,9 @@ impl Disco {
     }
     pub(in crate::app) fn keyboard_navigation(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx();
+        if self.terminal_focused(ctx) {
+            return;
+        }
         if (self.preferences.open && ctx.embed_viewports())
             || self.deletion.confirm
             || self.purge_targets.is_some()

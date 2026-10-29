@@ -25,6 +25,7 @@ mod new_file;
 mod scope;
 mod state;
 mod tabs;
+mod terminal;
 mod ui;
 mod workspace_keyboard;
 use self::{
@@ -45,6 +46,7 @@ pub(crate) struct Disco {
     file_preview: crate::file_preview::Preview,
     editor: editor::Editor,
     tabs: tabs::Tabs,
+    terminal: crate::terminal::Terminal,
     keyboard: workspace_keyboard::Keyboard,
     scoped: scope::Scope,
     search: crate::file_search::Search,
@@ -217,6 +219,7 @@ impl Disco {
             syntax: crate::syntax::Syntax::default(),
             editor: editor::Editor::default(),
             tabs: tabs::Tabs::default(),
+            terminal: crate::terminal::Terminal::default(),
             keyboard: workspace_keyboard::Keyboard::default(),
             opening_file: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             purge_targets: None,
@@ -240,6 +243,11 @@ impl Disco {
             if s.browser.view == View::Trash {
                 s.browser.properties = None;
             }
+        }
+        if args.iter().any(|a| a == "--terminal")
+            && s.preferences.layout.preview_mode == settings::PreviewMode::Focus
+        {
+            s.toggle_terminal(&cc.egui_ctx);
         }
         if s.preferences.open {
             s.preferences.snapshot =
@@ -330,6 +338,8 @@ impl eframe::App for Disco {
         self.files.poll(self.scan.report_revision);
         self.poll_new_file(ui.ctx());
         self.sync_file_preview(ui.ctx());
+        let shown = self.terminal_shown();
+        self.terminal.poll(&self.preferences.theme, shown);
         self.workspace_shortcuts(ui.ctx());
         self.file_cycle_shortcuts(ui.ctx());
         if let Some(result) = self.recycle.poll(ui.ctx()) {
@@ -354,6 +364,7 @@ impl eframe::App for Disco {
         let previous_location = self.nav_state();
         self.browser.nav_traversed = false;
         if !self.preferences.open
+            && !self.terminal_focused(ui.ctx())
             && !self.deletion.confirm
             && self.purge_targets.is_none()
             && !self.scan.busy
@@ -437,6 +448,7 @@ impl eframe::App for Disco {
         {
             self.show_inspector_panel(ui);
         }
+        self.terminal_panel(ui);
         let browser_panel = egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(color(&t.background)).inner_margin(
                 if self.preferences.layout.preview_mode == settings::PreviewMode::Focus {
@@ -536,6 +548,7 @@ impl eframe::App for Disco {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.terminal.shutdown();
         self.scan.control.cancel.store(true, Ordering::Relaxed);
     }
 }
