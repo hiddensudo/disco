@@ -266,14 +266,26 @@ impl Disco {
         }
         self.infer_workspace_area(ctx);
         if self.terminal_focused(ctx) {
-            if self.preferences.layout.preview_mode == PreviewMode::Overview
-                && ctx.input_mut(|i| i.consume_key(Modifiers::CTRL | Modifiers::ALT, Key::ArrowUp))
-            {
-                self.focus_area(Area::Tree, ctx);
-                return;
-            }
-            if ctx.input_mut(|i| i.consume_key(Modifiers::CTRL | Modifiers::ALT, Key::ArrowLeft)) {
-                self.focus_area(Area::Editor, ctx);
+            // Reserve every panel-navigation chord, including layout edges:
+            // forwarding an unhandled chord sends an escape sequence to the PTY.
+            for key in [
+                Key::ArrowLeft,
+                Key::ArrowRight,
+                Key::ArrowUp,
+                Key::ArrowDown,
+            ] {
+                if ctx.input_mut(|i| i.consume_key(Modifiers::CTRL | Modifiers::ALT, key)) {
+                    let target = match (self.preferences.layout.preview_mode, key) {
+                        (PreviewMode::Overview, Key::ArrowUp) => Some(Area::Tree),
+                        (PreviewMode::Overview, Key::ArrowRight) => Some(Area::Editor),
+                        (PreviewMode::Focus, Key::ArrowLeft) => Some(Area::Editor),
+                        _ => None,
+                    };
+                    if let Some(target) = target {
+                        self.focus_area(target, ctx);
+                    }
+                    return;
+                }
             }
             return;
         }
@@ -323,14 +335,25 @@ impl Disco {
         ] {
             if ctx.input_mut(|i| i.consume_key(Modifiers::CTRL | Modifiers::ALT, key)) {
                 let target = match (self.keyboard.area, key) {
-                    (Area::Tree, Key::ArrowDown)
+                    (Area::Categories | Area::Tree, Key::ArrowDown)
                         if self.terminal_shown()
                             && self.preferences.layout.preview_mode == PreviewMode::Overview =>
                     {
                         Area::Terminal
                     }
                     (Area::Terminal, Key::ArrowLeft) => Area::Editor,
-                    (Area::Editor, Key::ArrowRight) if self.terminal_shown() => Area::Terminal,
+                    (Area::Editor, Key::ArrowRight)
+                        if self.terminal_shown()
+                            && self.preferences.layout.preview_mode == PreviewMode::Focus =>
+                    {
+                        Area::Terminal
+                    }
+                    (Area::Editor, Key::ArrowLeft)
+                        if self.terminal_shown()
+                            && self.preferences.layout.preview_mode == PreviewMode::Overview =>
+                    {
+                        Area::Terminal
+                    }
                     (Area::Editor | Area::Tabs, Key::ArrowLeft) => Area::Tree,
                     (_, Key::ArrowLeft) => Area::Categories,
                     (Area::Categories, Key::ArrowRight) => Area::Tree,

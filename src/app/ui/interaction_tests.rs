@@ -1703,6 +1703,53 @@ fn focus_terminal_toggle_close_and_keyboard_isolation_use_real_pty() {
         Modifiers::CTRL | Modifiers::ALT,
     );
     assert!(app.keyboard.area == Area::Terminal);
+    let panel = Modifiers::CTRL | Modifiers::ALT;
+    // The bottom terminal spans categories and tree. Left/down are boundaries,
+    // right reaches properties; none of these chords may leak into the shell.
+    app.focus_area(Area::Categories, &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    press_key(&mut app, &ctx, &mut time, Key::ArrowDown, panel);
+    assert!(app.keyboard.area == Area::Terminal);
+    for key in [Key::ArrowLeft, Key::ArrowDown] {
+        frame(
+            &mut app,
+            &ctx,
+            &mut time,
+            vec![egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: panel,
+            }],
+        );
+        assert!(
+            !ctx.input(|i| i.events.iter().any(|event| matches!(event,
+                egui::Event::Key { key: pressed_key, pressed: true, .. } if *pressed_key == key
+            ))),
+            "boundary navigation must be consumed before PTY input"
+        );
+        frame(
+            &mut app,
+            &ctx,
+            &mut time,
+            vec![egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: false,
+                repeat: false,
+                modifiers: panel,
+            }],
+        );
+        assert!(app.keyboard.area == Area::Terminal);
+        assert!(app.terminal_focused(&ctx));
+    }
+    press_key(&mut app, &ctx, &mut time, Key::ArrowRight, panel);
+    assert!(app.keyboard.area == Area::Editor);
+    press_key(&mut app, &ctx, &mut time, Key::ArrowRight, panel);
+    assert!(app.keyboard.area == Area::Editor);
+    press_key(&mut app, &ctx, &mut time, Key::ArrowLeft, panel);
+    assert!(app.keyboard.area == Area::Terminal);
     let bounds = |name: &str| ctx.read_response(Id::unique(name)).unwrap().rect;
     let terminal = bounds("terminal-panel-bounds");
     let properties = bounds("properties-panel");

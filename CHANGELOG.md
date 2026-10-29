@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## Unreleased
 
+- Overview terminal keyboard navigation follows its bottom docking: Ctrl+Alt+Down from categories or files enters the terminal, Up returns to files and Right enters properties. Left/Down at terminal edges stay in place and do not send escape sequences to the shell.
+
 - Overview docks the terminal below the category rail and file list while keeping properties at full height. The lower panel has a draggable height divider; switching layouts preserves the same PTY session, and hide/close restores the browsing area.
 
 - Focus includes a lazy, resizable terminal column with a title-bar toggle. Hiding retains the PTY; closing kills its shell and session jobs, frees its buffers and returns the column to the document. Keyboard input is isolated from file actions; colors and system symbol fonts follow the tested native prototype.
