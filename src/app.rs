@@ -244,9 +244,7 @@ impl Disco {
                 s.browser.properties = None;
             }
         }
-        if args.iter().any(|a| a == "--terminal")
-            && s.preferences.layout.preview_mode == settings::PreviewMode::Focus
-        {
+        if args.iter().any(|a| a == "--terminal") && s.browser.view != View::Trash {
             s.toggle_terminal(&cc.egui_ctx);
         }
         if s.preferences.open {
@@ -427,6 +425,14 @@ impl eframe::App for Disco {
         egui::Panel::bottom("selection")
             .frame(egui::Frame::NONE)
             .show(ui, |ui| self.footer(ui));
+        // Overview keeps the inspector at full height. The terminal is allocated
+        // before categories, so its bottom panel spans the rail and file list.
+        let overview = self.preferences.layout.preview_mode == settings::PreviewMode::Overview
+            && self.browser.view != View::Trash;
+        if overview {
+            self.show_inspector_panel(ui);
+            self.terminal_panel(ui);
+        }
         if self.preferences.layout.categories {
             let categories = egui::Panel::left("categories")
                 .exact_size(if self.preferences.layout.category_labels {
@@ -443,12 +449,11 @@ impl eframe::App for Disco {
                 egui::Sense::hover(),
             );
         }
-        if self.preferences.layout.preview_mode == settings::PreviewMode::Overview
-            || self.browser.view == View::Trash
-        {
+        if self.browser.view == View::Trash {
             self.show_inspector_panel(ui);
+        } else if !overview {
+            self.terminal_panel(ui);
         }
-        self.terminal_panel(ui);
         let browser_panel = egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(color(&t.background)).inner_margin(
                 if self.preferences.layout.preview_mode == settings::PreviewMode::Focus {

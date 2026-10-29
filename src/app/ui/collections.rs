@@ -124,14 +124,28 @@ impl Disco {
     pub(in crate::app) fn sidebar(&mut self, ui: &mut egui::Ui) {
         let t = self.preferences.theme.clone();
         let labels = self.preferences.layout.category_labels;
+        let compact_rail = !labels
+            && self.terminal_shown()
+            && self.preferences.layout.preview_mode == crate::settings::PreviewMode::Overview;
         let reorder = !self.preferences.layout.categories_locked && !self.preferences.open;
         let mut dropped = None;
         egui::Panel::bottom("collection-tools")
-            .exact_size(if labels { 40. } else { 76. })
+            .exact_size(if labels {
+                40.
+            } else if compact_rail {
+                64.
+            } else {
+                76.
+            })
             .frame(egui::Frame::NONE)
             .show(ui, |ui| {
-                let (rect, _) =
-                    ui.allocate_exact_size(Vec2::new(ui.available_width(), 38.), Sense::hover());
+                if compact_rail {
+                    ui.spacing_mut().item_spacing.y = 2.;
+                }
+                let (rect, _) = ui.allocate_exact_size(
+                    Vec2::new(ui.available_width(), if compact_rail { 32. } else { 38. }),
+                    Sense::hover(),
+                );
                 let trash_rect = if labels {
                     Rect::from_min_max(rect.min, rect.max - Vec2::new(28., 0.))
                 } else {
@@ -195,8 +209,10 @@ impl Disco {
                         Vec2::splat(27.),
                     )
                 } else {
-                    let (next, _) = ui
-                        .allocate_exact_size(Vec2::new(ui.available_width(), 34.), Sense::hover());
+                    let (next, _) = ui.allocate_exact_size(
+                        Vec2::new(ui.available_width(), if compact_rail { 28. } else { 34. }),
+                        Sense::hover(),
+                    );
                     Rect::from_center_size(next.center(), Vec2::splat(30.))
                 };
                 let response = ui
@@ -223,6 +239,9 @@ impl Disco {
             .id_salt("category-list")
             .auto_shrink([false, false])
             .show(ui, |ui| {
+                if compact_rail {
+                    ui.spacing_mut().item_spacing.y = 0.;
+                }
                 ui.add_space(6.);
                 // Reach off-screen categories without releasing the drag.
                 if reorder && egui::DragAndDrop::has_payload_of_type::<CategoryDrag>(ui.ctx()) {
@@ -248,7 +267,16 @@ impl Disco {
                     let cat = collection.category();
                     let active = self.browser.view == View::Folders && self.browser.category == cat;
                     let (rect, _) = ui.allocate_exact_size(
-                        Vec2::new(ui.available_width(), if labels { 66. } else { 54. }),
+                        Vec2::new(
+                            ui.available_width(),
+                            if labels {
+                                66.
+                            } else if compact_rail {
+                                30.
+                            } else {
+                                54.
+                            },
+                        ),
                         Sense::hover(),
                     );
                     let click_rect = rect;
@@ -364,7 +392,10 @@ impl Disco {
                                 rect.left() + if labels { 31. } else { 26. },
                                 rect.center().y,
                             ),
-                            Vec2::splat(27. * self.preferences.layout.icon_scale),
+                            Vec2::splat(
+                                (if compact_rail { 24. } else { 27. })
+                                    * self.preferences.layout.icon_scale,
+                            ),
                         ),
                         Color32::WHITE,
                     );

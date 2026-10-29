@@ -2,13 +2,13 @@
 
 Current release: **0.2.1** ([source tag](https://github.com/hiddensudo/disco/tree/v0.2.1)).
 
-### Terminal in Focus
+### Integrated terminal
 
-The **Terminal** button beside Overview/Focus opens a resizable right-hand terminal in Focus. It starts the system shell in the selected folder, or the selected file's parent. The shell starts only on first opening. Browsing elsewhere does not change an existing session's working directory.
+The **Terminal** button beside Overview/Focus opens the terminal. Focus places it in a resizable right-hand column. Overview places it below the category rail and file list, with adjustable height; properties remain visible on the right at full height. It starts the system shell in the selected folder, or the selected file's parent. The shell starts only on first opening. Browsing elsewhere does not change an existing session's working directory.
 
-The title-bar button and the terminal header's **–** hide the panel while preserving the shell and its output. The header's **×** ends the shell and its foreground/background processes and returns the column to the document. Opening again starts a fresh session. Closing disco also ends its terminal session. Switching to Overview hides this column; terminal placement in Overview is not yet implemented.
+The title-bar button and the terminal header's **–** hide the panel while preserving the shell and its output. The header's **×** ends the shell and its foreground/background processes and returns the column to the document. Opening again starts a fresh session. Closing disco also ends its terminal session. Switching between Overview and Focus moves the same running session between the bottom panel and right-hand column. The category rail becomes compact while the bottom panel is open; hiding or closing it restores the file list and rail to full height.
 
-Terminal input stays local: Enter/Delete/Ctrl+S/Ctrl+N/Ctrl+W do not act on files. **Ctrl+Alt+Left** returns to the document, and **Ctrl+Alt+Right** from the document focuses the visible terminal. **Ctrl+Shift+C/V** copy/paste; **Ctrl+C** interrupts. System monospace/symbol fonts are loaded through Fontconfig on first use, and launcher-inherited `NO_COLOR` is removed only from the PTY subprocess environment. Existing shells keep their own configuration. No language server is started by this feature.
+Terminal input stays local: Enter/Delete/Ctrl+S/Ctrl+N/Ctrl+W do not act on files. **Ctrl+Alt+Left** returns to the document, and **Ctrl+Alt+Right** from the document focuses the visible terminal. In Overview, **Ctrl+Alt+Up/Down** moves between the terminal and file list. **Ctrl+Shift+C/V** copy/paste; **Ctrl+C** interrupts. System monospace/symbol fonts are loaded through Fontconfig on first use, and launcher-inherited `NO_COLOR` is removed only from the PTY subprocess environment. Existing shells keep their own configuration. No language server is started by this feature.
 
 **English** · [Українська](README.uk.md)
 

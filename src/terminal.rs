@@ -99,6 +99,7 @@ pub(crate) struct Terminal {
     pub title: String,
     pub cwd: PathBuf,
     pub fonts_loaded: bool,
+    pub overview_height: Option<f32>,
     palette: Option<(Theme, TerminalTheme)>,
 }
 impl Terminal {

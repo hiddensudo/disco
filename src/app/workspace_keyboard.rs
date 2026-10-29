@@ -266,6 +266,12 @@ impl Disco {
         }
         self.infer_workspace_area(ctx);
         if self.terminal_focused(ctx) {
+            if self.preferences.layout.preview_mode == PreviewMode::Overview
+                && ctx.input_mut(|i| i.consume_key(Modifiers::CTRL | Modifiers::ALT, Key::ArrowUp))
+            {
+                self.focus_area(Area::Tree, ctx);
+                return;
+            }
             if ctx.input_mut(|i| i.consume_key(Modifiers::CTRL | Modifiers::ALT, Key::ArrowLeft)) {
                 self.focus_area(Area::Editor, ctx);
             }
@@ -317,6 +323,12 @@ impl Disco {
         ] {
             if ctx.input_mut(|i| i.consume_key(Modifiers::CTRL | Modifiers::ALT, key)) {
                 let target = match (self.keyboard.area, key) {
+                    (Area::Tree, Key::ArrowDown)
+                        if self.terminal_shown()
+                            && self.preferences.layout.preview_mode == PreviewMode::Overview =>
+                    {
+                        Area::Terminal
+                    }
                     (Area::Terminal, Key::ArrowLeft) => Area::Editor,
                     (Area::Editor, Key::ArrowRight) if self.terminal_shown() => Area::Terminal,
                     (Area::Editor | Area::Tabs, Key::ArrowLeft) => Area::Tree,

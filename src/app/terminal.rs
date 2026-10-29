@@ -8,9 +8,7 @@ use egui_term::{FontSettings, TerminalFont, TerminalView};
 use std::path::PathBuf;
 impl Disco {
     pub(in crate::app) fn terminal_shown(&self) -> bool {
-        self.terminal.visible
-            && self.preferences.layout.preview_mode == PreviewMode::Focus
-            && self.browser.view != View::Trash
+        self.terminal.visible && self.browser.view != View::Trash
     }
     pub(in crate::app) fn terminal_focused(&self, ctx: &egui::Context) -> bool {
         self.terminal_shown() && ctx.memory(|m| m.focused()) == Some(Id::unique("terminal-view"))
@@ -62,8 +60,7 @@ impl Disco {
     }
     pub(in crate::app) fn terminal_button(&mut self, ui: &mut egui::Ui, rect: Rect) {
         let t = self.preferences.theme.clone();
-        let enabled = self.preferences.layout.preview_mode == PreviewMode::Focus
-            && self.browser.view != View::Trash;
+        let enabled = self.browser.view != View::Trash;
         let response = ui.interact(
             rect,
             Id::unique("toggle-terminal"),
@@ -122,8 +119,8 @@ impl Disco {
             )
         } else {
             crate::tr!(
-                "Термінал наразі доступний у режимі Фокус",
-                "Terminal is currently available in Focus"
+                "Перейдіть до файлів, щоб відкрити термінал",
+                "Switch to files to open terminal"
             )
         });
     }
@@ -134,12 +131,44 @@ impl Disco {
         let t = self.preferences.theme.clone();
         let mut close = false;
         let mut hide = false;
-        let max = (ui.available_width() - 520.).max(300.);
-        let panel = egui::Panel::right("terminal-panel")
-            .default_size(460.)
-            .min_size(300.)
-            .max_size(max)
-            .resizable(true)
+        let overview = self.preferences.layout.preview_mode == PreviewMode::Overview;
+        let available = ui.available_rect_before_wrap();
+        let max_height = (available.height() - 235.).max(150.);
+        let divider_id = Id::unique("overview-terminal-divider");
+        let resize_enabled = !(self.preferences.open
+            || self.editor.pending.is_some()
+            || self.deletion.confirm
+            || self.new_file.is_some()
+            || egui::Popup::is_any_open(ui.ctx()));
+        if overview
+            && resize_enabled
+            && ui
+                .ctx()
+                .read_response(divider_id)
+                .is_some_and(|r| r.dragged() || r.drag_stopped())
+        {
+            if let Some(pointer) = ui.input(|i| i.pointer.interact_pos()) {
+                self.terminal.overview_height =
+                    Some((available.bottom() - pointer.y).clamp(150., max_height));
+            }
+        }
+        let panel = if overview {
+            egui::Panel::bottom("overview-terminal-panel")
+                .exact_size(
+                    self.terminal
+                        .overview_height
+                        .unwrap_or(220.)
+                        .clamp(150., max_height),
+                )
+                .resizable(false)
+        } else {
+            egui::Panel::right("terminal-panel")
+                .default_size(460.)
+                .min_size(300.)
+                .max_size((ui.available_width() - 520.).max(300.))
+                .resizable(true)
+        };
+        let panel = panel
             .frame(
                 egui::Frame::new()
                     .fill(color(&t.background))
@@ -230,11 +259,45 @@ impl Disco {
             Id::unique("terminal-panel-bounds"),
             Sense::hover(),
         );
-        ui.painter().vline(
-            panel.response.rect.left(),
-            panel.response.rect.y_range(),
-            Stroke::new(1., color(&t.border)),
-        );
+        if overview {
+            let r = panel.response.rect;
+            let handle = Rect::from_min_max(
+                egui::pos2(r.left(), r.top() - 4.),
+                egui::pos2(r.right(), r.top() + 4.),
+            );
+            let response = ui.interact(
+                handle,
+                divider_id,
+                if resize_enabled {
+                    Sense::drag()
+                } else {
+                    Sense::hover()
+                },
+            );
+            let active = resize_enabled && (response.hovered() || response.dragged());
+            if active {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+            }
+            ui.painter().hline(
+                r.x_range(),
+                r.top(),
+                Stroke::new(
+                    if active { 1.5 } else { 1. },
+                    color(if active { &t.accent } else { &t.border }),
+                ),
+            );
+            ui.painter().hline(
+                r.center().x - 10. ..=r.center().x + 10.,
+                r.top(),
+                Stroke::new(2., color(&t.muted)),
+            );
+        } else {
+            ui.painter().vline(
+                panel.response.rect.left(),
+                panel.response.rect.y_range(),
+                Stroke::new(1., color(&t.border)),
+            );
+        }
         if close {
             self.terminal.close();
             self.focus_area(Area::Editor, ui.ctx());

@@ -1679,10 +1679,105 @@ fn focus_terminal_toggle_close_and_keyboard_isolation_use_real_pty() {
     click(&mut app, &ctx, &mut time, Id::unique("toggle-terminal"));
     assert!(app.terminal_shown());
     assert_eq!(app.terminal.pid(), Some(pid));
-    // Overview allocates no terminal column, without discarding its live session.
+    // Overview docks below both the category rail and the list, while the
+    // inspector stays the full height and uses the same running PTY.
     click(&mut app, &ctx, &mut time, Id::unique("file-mode-overview"));
+    for _ in 0..3 {
+        frame(&mut app, &ctx, &mut time, vec![]);
+    }
+    assert!(app.terminal_shown());
+    assert_eq!(app.terminal.pid(), Some(pid));
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        Key::ArrowUp,
+        Modifiers::CTRL | Modifiers::ALT,
+    );
+    assert!(app.keyboard.area == Area::Tree);
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        Key::ArrowDown,
+        Modifiers::CTRL | Modifiers::ALT,
+    );
+    assert!(app.keyboard.area == Area::Terminal);
+    let bounds = |name: &str| ctx.read_response(Id::unique(name)).unwrap().rect;
+    let terminal = bounds("terminal-panel-bounds");
+    let properties = bounds("properties-panel");
+    let categories = bounds("category-panel-bounds");
+    let browser = bounds("browser-panel-bounds");
+    assert!((terminal.left() - categories.left()).abs() < 2.);
+    assert!((terminal.right() - properties.left()).abs() < 3.);
+    assert!(categories.bottom() <= terminal.top() + 3.);
+    assert!(browser.bottom() <= terminal.top() + 3.);
+    assert!(properties.bottom() > terminal.top() + 100.);
+    assert!(properties.top() < terminal.top() - 100.);
+    // Resizing only the lower-left area leaves inspector geometry untouched.
+    let divider = egui::pos2(terminal.center().x, terminal.top() + 2.);
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::PointerMoved(divider)],
+    );
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::PointerButton {
+            pos: divider,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: Modifiers::NONE,
+        }],
+    );
+    let target = divider - egui::vec2(0., 35.);
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::PointerMoved(target)],
+    );
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::PointerButton {
+            pos: target,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: Modifiers::NONE,
+        }],
+    );
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert!(
+        bounds("terminal-panel-bounds").height() > terminal.height() + 20.,
+        "before={:?}, after={:?}, preferred={:?}, divider={:?}",
+        terminal,
+        bounds("terminal-panel-bounds"),
+        app.terminal.overview_height,
+        ctx.read_response(Id::unique("overview-terminal-divider"))
+    );
+    assert_eq!(bounds("properties-panel"), properties);
+    click(&mut app, &ctx, &mut time, Id::unique("hide-terminal"));
+    for _ in 0..3 {
+        frame(&mut app, &ctx, &mut time, vec![]);
+    }
     assert!(!app.terminal_shown());
     assert_eq!(app.terminal.pid(), Some(pid));
+    assert_eq!(bounds("properties-panel"), properties);
+    assert!(
+        bounds("category-panel-bounds").bottom() > categories.bottom() + 100.,
+        "before={:?}, hidden={:?}",
+        categories,
+        bounds("category-panel-bounds")
+    );
+    click(&mut app, &ctx, &mut time, Id::unique("toggle-terminal"));
+    assert!(app.terminal_shown());
+    assert_eq!(app.terminal.pid(), Some(pid));
+    assert_eq!(bounds("properties-panel"), properties);
     click(&mut app, &ctx, &mut time, Id::unique("file-mode-focus"));
     assert!(app.terminal_shown());
     assert_eq!(app.terminal.pid(), Some(pid));
@@ -1752,5 +1847,16 @@ fn focus_terminal_toggle_close_and_keyboard_isolation_use_real_pty() {
     assert!(!running(job));
     click(&mut app, &ctx, &mut time, Id::unique("toggle-terminal"));
     assert_ne!(app.terminal.pid(), Some(pid));
-    app.terminal.shutdown();
+    click(&mut app, &ctx, &mut time, Id::unique("close-terminal"));
+    click(&mut app, &ctx, &mut time, Id::unique("file-mode-overview"));
+    click(&mut app, &ctx, &mut time, Id::unique("toggle-terminal"));
+    assert!(app.terminal_shown());
+    let second = app.terminal.pid().unwrap();
+    click(&mut app, &ctx, &mut time, Id::unique("close-terminal"));
+    assert!(!app.terminal.exists());
+    let start = Instant::now();
+    while running(second) && start.elapsed() < Duration::from_secs(3) {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(!running(second));
 }
