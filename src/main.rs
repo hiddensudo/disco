@@ -21,6 +21,7 @@ mod refresh;
 mod scan;
 mod scoped_refresh;
 mod settings;
+mod shortcuts;
 mod snapshot;
 mod syntax;
 mod terminal;

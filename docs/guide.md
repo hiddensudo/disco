@@ -145,6 +145,10 @@ Settings open in one separate, resizable window. Reopening raises it with its dr
 
 `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` are supported. `language = "en"` / `"uk"` and `preview_mode = "overview"` / `"focus"` can also be edited in `layout.toml`.
 
+## Custom shortcuts
+
+Settings → Shortcuts records a combination when you click its field and press the keys. Escape cancels capture; Reset restores defaults. Save persists changes and Cancel restores the prior bindings. Defaults are Ctrl+Alt+T for the terminal, Ctrl+Alt+F for Focus and Ctrl+Alt+V for Overview. Conflicting app bindings and reserved editor/navigation commands are rejected. KDE global assignments are highlighted: a compositor shortcut may intercept the key before disco receives it; reassign it in disco or system settings. No global shortcuts are modified.
+
 ## Keyboard reference
 
 | Keys | Action |

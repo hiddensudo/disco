@@ -132,6 +132,8 @@ impl Disco {
         let settings_page = match argument("--settings").as_deref() {
             Some("layout") => 1,
             Some("categories") => 2,
+            Some("shortcuts") => 3,
+            Some("about") => 4,
             _ => 0,
         };
         let settings_open = argument("--settings").is_some();
@@ -187,6 +189,7 @@ impl Disco {
                 descending: true,
             },
             preferences: PreferencesState {
+                recorder: Default::default(),
                 theme,
                 layout,
                 applied: None,
@@ -343,6 +346,7 @@ impl eframe::App for Disco {
         self.sync_file_preview(ui.ctx());
         let shown = self.terminal_shown();
         self.terminal.poll(&self.preferences.theme, shown);
+        self.application_shortcuts(ui.ctx());
         self.workspace_shortcuts(ui.ctx());
         self.file_cycle_shortcuts(ui.ctx());
         if self.recycle.poll(ui.ctx()).is_some() {

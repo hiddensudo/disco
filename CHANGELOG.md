@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- Added a Shortcuts settings section with key recording, collision checks, reset and KDE conflict hints. Local defaults: Ctrl+Alt+T terminal, Ctrl+Alt+F Focus, Ctrl+Alt+V Overview.
+
 - Title-bar Overview, Focus and Terminal controls use compact icons by default. Interface settings can restore labels; spacing is shared with the window controls.
 
 ## 0.2.2 — 2026-10-29

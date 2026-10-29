@@ -254,6 +254,44 @@ impl Disco {
             self.select_folder(id);
         }
     }
+    pub(in crate::app) fn application_shortcuts(&mut self, ctx: &egui::Context) {
+        if !ctx.input(|i| i.focused)
+            || self.preferences.open
+            || self.deletion.confirm
+            || self.purge_targets.is_some()
+            || self.editor.pending.is_some()
+            || self.new_file.is_some()
+            || egui::Popup::is_any_open(ctx)
+        {
+            return;
+        }
+        for command in crate::shortcuts::Command::ALL {
+            if self.preferences.layout.shortcuts.get(command).consume(ctx) {
+                match command {
+                    crate::shortcuts::Command::Terminal => {
+                        if self.browser.view != View::Trash {
+                            self.toggle_terminal(ctx);
+                        }
+                    }
+                    crate::shortcuts::Command::Focus | crate::shortcuts::Command::Overview => {
+                        if self.browser.view == View::Trash {
+                            self.browser.view = View::Folders;
+                            self.browser.properties = None;
+                        }
+                        self.set_preview_mode(
+                            if command == crate::shortcuts::Command::Focus {
+                                PreviewMode::Focus
+                            } else {
+                                PreviewMode::Overview
+                            },
+                            ctx,
+                        );
+                    }
+                }
+                return;
+            }
+        }
+    }
     pub(in crate::app) fn workspace_shortcuts(&mut self, ctx: &egui::Context) {
         if (self.preferences.open && ctx.embed_viewports())
             || self.deletion.confirm

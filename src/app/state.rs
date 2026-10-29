@@ -91,6 +91,7 @@ pub(super) struct BrowserState {
 
 /// State owned by the preferences part of the application.
 pub(super) struct PreferencesState {
+    pub(super) recorder: super::ui::preferences::shortcuts::Recorder,
     pub(super) theme: Theme,
     pub(super) layout: Layout,
     pub(super) applied: Option<(Theme, Layout)>,

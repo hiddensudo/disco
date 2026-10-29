@@ -959,6 +959,8 @@ fn detached_settings_save_cancel_and_reopen_keep_the_editor_draft() {
     click(&mut app, &ctx, &mut time, Id::unique("open-settings"));
     assert!(app.preferences.open);
     app.preferences.layout.categories_locked = !original.categories_locked;
+    app.preferences.layout.shortcuts.focus =
+        crate::shortcuts::Binding::new(egui::Key::F9, egui::Modifiers::NONE);
     app.preferences.page = 1;
     frame(&mut app, &ctx, &mut time, vec![]);
     assert!(ctx.read_response(Id::unique(("settings_nav", 1))).is_some());
@@ -979,6 +981,8 @@ fn detached_settings_save_cancel_and_reopen_keep_the_editor_draft() {
     assert_eq!(app.editor.path.as_ref(), Some(&file));
     click(&mut app, &ctx, &mut time, Id::unique("open-settings"));
     app.preferences.layout.categories_locked = !original.categories_locked;
+    app.preferences.layout.shortcuts.focus =
+        crate::shortcuts::Binding::new(egui::Key::F9, egui::Modifiers::NONE);
     frame(&mut app, &ctx, &mut time, vec![]);
     click(
         &mut app,
@@ -988,6 +992,14 @@ fn detached_settings_save_cancel_and_reopen_keep_the_editor_draft() {
     );
     assert!(!app.preferences.open);
     assert!(app.editor.dirty());
+    assert_eq!(
+        settings::read_layout(&root.join("config/layout.toml"))
+            .unwrap()
+            .shortcuts
+            .focus
+            .key,
+        "F9"
+    );
     assert_ne!(
         settings::read_layout(&root.join("config/layout.toml"))
             .unwrap()
@@ -1626,6 +1638,20 @@ fn focus_terminal_toggle_close_and_keyboard_isolation_use_real_pty() {
         .rect
         .width();
     assert!(width_before - width_with > 290.);
+    // Local application bindings are consumed before the focused PTY.
+    let chord = Modifiers::CTRL | Modifiers::ALT;
+    press_key(&mut app, &ctx, &mut time, Key::V, chord);
+    assert_eq!(app.preferences.layout.preview_mode, PreviewMode::Overview);
+    press_key(&mut app, &ctx, &mut time, Key::F, chord);
+    assert_eq!(app.preferences.layout.preview_mode, PreviewMode::Focus);
+    press_key(&mut app, &ctx, &mut time, Key::T, chord);
+    assert!(!app.terminal_shown());
+    press_key(&mut app, &ctx, &mut time, Key::T, chord);
+    assert!(app.terminal_shown());
+    assert_eq!(app.terminal.pid(), Some(pid));
+    for _ in 0..3 {
+        frame(&mut app, &ctx, &mut time, vec![]);
+    }
     app.terminal
         .backend()
         .unwrap()

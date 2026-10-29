@@ -100,6 +100,7 @@ impl Theme {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Layout {
+    pub shortcuts: crate::shortcuts::Shortcuts,
     #[serde(default)]
     pub language: crate::i18n::Language,
     pub categories: bool,
@@ -153,6 +154,7 @@ pub fn default_home() -> PathBuf {
 impl Default for Layout {
     fn default() -> Self {
         Self {
+            shortcuts: Default::default(),
             language: crate::i18n::Language::En,
             categories: true,
             category_labels: false,
@@ -206,6 +208,7 @@ impl Layout {
     pub const MIN_PROPERTY_WIDTH: f32 = 240.;
     pub const MAX_PROPERTY_WIDTH: f32 = 760.;
     pub fn validate(&self) -> Result<(), String> {
+        self.shortcuts.validate()?;
         let home = Path::new(&self.home_path);
         if !home.is_absolute()
             || self.home_path.len() > 4096

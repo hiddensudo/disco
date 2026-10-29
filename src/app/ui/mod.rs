@@ -12,7 +12,7 @@ mod inspector;
 mod inspector_layout;
 mod keyboard;
 mod navigation;
-mod preferences;
+pub(in crate::app) mod preferences;
 mod preview;
 mod style;
 mod tools;

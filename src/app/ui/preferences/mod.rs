@@ -8,6 +8,7 @@ use eframe::egui::{self, Align2, FontId, Pos2, Rect, RichText, Sense, Stroke, Ve
 mod appearance;
 mod categories;
 mod interface;
+pub(in crate::app) mod shortcuts;
 
 impl Disco {
     pub(in crate::app) fn settings_viewport_id() -> egui::ViewportId {
@@ -153,7 +154,8 @@ impl Disco {
                 (0, crate::tr!("Оформлення", "Appearance"), 6),
                 (1, crate::tr!("Інтерфейс", "Interface"), 7),
                 (2, crate::tr!("Категорії", "Categories"), 0),
-                (3, crate::tr!("Про програму", "About"), 17),
+                (3, crate::tr!("Гарячі клавіші", "Shortcuts"), 2),
+                (4, crate::tr!("Про програму", "About"), 17),
             ] {
                 let r = Rect::from_min_size(
                     nav.min + Vec2::new(0., 13. + i as f32 * 45.),
@@ -186,6 +188,7 @@ impl Disco {
                 );
                 if b.clicked() {
                     self.preferences.page = i;
+                    self.preferences.recorder.cancel();
                 }
             }
             let content = Rect::from_min_max(
@@ -210,6 +213,8 @@ impl Disco {
                             crate::tr!("Інтерфейс", "Interface")
                         } else if self.preferences.page == 2 {
                             crate::tr!("Категорії", "Categories")
+                        } else if self.preferences.page == 3 {
+                            crate::tr!("Гарячі клавіші", "Shortcuts")
                         } else {
                             crate::tr!("Про програму", "About")
                         })
@@ -243,6 +248,8 @@ impl Disco {
                             .id_salt("category-preferences")
                             .max_height((body.height() - 62.).max(160.))
                             .show(ui, |ui| self.categories_preferences(ui));
+                    } else if self.preferences.page == 3 {
+                        self.preferences.recorder.show(ui, &mut layout);
                     } else {
                         ui.add_space(10.);
                         ui.horizontal(|ui| {
@@ -496,6 +503,9 @@ impl Disco {
         }
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
             cancel = true;
+        }
+        if !self.preferences.open || cancel || !opened {
+            self.preferences.recorder.cancel();
         }
         if cancel || !opened {
             self.collections.draft = None;
