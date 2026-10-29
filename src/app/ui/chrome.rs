@@ -41,18 +41,25 @@ impl Disco {
             FontId::proportional(11.),
             color(&t.muted),
         );
+        let labels = self.preferences.layout.title_button_labels;
+        let terminal_width = if labels { 112. } else { 36. };
+        let modes_width = if labels { 190. } else { 78. };
+        let group_right = rect.right() - 192.;
         self.file_mode_buttons(
             ui,
             Rect::from_min_size(
-                Pos2::new(rect.right() - 506., rect.top() + 6.),
-                Vec2::new(190., 30.),
+                Pos2::new(
+                    group_right - terminal_width - 8. - modes_width,
+                    rect.top() + 6.,
+                ),
+                Vec2::new(modes_width, 30.),
             ),
         );
         self.terminal_button(
             ui,
             Rect::from_min_size(
-                Pos2::new(rect.right() - 310., rect.top() + 6.),
-                Vec2::new(112., 30.),
+                Pos2::new(group_right - terminal_width, rect.top() + 6.),
+                Vec2::new(terminal_width, 30.),
             ),
         );
         for (slot, icon, help) in [

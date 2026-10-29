@@ -1,4 +1,4 @@
-//! The two file layouts have one fixed, labeled switch in the title bar.
+//! The two file layouts have one fixed switch in the title bar.
 use crate::{
     app::{Disco, state::View},
     settings::{PreviewMode, color},
@@ -7,6 +7,7 @@ use eframe::egui::{self, Align2, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 impl Disco {
     pub(in crate::app) fn file_mode_buttons(&mut self, ui: &mut egui::Ui, rect: Rect) {
         let t = self.preferences.theme.clone();
+        let labels = self.preferences.layout.title_button_labels;
         for (offset, width, mode, icon, label, help, id) in [
             (
                 0.,
@@ -33,6 +34,14 @@ impl Disco {
                 "file-mode-focus",
             ),
         ] {
+            let offset = if labels {
+                offset
+            } else if mode == PreviewMode::Overview {
+                0.
+            } else {
+                42.
+            };
+            let width = if labels { width } else { 36. };
             let r = Rect::from_min_size(rect.min + Vec2::new(offset, 0.), Vec2::new(width, 30.));
             let response = ui
                 .interact(r, egui::Id::unique(id), Sense::click())
@@ -51,16 +60,24 @@ impl Disco {
             self.art.paint(
                 ui,
                 icon,
-                Rect::from_center_size(Pos2::new(r.left() + 17., r.center().y), Vec2::splat(18.)),
+                Rect::from_center_size(
+                    Pos2::new(
+                        if labels { r.left() + 17. } else { r.center().x },
+                        r.center().y,
+                    ),
+                    Vec2::splat(18.),
+                ),
                 color(if active { &t.text } else { &t.muted }),
             );
-            ui.painter().text(
-                Pos2::new(r.left() + 33., r.center().y),
-                Align2::LEFT_CENTER,
-                label,
-                FontId::proportional(13.),
-                color(&t.text),
-            );
+            if labels {
+                ui.painter().text(
+                    Pos2::new(r.left() + 33., r.center().y),
+                    Align2::LEFT_CENTER,
+                    label,
+                    FontId::proportional(13.),
+                    color(&t.text),
+                );
+            }
             if response.clicked() {
                 if self.browser.view == View::Trash {
                     self.browser.view = View::Folders;

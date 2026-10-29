@@ -9,3 +9,5 @@
 - The user explicitly approved 0.2.1 for the reusable keyboard preview tab and Enter/Right-arrow keep-open behavior. Preserve existing release tags.
 
 - The user approved 0.2.2 for the integrated terminal, Overview keyboard routing fixes and opaque window/header rendering fix (DSC-012), and the follow-up Trash-only refresh fix (DSC-010).
+
+- Prepare 0.2.3 on `codex/disco-0.2.3-unstable`, with Cargo version `0.2.3-unstable`. Complete tasks in complexity order and commit/push each independently. Keep main and previous tags intact during preparation. Later retain `codex/disco-0.2.3` after stabilizing and merging.

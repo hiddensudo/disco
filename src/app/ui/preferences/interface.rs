@@ -58,6 +58,15 @@ pub(super) fn show(
             t,
         );
     });
+    cols[0].push_id("title-button-labels", |ui| {
+        check_row(
+            ui,
+            &mut layout.title_button_labels,
+            crate::tr!("Підписи кнопок у заголовку", "Title-bar button labels"),
+            true,
+            t,
+        );
+    });
     cols[0].add_space(7.);
     cols[0].label(
         RichText::new(crate::tr!("Стандартний вигляд файлів", "Default file view")).size(13.),

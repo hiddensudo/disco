@@ -2150,3 +2150,39 @@ fn trash_operations_and_f5_refresh_only_trash_without_replacing_the_scan() {
         output.drop_without_applying_deltas();
     }
 }
+
+#[test]
+fn title_controls_are_compact_by_default_and_labels_can_be_restored() {
+    let ctx = egui::Context::default();
+    let mut app = Disco::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+    app.demo = true;
+    let mut time = 0.;
+    for labels in [false, true] {
+        app.preferences.layout.title_button_labels = labels;
+        for _ in 0..3 {
+            frame(&mut app, &ctx, &mut time, vec![]);
+        }
+        let overview = ctx
+            .read_response(Id::unique("file-mode-overview"))
+            .unwrap()
+            .rect;
+        let focus = ctx
+            .read_response(Id::unique("file-mode-focus"))
+            .unwrap()
+            .rect;
+        let terminal = ctx
+            .read_response(Id::unique("toggle-terminal"))
+            .unwrap()
+            .rect;
+        assert!(overview.right() < focus.left());
+        assert!(focus.right() < terminal.left());
+        assert_eq!(overview.height(), terminal.height());
+        assert_eq!(overview.width(), if labels { 108. } else { 36. });
+        assert_eq!(terminal.width(), if labels { 112. } else { 36. });
+    }
+    let defaults: crate::settings::Layout = toml::from_str("").unwrap();
+    assert!(!defaults.title_button_labels);
+    let saved = toml::to_string(&app.preferences.layout).unwrap();
+    let restored: crate::settings::Layout = toml::from_str(&saved).unwrap();
+    assert!(restored.title_button_labels);
+}

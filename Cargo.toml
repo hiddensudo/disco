@@ -1,6 +1,6 @@
 [package]
 name = "disco"
-version = "0.2.2"
+version = "0.2.3-unstable"
 edition = "2024"
 rust-version = "1.95"
 description = "Native Linux disk space analyzer with snapshots, cleanup, and trash management"

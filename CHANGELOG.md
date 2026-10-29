@@ -2,6 +2,10 @@
 
 Release history for disco, including earlier development checkpoints.
 
+## 0.2.3-unstable — in development
+
+- Title-bar Overview, Focus and Terminal controls use compact icons by default. Interface settings can restore labels; spacing is shared with the window controls.
+
 ## 0.2.2 — 2026-10-29
 
 - Trash operations now refresh only the Trash listing and disk-space sample, without rescanning the folder tree. Successful items and totals reconcile immediately; unaffected Trash directory sizes are reused. F5 refreshes Trash, and listing failures no longer report a known-empty bin or confuse restore errors with unreadable contents.

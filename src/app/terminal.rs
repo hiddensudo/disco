@@ -89,7 +89,11 @@ impl Disco {
                 egui::StrokeKind::Inside,
             );
             // Vector terminal glyph; no font glyph dependencies.
-            let x = rect.left() + 12.;
+            let x = if self.preferences.layout.title_button_labels {
+                rect.left() + 12.
+            } else {
+                rect.center().x - 6.
+            };
             let y = rect.center().y;
             ui.painter().line_segment(
                 [egui::pos2(x, y - 4.), egui::pos2(x + 4., y)],
@@ -101,13 +105,15 @@ impl Disco {
             );
             ui.painter()
                 .hline(x + 7. ..=x + 12., y + 4., Stroke::new(1.4, color(&t.text)));
-            ui.painter().text(
-                egui::pos2(rect.left() + 33., y),
-                egui::Align2::LEFT_CENTER,
-                crate::tr!("Термінал", "Terminal"),
-                FontId::proportional(13.),
-                color(&t.text),
-            );
+            if self.preferences.layout.title_button_labels {
+                ui.painter().text(
+                    egui::pos2(rect.left() + 33., y),
+                    egui::Align2::LEFT_CENTER,
+                    crate::tr!("Термінал", "Terminal"),
+                    FontId::proportional(13.),
+                    color(&t.text),
+                );
+            }
         });
         if enabled && response.clicked() {
             self.toggle_terminal(ui.ctx());
