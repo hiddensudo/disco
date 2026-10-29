@@ -1,0 +1,171 @@
+# User guide
+
+[← README](../README.md) · **English** / [Українська](guide.uk.md)
+
+## Browse and scan
+
+Click the drive name to select a folder, then Scan. A scan can be paused or cancelled. The last complete snapshot is saved and restored on startup; **F5 / Refresh** rereads the current folder scope or active category roots. Unrelated subtrees, expanded folders and unsaved text are retained.
+
+Sizes reflect allocated disk blocks. Scans do not follow symbolic links and stay on one filesystem. Restored results are a snapshot, not a claim that every file is unchanged.
+
+Click folders to expand them; Enter enters a folder. Breadcrumbs follow the selected folder or the selected file's parent. Click a component to navigate, or **…** to reach hidden ancestors. Navigation buttons, Backspace and mouse side buttons move through history. Home uses `/home`, falling back to `/`; change it under Settings → Interface → Panels, Home & search.
+
+Search includes files and folders in the current scope. Clicking a folder result enters it and clears the query; subsequent searches use that scope. Optional Home fallback runs after no scope results. Results are cancellable and limited to 2,000 displayed items. See [current limitations](#current-limitations) for the open search bug.
+
+## Overview and Focus
+
+| Layout | Use it for | Resize |
+| --- | --- | --- |
+| Overview | Disk usage, sizes, preview and file properties | Drag the left edge of properties |
+| Focus | A folder tree and tabbed document, without the SSD header or properties | Drag the tree/document divider |
+
+The title-bar buttons switch layouts and remember your choice. The category rail uses icons by default; hover for names, or enable labels in Settings → Interface.
+
+## Terminal
+
+Click **Terminal** beside the layout buttons. It starts your system shell in the selected folder or selected file's parent. Later browsing leaves that running shell's directory unchanged.
+
+| Control | Result |
+| --- | --- |
+| Title-bar Terminal button or header **–** | Hide the panel, keeping its session and output |
+| Header **×** | End the shell and its session processes; free the panel |
+| Open after closing | Start a fresh session |
+| Change layout | Move the same running session |
+| Close disco | End the terminal session |
+
+Overview docks the terminal below categories and files, keeping properties at full height. Drag the terminal's top divider to adjust height. Focus docks it on the right; drag its left edge to adjust width. The terminal is hidden in Trash.
+
+### Terminal keyboard routes
+
+All panel routes below use **Ctrl+Alt** with an arrow. Plain arrows remain terminal input.
+
+| Starting panel | Overview | Focus |
+| --- | --- | --- |
+| Categories or file list | ↓ enters the terminal | Navigate through tree/document toward the right |
+| Terminal | ↑ files; → properties; ←/↓ stay in place | ← document; other directions stay in place |
+| Properties / document | ← terminal | → terminal, when visible |
+
+**Ctrl+Shift+C / Ctrl+Shift+V** copy and paste. **Ctrl+C** interrupts a process. Enter, Delete, Ctrl+S, Ctrl+N and Ctrl+W inside the terminal are shell input and do not trigger file actions.
+
+The PTY uses the Alacritty terminal engine with native egui rendering. Terminal colors follow the app theme; system monospace and symbol fonts are loaded on first use. A launcher-inherited `NO_COLOR` is cleared only for the PTY subprocess. Shell configuration remains your own. Compatibility and implementation notes: [development guide](development.md#terminal).
+
+## Preview, edit and keep tabs
+
+Select a file to preview it. Images preserve their proportions and support fit/zoom; portrait images use a taller canvas. Double-click opens an installed default application, when one is associated. Disable double-click opening under Settings → Interface → Default file view.
+
+Complete text files open in an editor with background syntax highlighting from syntect and bat/two-face grammars. **Ctrl+S** saves while keeping the editor focused. Clicking below a short document places the cursor at its end. Scrolling over the text stays within the document, including at the top and bottom.
+
+In Focus, keyboard file browsing reuses one italic temporary tab:
+
+1. Enter or → retains the preview. Editing also retains it.
+2. On a retained file, → focuses the document; Enter launches its default application, if available.
+3. Retained tabs keep their drafts, cursors and scroll positions when changing files or categories.
+
+Mouse selections open retained tabs. × or middle-click closes one; Ctrl+W closes the active tab. Unsaved text asks for Save / Discard / Cancel before leaving or closing, including inactive drafts when closing the app. Up to 64 tabs can remain open; only the visible image keeps a decoded texture.
+
+### Auto-save and read-only categories
+
+Auto-save defaults to off. Enable it per category, or for All folders under Settings → Interface → Panels, Home & search. It writes after one second without typing, including inactive tabs. External changes preserve a dirty draft rather than overwrite the disk; a failed save shows an error without endless retries.
+
+A category's read-only policy prevents editing, saving, creating and deleting inside disco. Previewing and copying remain available. It does not change operating-system permissions or commands run in a terminal.
+
+Saves preserve encoding, BOM, line endings, permissions and extended attributes. Text fragments from large files remain read-only.
+
+### Preview limits
+
+| Content | Supported formats | Limit |
+| --- | --- | --- |
+| Images | PNG, JPEG, WebP, BMP, TIFF | 32 MiB, 12 megapixels; retained preview up to 2048 px |
+| Text | UTF-8; UTF-16 with BOM | 128 KiB / 2,000 lines |
+
+Selected content is read in the background. Unsupported or oversized content shows an explanation. Expanded file listings are separately cached and bounded; truncated listings are labeled.
+
+## Categories
+
+Settings → Categories lets you create or rename a collection, choose from 38 SVG icons or import an SVG/PNG/JPEG/WebP, and add absolute folder paths. Right-click a category to add selected folders. Save applies changes; Cancel discards them. Removing a collection or a path leaves its data intact.
+
+Drag categories to reorder them. Trash stays at the bottom. Enable **Lock category order** under Interface to prevent movement.
+
+Collections can overlap. Nested roots within a collection are counted once. A built-in category with no explicit folders uses automatic rules; assigning folders replaces those rules. Sizes come from the current scan. An unscanned path offers Scan; scanning it replaces the current snapshot. For multiple roots on one filesystem, scan their common parent.
+
+### Category files
+
+The shared index is `~/.config/disco/categories.toml`:
+
+```toml
+version = 2
+files = ["categories/photos.toml"]
+```
+
+Each entry points to a separate category document, for example `categories/photos.toml`:
+
+```toml
+version = 1
+id = "photos"
+name = "Photography"
+icon = "camera"
+folders = ["/home/user/Pictures"]
+auto_refresh = false
+auto_save = false
+read_only = true
+```
+
+See the [full example](../categories.example.toml). Existing single-file lists migrate with a `.bak` backup. Valid external edits reload while Settings is closed; invalid input keeps the last valid configuration. Conflicting edits are not silently overwritten.
+
+The robot button in the category editor copies an agent prompt in the interface language, with the category's path and schema. Paste it into an agent with PC access to find folders. disco itself makes no AI or network requests for this action.
+
+Imported icons are stored in `~/.config/disco/icons/`. SVGs retain vector rendering; raster imports are bounded to 256 px. Imports accept up to 2 MiB and do not load external or embedded SVG images. Keep the icons directory when sharing a configuration.
+
+## Live updates
+
+Enable **Live file updates** per category in Settings. It defaults to off and watches only the active category/scope while disco runs. The first activation synchronizes that scope.
+
+Filesystem events are coalesced: an ordinary file change rereads its parent folder, with new directories added after discovery. Watch-limit and access errors appear in the status bar. Clean documents reload while keeping the cursor; dirty drafts retain their conflict protection. No permanent disk indexing service is installed.
+
+## Cleanup and Trash
+
+The bottom-left **···** menu opens Large files, Cleanup and Duplicates. Delete in the list, or Delete folder in properties, asks for confirmation before moving data to Trash.
+
+Trash supports restoring selected items, permanently removing selections and emptying the bin. Permanent deletion requires a separate confirmation. The drive bar shows Trash as an amber part of used space, plus an item count; it is not added to used space twice. Click that label to open Trash.
+
+## Settings and files
+
+Settings open in one separate, resizable window. Reopening raises it with its draft intact. Save persists changes; Cancel, Escape or closing restores the previous configuration. Your main file draft and folder context remain intact.
+
+| File | Purpose |
+| --- | --- |
+| `~/.config/disco/theme.toml` | Colors and theme |
+| `~/.config/disco/layout.toml` | Language, sizes, layout and interface options |
+| `~/.config/disco/categories.toml` | Category index |
+| `~/.cache/disco/last-scan.bin.gz` | Last complete scan |
+
+`XDG_CONFIG_HOME` and `XDG_CACHE_HOME` are supported. `language = "en"` / `"uk"` and `preview_mode = "overview"` / `"focus"` can also be edited in `layout.toml`.
+
+## Keyboard reference
+
+| Keys | Action |
+| --- | --- |
+| ↑ / ↓, Home / End, Page Up / Down | Move through the file list |
+| → / ← | Expand/collapse folders; retain/focus a Focus file |
+| Enter | Enter a folder; retain/open a Focus file |
+| Backspace | Go back, otherwise select the parent |
+| Delete | Move selection to Trash after confirmation |
+| Ctrl+N | Create a file; `new_folder/file.txt` also creates parents |
+| Ctrl+S | Save without leaving the editor |
+| Ctrl+Tab / Ctrl+Shift+Tab | Next / previous visible file, skipping folders |
+| Ctrl+L / F5 | Search / refresh current scope |
+| Alt+Home | Open configured Home |
+| Ctrl+Alt+arrows | Move between panels |
+| F6 / Shift+F6 | Cycle panels without inserting an editor tab |
+| Ctrl+comma | Open or raise Settings |
+| Ctrl+W | Close active Focus tab |
+| Ctrl+Shift+↑ / ↓ in categories | Reorder the selected category, when unlocked |
+| Tab / Shift+Tab, Space / Enter, Escape | Operate controls and dialogs |
+
+File-list shortcuts do not run while typing in text fields. Ctrl+Tab follows visible file-list order, not tab order, and stops at the ends. System clipboard shortcuts work in editable fields. New-file input keeps focus after an invalid path and never overwrites an existing file; a leading `/` remains relative to the selected folder.
+
+## Current limitations
+
+- Search does not yet reliably follow the requested selected-folder → category → Home priority. Improving file results and scope selection is tracked for a later update.
+- Trash can display stale counts or a read error after permanent removal. Use Refresh to reread it; an unreadable bin is not evidence that it is empty.
+- The integrated terminal is a native embedding of an adapted widget, not a promise of compatibility with every terminal application. LSP/code completion is not included.

@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.2 — 2026-10-29
 
+- Reorganized English and Ukrainian READMEs into quick starts and a native screenshot gallery; moved detailed controls and configuration to bilingual user guides, with a separate development guide.
+
 - Fixed uncovered strips between the custom title bar and disk header: the root window, panel frames and renderer clear color are now opaque, preventing desktop bleed-through during repaints and layout changes.
 
 - Overview terminal keyboard navigation follows its bottom docking: Ctrl+Alt+Down from categories or files enters the terminal, Up returns to files and Right enters properties. Left/Down at terminal edges stay in place and do not send escape sequences to the shell.
@@ -84,6 +86,10 @@ Consolidates the changes developed during the preview.
 ---
 
 ## Українською
+
+**0.2.2:** вбудований кольоровий термінал праворуч у «Фокусі» та знизу в «Огляді» зі збереженням сесії між режимами. Згортання залишає процеси, хрестик завершує їх; розміри панелей змінюються. Виправлено маршрути Ctrl+Alt+стрілок і введення escape-послідовностей замість переходу. Верхня панель і фон вікна непрозорі, щоб робочий стіл не просвічувався через смужку. README скорочено, додано двомовні посібники й нативні скріншоти.
+
+**0.2.1:** тимчасова вкладка при переборі файлів, закріплення через Enter/→, окремі чернетки й курсори вкладок, автозбереження, окреме вікно налаштувань і повна клавіатурна навігація.
 
 **0.2.0:** перетягування категорій зі збереженням порядку, опція закріплення, Ctrl+Tab / Ctrl+Shift+Tab між видимими файлами та встановлення курсора в кінець файла при кліку нижче тексту. Також оновлення поточного scope, файлові події й режим лише читання для категорій, фонове підсвічування коду, налаштовуваний Home та пошук файлів у нерозгорнутих папках. У «Фокусі» шлях і пошук замінили смугу SSD.
 
