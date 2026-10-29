@@ -109,6 +109,7 @@ fn main() -> eframe::Result {
             .with_inner_size([1360., 660.])
             .with_min_inner_size([1140., 620.])
             .with_decorations(false)
+            .with_transparent(false)
             .with_app_id("ua.disco")
             .with_title(format!("disco {}", env!("CARGO_PKG_VERSION")))
             .with_icon(art::app_icon()),

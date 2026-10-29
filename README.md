@@ -1,6 +1,6 @@
 # disco
 
-Current release: **0.2.1** ([source tag](https://github.com/hiddensudo/disco/tree/v0.2.1)).
+Current build: **0.2.2** — integrated terminal, keyboard routing fixes and opaque window rendering. See [release notes](CHANGELOG.md).
 
 ### Integrated terminal
 

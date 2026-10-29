@@ -1907,3 +1907,86 @@ fn focus_terminal_toggle_close_and_keyboard_isolation_use_real_pty() {
     }
     assert!(!running(second));
 }
+
+#[test]
+fn window_background_is_opaque_across_layouts_sizes_and_fractional_dpi() {
+    let Ok(root) = std::env::var("DISCO_OPAQUE_FIXTURE") else {
+        let root = std::env::temp_dir().join(format!("disco-opaque-{}", std::process::id()));
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::write(
+            root.join("config/layout.toml"),
+            "save_scan=false\nauto_refresh=false\n",
+        )
+        .unwrap();
+        let result = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "app::ui::interaction_tests::window_background_is_opaque_across_layouts_sizes_and_fractional_dpi", "--nocapture"])
+            .env("DISCO_OPAQUE_FIXTURE", &root)
+            .env("DISCO_CONFIG_DIR", root.join("config"))
+            .env("XDG_CACHE_HOME", root.join("cache"))
+            .env("XDG_DATA_HOME", root.join("data"))
+            .output().unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            result.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        );
+        return;
+    };
+    let _root = root;
+    let ctx = egui::Context::default();
+    let mut app = Disco::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+    app.demo = true;
+    let mut time = 0.;
+    for scale in [1., 1.25, 1.5, 2.] {
+        ctx.set_pixels_per_point(scale);
+        for mode in [
+            PreviewMode::Overview,
+            PreviewMode::Focus,
+            PreviewMode::Overview,
+        ] {
+            app.preferences.layout.preview_mode = mode;
+            for size in [Vec2::new(1360., 800.), Vec2::new(1140., 620.)] {
+                let screen = Rect::from_min_size(Pos2::ZERO, size);
+                time += 0.05;
+                let output = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(screen),
+                        time: Some(time),
+                        ..Default::default()
+                    },
+                    |ui| eframe::App::ui(&mut app, ui, &mut eframe::Frame::_new_kittest()),
+                );
+                assert_eq!(
+                    eframe::App::clear_color(&app, &ctx.global_style().visuals)[3],
+                    1.
+                );
+                // An opaque root must precede all panel content. Testing only
+                // panel interiors missed the unpainted strip after the titlebar.
+                let background = crate::settings::color(&app.preferences.theme.background);
+                let first_fill = output
+                    .shapes
+                    .iter()
+                    .find_map(|clipped| match &clipped.shape {
+                        egui::epaint::Shape::Rect(rect) if rect.fill.a() > 0 => {
+                            Some((clipped.clip_rect, rect.clone()))
+                        }
+                        _ => None,
+                    })
+                    .expect("root background paint");
+                output.drop_without_applying_deltas();
+                // set_pixels_per_point may rescale the first RawInput rect in
+                // the transition frame; compare to egui's actual viewport.
+                let screen = ctx.viewport_rect();
+                assert_eq!(first_fill.1.fill, background);
+                assert_eq!(first_fill.1.fill.a(), 255);
+                assert!(
+                    first_fill.1.rect.contains_rect(screen),
+                    "root must cover seams during resize at {scale}x"
+                );
+                assert!(first_fill.0.contains_rect(screen));
+            }
+        }
+    }
+}

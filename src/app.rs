@@ -300,6 +300,11 @@ impl Disco {
     }
 }
 impl eframe::App for Disco {
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        // eframe defaults to alpha 180. Disco has no transparent surfaces;
+        // compositor exposure during resize must remain opaque as well.
+        color(&self.preferences.theme.background).to_normalized_gamma_f32()
+    }
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.preferences.layout.normalize_file_mode();
         self.guard_native_close(ui.ctx());
@@ -404,8 +409,13 @@ impl eframe::App for Disco {
             ctx.request_repaint_after(Duration::from_secs(3));
         }
         let t = self.preferences.theme.clone();
+        // Cover the entire root before docking panels. Widget spacing and
+        // fractional-pixel seams between manually painted panels also need a
+        // background on every frame, including terminal wakeups/layout changes.
+        ui.painter()
+            .rect_filled(ui.max_rect(), 0, color(&t.background));
         egui::Panel::top("brand")
-            .frame(egui::Frame::NONE)
+            .frame(egui::Frame::new().fill(color(&t.panel)))
             .show(ui, |ui| self.titlebar(ui));
         if self.preferences.layout.preview_mode == settings::PreviewMode::Focus
             && self.browser.view != View::Trash
@@ -419,11 +429,11 @@ impl eframe::App for Disco {
                 .show(ui, |ui| self.scope_controls(ui));
         } else {
             egui::Panel::top("drive")
-                .frame(egui::Frame::NONE)
+                .frame(egui::Frame::new().fill(color(&t.panel)))
                 .show(ui, |ui| self.drive_header(ui));
         }
         egui::Panel::bottom("selection")
-            .frame(egui::Frame::NONE)
+            .frame(egui::Frame::new().fill(color(&t.panel)))
             .show(ui, |ui| self.footer(ui));
         // Overview keeps the inspector at full height. The terminal is allocated
         // before categories, so its bottom panel spans the rail and file list.

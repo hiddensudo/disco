@@ -7,3 +7,5 @@
 - Verify relevant Rust tests, Python installation/translation checks and `git diff --check` before committing. Do not commit local binaries, configuration, scan caches or personal test fixtures.
 
 - The user explicitly approved 0.2.1 for the reusable keyboard preview tab and Enter/Right-arrow keep-open behavior. Preserve existing release tags.
+
+- The user approved 0.2.2 for the integrated terminal, Overview keyboard routing fixes and opaque window/header rendering fix (DSC-012).

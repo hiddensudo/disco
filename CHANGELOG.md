@@ -2,7 +2,9 @@
 
 Release history for disco, including earlier development checkpoints.
 
-## Unreleased
+## 0.2.2 — 2026-10-29
+
+- Fixed uncovered strips between the custom title bar and disk header: the root window, panel frames and renderer clear color are now opaque, preventing desktop bleed-through during repaints and layout changes.
 
 - Overview terminal keyboard navigation follows its bottom docking: Ctrl+Alt+Down from categories or files enters the terminal, Up returns to files and Right enters properties. Left/Down at terminal edges stay in place and do not send escape sequences to the shell.
 
