@@ -78,7 +78,7 @@ impl Disco {
                     )
                     .clicked()
                 {
-                    self.recycle.refresh(ui.ctx());
+                    self.refresh_scope(ui.ctx());
                 }
             });
         });
@@ -239,8 +239,10 @@ impl Disco {
             .collect();
         if ids.is_empty() {
             ui.add_space(35.);
-            ui.label(if self.recycle.loading && !self.recycle.loaded {
-                crate::tr!("Завантаження…", "Loading…")
+            ui.label(if self.recycle.loading {
+                crate::tr!("Оновлюємо кошик…", "Refreshing Trash…")
+            } else if !self.recycle.listing_complete() {
+                crate::tr!("Стан кошика недоступний", "Trash contents unavailable")
             } else if self.recycle.items.is_empty() {
                 crate::tr!("Кошик порожній", "Trash is empty")
             } else {

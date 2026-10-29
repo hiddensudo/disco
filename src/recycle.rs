@@ -133,7 +133,7 @@ pub struct Finished {
     pub action: Action,
     pub done: usize,
     pub error: Option<String>,
-    pub changed: bool,
+    removed: Vec<OsString>,
 }
 fn list() -> Result<Vec<trash::TrashItem>, String> {
     std::panic::catch_unwind(trash::os_limited::list)
@@ -151,7 +151,7 @@ fn execute(items: &[Item], action: Action) -> Finished {
         action,
         done: 0,
         error: None,
-        changed: false,
+        removed: Vec::new(),
     };
     let current = match list() {
         Ok(v) => v,
@@ -198,7 +198,6 @@ fn execute(items: &[Item], action: Action) -> Finished {
             );
             break;
         }
-        result.changed = true;
         let op = std::panic::catch_unwind(|| match action {
             Action::Restore => trash::os_limited::restore_all([item.entry.clone()]),
             Action::Purge => trash::os_limited::purge_all([&item.entry]),
@@ -212,7 +211,10 @@ fn execute(items: &[Item], action: Action) -> Finished {
         })
         .and_then(|result| result.map_err(|e| e.to_string()));
         match op {
-            Ok(()) => result.done += 1,
+            Ok(()) => {
+                result.done += 1;
+                result.removed.push(item.entry.id.clone());
+            }
             Err(e) => {
                 result.error = Some(e.to_string());
                 break;
@@ -331,6 +333,7 @@ pub struct Bin {
     pub loading: bool,
     pub checking: bool,
     pub loaded: bool,
+    listing_complete: bool,
     pub busy: bool,
     pub notice: String,
     notice_kind: Option<(Action, Option<usize>)>,
@@ -346,6 +349,7 @@ impl Bin {
     pub fn demo() -> Self {
         let mut s = Self::default();
         s.loaded = true;
+        s.listing_complete = true;
         for (name, original, bytes, directory) in [
             (
                 "Modlist_Downloads",
@@ -407,6 +411,7 @@ impl Bin {
     pub fn invalidate(&mut self) {
         self.cancel.store(true, Ordering::Relaxed);
         self.loaded = false;
+        self.listing_complete = false;
         self.listing_stamp = None;
         self.loading = false;
         self.checking = false;
@@ -568,7 +573,8 @@ impl Bin {
                 Event::Loaded(items, warning, stamp) => {
                     changed = true;
                     self.checking = false;
-                    self.listing_stamp = stamp;
+                    self.listing_complete = warning.is_none();
+                    self.listing_stamp = if self.listing_complete { stamp } else { None };
                     self.items = items;
                     self.item_ids = self
                         .items
@@ -606,6 +612,8 @@ impl Bin {
                     self.rx = None;
                 }
                 Event::Error(e) => {
+                    self.listing_complete = false;
+                    self.listing_stamp = None;
                     self.checking = false;
                     self.loaded = true;
                     self.loading = false;
@@ -617,8 +625,22 @@ impl Bin {
                     self.selected.clear();
                     self.notice_kind = Some((result.action, Some(result.done)));
                     self.relocalize_notice();
+                    // Hide successful targets immediately, even while the fresh
+                    // listing and remaining directory sizes are still loading.
+                    let removed: HashSet<_> = result.removed.iter().collect();
+                    self.items.retain(|item| !removed.contains(&item.entry.id));
+                    self.item_ids = self
+                        .items
+                        .iter()
+                        .enumerate()
+                        .map(|(n, item)| (item.entry.id.clone(), n))
+                        .collect();
+                    changed = true;
                     let error = result.error.clone();
-                    self.refresh(ctx);
+                    // Always enumerate again, while reusing unaffected Trash
+                    // directory totals instead of walking large archives again.
+                    self.listing_stamp = None;
+                    self.begin_refresh(ctx, true);
                     if let Some(e) = error {
                         self.error = e;
                     }
@@ -646,19 +668,23 @@ impl Bin {
                 i.bytes.is_some() && i.files.is_some() && i.folders.is_some() && i.complete_size;
         }
     }
+    pub fn listing_complete(&self) -> bool {
+        self.loaded && !self.loading && self.listing_complete
+    }
     pub fn summary_for(&self, device: u64) -> Summary {
         let mut sum = self.summaries.get(&device).copied().unwrap_or(Summary {
             complete: true,
             ..Default::default()
         });
-        sum.complete &= self.loaded && self.error.is_empty();
+        sum.complete &= self.listing_complete();
         sum
     }
     pub fn total(&self) -> (u64, bool) {
-        self.summaries.values().fold(
-            (0, self.loaded && self.error.is_empty()),
-            |(bytes, complete), s| (bytes.saturating_add(s.bytes), complete && s.complete),
-        )
+        self.summaries
+            .values()
+            .fold((0, self.listing_complete()), |(bytes, complete), s| {
+                (bytes.saturating_add(s.bytes), complete && s.complete)
+            })
     }
 }
 impl Drop for Bin {
@@ -705,6 +731,48 @@ mod tests {
         assert_eq!(bin.summary_for(0).files, 4180);
         bin.loaded = false;
         assert!(!bin.summary_for(42).complete);
+    }
+    #[test]
+    fn listing_errors_stay_unknown_but_operation_errors_keep_readable_totals() {
+        let ctx = egui::Context::default();
+        let mut bin = Bin::demo();
+        bin.error = "restore collision".into();
+        assert!(
+            bin.total().1,
+            "action errors do not invalidate a readable listing"
+        );
+        let (tx, rx) = mpsc::channel();
+        bin.rx = Some(rx);
+        tx.send(Event::Loaded(
+            vec![],
+            Some("unreadable fixture".into()),
+            None,
+        ))
+        .unwrap();
+        tx.send(Event::Ready).unwrap();
+        bin.poll(&ctx);
+        assert!(bin.items.is_empty());
+        assert!(
+            !bin.listing_complete(),
+            "unknown must not be displayed as empty"
+        );
+        assert!(!bin.total().1);
+        assert!(!bin.summary_for(0).complete);
+        // Successful retry clears the read failure and restores known zero.
+        bin.error.clear();
+        let (tx, rx) = mpsc::channel();
+        bin.rx = Some(rx);
+        tx.send(Event::Loaded(vec![], None, None)).unwrap();
+        tx.send(Event::Ready).unwrap();
+        bin.poll(&ctx);
+        assert!(bin.listing_complete());
+        assert_eq!(bin.total(), (0, true));
+        let (tx, rx) = mpsc::channel();
+        bin.rx = Some(rx);
+        tx.send(Event::Error("listing failed".into())).unwrap();
+        bin.poll(&ctx);
+        assert!(!bin.listing_complete());
+        assert!(!bin.total().1);
     }
     #[test]
     fn folder_sizes_count_allocated_blocks_once_and_do_not_follow_links() {
@@ -792,7 +860,7 @@ mod tests {
             fs::write(root.join("collision"), b"keep existing").unwrap();
             let out = execute(std::slice::from_ref(collision), Action::Restore);
             assert_eq!(out.done, 0);
-            assert!(!out.changed);
+            assert!(out.removed.is_empty());
             assert!(out.error.is_some());
             assert_eq!(fs::read(root.join("collision")).unwrap(), b"keep existing");
             assert!(collision.stored.exists());
@@ -878,6 +946,28 @@ mod tests {
                     .files,
                 Some(2)
             );
+            // Simulate a partially successful result after one real fixture
+            // removal, verifying immediate reconciliation before async reload.
+            let cached = bin
+                .items
+                .iter()
+                .find(|i| i.entry.name == "cached")
+                .unwrap()
+                .clone();
+            let mut partial = execute(std::slice::from_ref(&cached), Action::Purge);
+            assert_eq!(partial.done, 1);
+            partial.error = Some("fixture: stopped after one success".into());
+            let (tx, rx) = mpsc::channel();
+            bin.rx = Some(rx);
+            tx.send(Event::Finished(partial)).unwrap();
+            bin.poll(&ctx);
+            assert!(!bin.items.iter().any(|i| i.entry.id == cached.entry.id));
+            assert!(bin.items.iter().any(|i| i.entry.name == "collision"));
+            assert!(bin.loading);
+            wait(&mut bin);
+            assert!(bin.error.contains("stopped after one success"));
+            assert!(bin.listing_complete());
+            assert!(bin.total().1);
             return;
         }
         let root = fixture("integration");

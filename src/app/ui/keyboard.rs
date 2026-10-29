@@ -137,6 +137,9 @@ impl Disco {
             return;
         }
         if self.browser.view == View::Trash {
+            if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F5)) {
+                self.refresh_scope(ctx);
+            }
             return;
         }
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F5)) {

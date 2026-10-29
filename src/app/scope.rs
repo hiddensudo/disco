@@ -462,6 +462,13 @@ impl Disco {
         }
     }
     pub(in crate::app) fn refresh_scope(&mut self, ctx: &egui::Context) {
+        if self.browser.view == View::Trash {
+            if !self.demo && !self.recycle.busy {
+                self.recycle.refresh(ctx);
+                self.refresh_drive();
+            }
+            return;
+        }
         if self.scoped.busy() || self.scan.busy || self.scan.restore_requested_root.is_some() {
             return;
         }

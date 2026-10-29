@@ -1990,3 +1990,163 @@ fn window_background_is_opaque_across_layouts_sizes_and_fractional_dpi() {
         }
     }
 }
+
+#[test]
+fn trash_operations_and_f5_refresh_only_trash_without_replacing_the_scan() {
+    let Ok(root) = std::env::var("DISCO_TRASH_SCOPE_FIXTURE") else {
+        let root = std::env::temp_dir().join(format!("disco-trash-scope-{}", std::process::id()));
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::create_dir_all(root.join("files/unrelated")).unwrap();
+        fs::write(root.join("files/unrelated/keep.txt"), b"snapshot must stay").unwrap();
+        fs::write(
+            root.join("config/layout.toml"),
+            "save_scan=false\nauto_refresh=false\nanimations=false\nlanguage='en'\n",
+        )
+        .unwrap();
+        let result = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "app::ui::interaction_tests::trash_operations_and_f5_refresh_only_trash_without_replacing_the_scan", "--nocapture"])
+            .env("DISCO_TRASH_SCOPE_FIXTURE", &root)
+            .env("DISCO_CONFIG_DIR", root.join("config"))
+            .env("XDG_DATA_HOME", root.join("data"))
+            .output().unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            result.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        );
+        return;
+    };
+    use crate::recycle::Action;
+    use std::sync::Arc;
+    let root = PathBuf::from(root);
+    let ctx = egui::Context::default();
+    let mut app = Disco::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+    let files = root.join("files");
+    let report =
+        Arc::new(crate::scan::scan(&files, &crate::scan::Control::default(), |_| {}).unwrap());
+    app.scan.index = crate::index::Index::new(&report);
+    app.scan.report = Some(report.clone());
+    app.browser.root = files.display().to_string();
+    app.browser.view = crate::app::state::View::Trash;
+    // If a full rescan is accidentally triggered, this branch disappears.
+    fs::remove_dir_all(files.join("unrelated")).unwrap();
+    for name in ["purge-me", "restore-me"] {
+        fs::write(root.join(name), vec![1u8; 8192]).unwrap();
+        trash::delete(root.join(name)).unwrap();
+    }
+    let mut time = 0.;
+    let wait = |app: &mut Disco, time: &mut f64| {
+        let started = Instant::now();
+        loop {
+            frame(app, &ctx, time, vec![]);
+            assert!(!app.scan.busy, "Trash must never launch a root scan");
+            assert!(
+                !app.scoped.busy(),
+                "Trash must not refresh a folder/category"
+            );
+            assert!(Arc::ptr_eq(app.scan.report.as_ref().unwrap(), &report));
+            assert_eq!(app.scan.report_revision, 0);
+            assert!(app.editor.pending.is_none());
+            if !app.recycle.busy && !app.recycle.loading {
+                break;
+            }
+            assert!(started.elapsed() < Duration::from_secs(5));
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    };
+    app.recycle.refresh(&ctx);
+    wait(&mut app, &mut time);
+    let owned = |app: &Disco, name: &str| {
+        app.recycle
+            .items
+            .iter()
+            .find(|i| i.entry.name == name && i.stored.starts_with(root.join("data/Trash/files")))
+            .unwrap()
+            .clone()
+    };
+    let purge = owned(&app, "purge-me");
+    let before = app.recycle.total().0;
+    app.recycle.selected.insert(purge.entry.id.clone());
+    app.recycle.start(vec![purge.clone()], Action::Purge, &ctx);
+    wait(&mut app, &mut time);
+    assert!(!purge.stored.exists());
+    assert!(
+        !app.recycle
+            .items
+            .iter()
+            .any(|i| i.entry.id == purge.entry.id)
+    );
+    assert!(app.recycle.selected.is_empty());
+    assert!(app.recycle.total().0 < before);
+    let restore = owned(&app, "restore-me");
+    // A failed restore still rereads Trash, keeps its item, and must not turn
+    // a fully readable listing into an 'unavailable' disk-bar summary.
+    fs::write(root.join("restore-me"), b"collision").unwrap();
+    app.recycle
+        .start(vec![restore.clone()], Action::Restore, &ctx);
+    wait(&mut app, &mut time);
+    assert!(!app.recycle.error.is_empty());
+    assert!(app.recycle.listing_complete());
+    assert!(app.recycle.total().1);
+    assert!(restore.stored.exists());
+    fs::remove_file(root.join("restore-me")).unwrap();
+    app.recycle
+        .start(vec![restore.clone()], Action::Restore, &ctx);
+    wait(&mut app, &mut time);
+    assert_eq!(fs::read(root.join("restore-me")).unwrap(), vec![1u8; 8192]);
+    assert!(
+        !app.recycle
+            .items
+            .iter()
+            .any(|i| i.entry.id == restore.entry.id)
+    );
+    assert!(app.recycle.error.is_empty());
+    // A new external arrival is read by F5 in the Trash scope only.
+    fs::write(root.join("external"), b"arrived later").unwrap();
+    trash::delete(root.join("external")).unwrap();
+    app.focus_area(crate::app::workspace_keyboard::Area::Tree, &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        egui::Key::F5,
+        egui::Modifiers::NONE,
+    );
+    wait(&mut app, &mut time);
+    let external = owned(&app, "external");
+    // Empty the fixture's remaining confirmed set, with automatic rereading.
+    app.recycle
+        .start(vec![external.clone()], Action::Purge, &ctx);
+    wait(&mut app, &mut time);
+    assert!(!external.stored.exists());
+    assert!(
+        !app.recycle
+            .items
+            .iter()
+            .any(|i| i.stored.starts_with(root.join("data/Trash/files")))
+    );
+    assert!(app.recycle.listing_complete());
+    if app.recycle.items.is_empty() {
+        app.recycle.error = "fixture: prior action failed".into();
+        time += 0.05;
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1360., 800.))),
+                time: Some(time),
+                ..Default::default()
+            },
+            |ui| eframe::App::ui(&mut app, ui, &mut eframe::Frame::_new_kittest()),
+        );
+        output.textures_delta.clear();
+        assert!(
+            !output.shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::epaint::Shape::Text(text) if text.galley.text() == "Trash: unavailable"
+            )),
+            "a readable empty bin must not inherit an action error as listing failure"
+        );
+        output.drop_without_applying_deltas();
+    }
+}

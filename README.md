@@ -58,7 +58,7 @@ The bottom-left **···** menu contains Large files, Cleanup and Duplicates. De
 - Keep drafts in tabs, with optional auto-save after one second without typing.
 - Refresh the current scope; enable live updates and read-only mode per category.
 - Create custom categories, import icons, and configure them with separate TOML files.
-- Restore items from Trash and see its size separately in the storage bar.
+- Restore items from Trash and see its size separately; Trash refreshes without rescanning folders.
 - Change colors, spacing, text size and language in a separate settings window.
 
 ## Handy keys

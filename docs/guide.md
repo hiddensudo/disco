@@ -128,6 +128,10 @@ The bottom-left **···** menu opens Large files, Cleanup and Duplicates. Delet
 
 Trash supports restoring selected items, permanently removing selections and emptying the bin. Permanent deletion requires a separate confirmation. The drive bar shows Trash as an amber part of used space, plus an item count; it is not added to used space twice. Click that label to open Trash.
 
+After restore or permanent removal, disco automatically rereads only Trash and samples free disk space. It does not rescan the folder tree or replace your current scan snapshot. Successfully removed items disappear immediately, and unchanged Trash directory totals are reused. **Refresh / F5** inside Trash also stays within this scope. Folder-tree results remain a snapshot until that scope is refreshed separately.
+
+A failed or partially completed action still triggers reconciliation. Remaining items stay visible; unreadable contents are shown as unavailable, not as an empty bin. A restore collision can show an action error while the readable listing and its totals remain valid.
+
 ## Settings and files
 
 Settings open in one separate, resizable window. Reopening raises it with its draft intact. Save persists changes; Cancel, Escape or closing restores the previous configuration. Your main file draft and folder context remain intact.
@@ -167,5 +171,4 @@ File-list shortcuts do not run while typing in text fields. Ctrl+Tab follows vis
 ## Current limitations
 
 - Search does not yet reliably follow the requested selected-folder → category → Home priority. Improving file results and scope selection is tracked for a later update.
-- Trash can display stale counts or a read error after permanent removal. Use Refresh to reread it; an unreadable bin is not evidence that it is empty.
 - The integrated terminal is a native embedding of an adapted widget, not a promise of compatibility with every terminal application. LSP/code completion is not included.

@@ -345,15 +345,10 @@ impl eframe::App for Disco {
         self.terminal.poll(&self.preferences.theme, shown);
         self.workspace_shortcuts(ui.ctx());
         self.file_cycle_shortcuts(ui.ctx());
-        if let Some(result) = self.recycle.poll(ui.ctx()) {
+        if self.recycle.poll(ui.ctx()).is_some() {
+            // Bin refreshes its own listing after every completed operation.
+            // Only statvfs/drive metadata needs updating here, never the scan.
             self.refresh_drive();
-            if result.changed
-                && self.scan.report.is_some()
-                && !self.scan.busy
-                && self.deletion.rx.is_none()
-            {
-                self.start_job(false, true, true);
-            }
         }
         if !self.demo
             && self.deletion.rx.is_none()

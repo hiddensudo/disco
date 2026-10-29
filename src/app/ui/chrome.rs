@@ -276,7 +276,10 @@ impl Disco {
                 color(&t.muted),
             );
             let measured = sum.filter(|_| self.recycle.loaded);
-            let unavailable = !self.recycle.error.is_empty() && self.recycle.items.is_empty();
+            let unavailable = self.recycle.loaded
+                && !self.recycle.loading
+                && !self.recycle.listing_complete()
+                && self.recycle.items.is_empty();
             let caption = if unavailable {
                 crate::tr!("Кошик: недоступно", "Trash: unavailable").to_string()
             } else if let Some(s) = measured {

@@ -8,4 +8,4 @@
 
 - The user explicitly approved 0.2.1 for the reusable keyboard preview tab and Enter/Right-arrow keep-open behavior. Preserve existing release tags.
 
-- The user approved 0.2.2 for the integrated terminal, Overview keyboard routing fixes and opaque window/header rendering fix (DSC-012).
+- The user approved 0.2.2 for the integrated terminal, Overview keyboard routing fixes and opaque window/header rendering fix (DSC-012), and the follow-up Trash-only refresh fix (DSC-010).

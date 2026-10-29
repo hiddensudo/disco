@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.2 — 2026-10-29
 
+- Trash operations now refresh only the Trash listing and disk-space sample, without rescanning the folder tree. Successful items and totals reconcile immediately; unaffected Trash directory sizes are reused. F5 refreshes Trash, and listing failures no longer report a known-empty bin or confuse restore errors with unreadable contents.
+
 - Reorganized English and Ukrainian READMEs into quick starts and a native screenshot gallery; moved detailed controls and configuration to bilingual user guides, with a separate development guide.
 
 - Fixed uncovered strips between the custom title bar and disk header: the root window, panel frames and renderer clear color are now opaque, preventing desktop bleed-through during repaints and layout changes.
@@ -87,7 +89,7 @@ Consolidates the changes developed during the preview.
 
 ## Українською
 
-**0.2.2:** вбудований кольоровий термінал праворуч у «Фокусі» та знизу в «Огляді» зі збереженням сесії між режимами. Згортання залишає процеси, хрестик завершує їх; розміри панелей змінюються. Виправлено маршрути Ctrl+Alt+стрілок і введення escape-послідовностей замість переходу. Верхня панель і фон вікна непрозорі, щоб робочий стіл не просвічувався через смужку. README скорочено, додано двомовні посібники й нативні скріншоти.
+**0.2.2:** кошик оновлює лише свій скоуп після видалення чи відновлення, без пересканування дерева; F5 працює в кошику, успішні видалення одразу прибираються зі списку, а помилка читання не позначає його порожнім. Також вбудований кольоровий термінал праворуч у «Фокусі» та знизу в «Огляді» зі збереженням сесії між режимами. Згортання залишає процеси, хрестик завершує їх; розміри панелей змінюються. Виправлено маршрути Ctrl+Alt+стрілок і введення escape-послідовностей замість переходу. Верхня панель і фон вікна непрозорі, щоб робочий стіл не просвічувався через смужку. README скорочено, додано двомовні посібники й нативні скріншоти.
 
 **0.2.1:** тимчасова вкладка при переборі файлів, закріплення через Enter/→, окремі чернетки й курсори вкладок, автозбереження, окреме вікно налаштувань і повна клавіатурна навігація.
 
