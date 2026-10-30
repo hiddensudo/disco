@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import shlex
 from pathlib import Path
 
 
@@ -72,7 +73,7 @@ def register_desktop_icon(bundle, desktop):
     return config / ('app-icon-dark.svg' if dark else 'app-icon-light.svg')
 
 
-def install(binary=None):
+def install(binary=None, config_dir=None):
     bundle = Path(__file__).resolve().parent
     if binary is None:
         built = bundle / 'target/release/disco'
@@ -81,7 +82,14 @@ def install(binary=None):
     if not binary.is_file() or not os.access(binary, os.X_OK):
         raise SystemExit('Build disco first: cargo build --release --locked')
     command = Path.home() / '.local/bin/disco'
-    link_atomic(binary, command)
+    if config_dir is None:
+        link_atomic(binary, command)
+    else:
+        config = Path(config_dir).expanduser().resolve()
+        os.environ['DISCO_CONFIG_DIR'] = str(config)
+        script = '#!/bin/sh\nexec env DISCO_CONFIG_DIR=' + shlex.quote(str(config)) + ' ' + shlex.quote(str(binary)) + ' "$@"\n'
+        write_atomic(command, script.encode())
+        command.chmod(0o755)
     desktop = Path.home() / '.local/share/applications/ua.disco.desktop'
     desktop.parent.mkdir(parents=True, exist_ok=True)
     icon = register_desktop_icon(bundle, desktop)
@@ -94,7 +102,13 @@ def install(binary=None):
         elif line.startswith('Icon='):
             line = 'Icon=' + desktop_string(icon)
         lines.append(line)
-    desktop.write_text('\n'.join(lines) + '\n')
+    write_atomic(desktop, ('\n'.join(lines) + '\n').encode())
+    # Previous development installs used a second product name. Keep one
+    # application identity while retaining its independent configuration data.
+    legacy = desktop.with_name('ua.disco.unstable.desktop')
+    if legacy.is_file() and 'Name=disco Unstable' in legacy.read_text():
+        legacy.unlink()
+        (command.parent / 'disco-unstable').unlink(missing_ok=True)
     print('Command:', command, '->', binary)
     print('Menu:', desktop)
     print('Keep the project and built executable at these paths.')
@@ -103,4 +117,6 @@ def install(binary=None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--binary', type=Path, help='Use an executable from a custom Cargo target directory')
-    install(parser.parse_args().binary)
+    parser.add_argument('--config-dir', type=Path, help='Persist a separate configuration directory in the disco launcher')
+    args = parser.parse_args()
+    install(args.binary, args.config_dir)

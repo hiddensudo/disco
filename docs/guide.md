@@ -172,7 +172,7 @@ The robot button opens an editable theme-generation prompt with the full color s
 
 `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` are supported. `language = "en"` / `"uk"` and `preview_mode = "overview"` / `"focus"` can also be edited in `layout.toml`.
 
-The unstable launcher uses its separate configuration directory. The catalog contains `version = 1`, an `active` ID and `[themes.<id>]` entries with `name` and `file = "themes/<id>.toml"`. See the bundled [catalog](../assets/themes.toml) and [Paper color file](../assets/themes/paper.toml) for complete examples. Once migrated, edit the catalog/theme files rather than the old backup `theme.toml`.
+Development builds are also installed as **disco**. To keep their separate configuration, use `python3 install.py --config-dir ~/.config/disco-unstable`; installation replaces the old disco Unstable launcher with one disco entry. The catalog contains `version = 1`, an `active` ID and `[themes.<id>]` entries with `name` and `file = "themes/<id>.toml"`. See the bundled [catalog](../assets/themes.toml) and [Paper color file](../assets/themes/paper.toml) for complete examples. Once migrated, edit the catalog/theme files rather than the old backup `theme.toml`.
 
 ## Custom shortcuts
 

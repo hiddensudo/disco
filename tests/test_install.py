@@ -46,6 +46,28 @@ class InstallerTests(unittest.TestCase):
             desktop = (home / '.local/share/applications/ua.disco.desktop').read_text()
             self.assertIn(f'Icon={config / "app-icon-light.svg"}', desktop)
 
+    def test_development_install_keeps_one_disco_name_and_its_config(self):
+        with tempfile.TemporaryDirectory(prefix='disco-install-dev-') as temporary:
+            home = Path(temporary)
+            config = home / 'development config'
+            binary = home / 'build/disco'
+            binary.parent.mkdir()
+            binary.write_text('#!/bin/sh\nprintf "%s\\n" "$DISCO_CONFIG_DIR"\n')
+            binary.chmod(0o755)
+            entries = home / '.local/share/applications'
+            entries.mkdir(parents=True)
+            (entries / 'ua.disco.unstable.desktop').write_text('Name=disco Unstable\n')
+            command_dir = home / '.local/bin'
+            command_dir.mkdir(parents=True)
+            (command_dir / 'disco-unstable').write_text('old launcher')
+            subprocess.run([sys.executable, str(INSTALL), '--binary', str(binary), '--config-dir', str(config)],
+                           env=dict(os.environ, HOME=str(home)), check=True, capture_output=True)
+            output = subprocess.check_output([str(command_dir / 'disco')], text=True).strip()
+            self.assertEqual(output, str(config))
+            self.assertIn('Name=disco\n', (entries / 'ua.disco.desktop').read_text())
+            self.assertFalse((entries / 'ua.disco.unstable.desktop').exists())
+            self.assertFalse((command_dir / 'disco-unstable').exists())
+
     def test_missing_build_does_not_create_an_entry(self):
         with tempfile.TemporaryDirectory(prefix='disco-install-missing-') as temporary:
             home = Path(temporary)
