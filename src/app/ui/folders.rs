@@ -225,11 +225,12 @@ impl Disco {
     pub(in crate::app) fn folder_table(&mut self, ui: &mut egui::Ui) {
         let t = self.preferences.theme.clone();
         let focus = self.preferences.layout.preview_mode == PreviewMode::Focus;
-        let count_width = if self.preferences.layout.show_count && !focus {
-            80.
-        } else {
-            0.
-        };
+        let count_width =
+            if self.preferences.layout.show_count && (!focus || ui.available_width() >= 360.) {
+                if focus { 56. } else { 80. }
+            } else {
+                0.
+            };
         let size_width = if focus {
             66.
         } else if ui.available_width() < 500. {

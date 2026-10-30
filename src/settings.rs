@@ -35,34 +35,9 @@ impl Default for Theme {
     }
 }
 impl Theme {
+    #[cfg(test)]
     pub fn preset(name: &str) -> Self {
-        match name {
-            "Ember" => Self {
-                name: name.into(),
-                accent: "#cf6156".into(),
-                trash: "#d7a05c".into(),
-                background: "#12100f".into(),
-                panel: "#1b1817".into(),
-                raised: "#25211f".into(),
-                border: "#37302c".into(),
-                text: "#eee5dd".into(),
-                muted: "#afa49c".into(),
-                radius: 3,
-            },
-            "Noir" => Self {
-                name: name.into(),
-                accent: "#f07167".into(),
-                trash: "#d0b378".into(),
-                background: "#090c0e".into(),
-                panel: "#12181b".into(),
-                raised: "#1c2529".into(),
-                border: "#2b363b".into(),
-                text: "#e8edef".into(),
-                muted: "#9eafb6".into(),
-                radius: 3,
-            },
-            _ => Self::default(),
-        }
+        crate::themes::preset(name).unwrap_or_default()
     }
     pub fn validate(&self) -> Result<(), String> {
         for c in [
@@ -355,7 +330,12 @@ pub fn read_layout(p: &Path) -> Result<Layout, String> {
 pub fn load() -> (Theme, Layout, String) {
     let p = config_dir();
     let mut errors = vec![];
-    let t = if p.join("theme.toml").exists() {
+    let t = if p.join("themes.toml").exists() {
+        crate::themes::load_active(&p).unwrap_or_else(|error| {
+            errors.push(format!("themes.toml: {error}"));
+            read_theme(&p.join("theme.toml")).unwrap_or_default()
+        })
+    } else if p.join("theme.toml").exists() {
         read_theme(&p.join("theme.toml")).unwrap_or_else(|e| {
             errors.push(format!("theme.toml: {e}"));
             Theme::default()
@@ -422,7 +402,9 @@ mod tests {
     }
     #[test]
     fn presets_contrast_and_roundtrip() {
-        for name in ["Carbon", "Ember", "Noir"] {
+        for name in [
+            "Carbon", "Ember", "Noir", "Midnight", "Forest", "Paper", "Cairo", "Glacier",
+        ] {
             let t = Theme::preset(name);
             t.validate().unwrap();
             let text = toml::to_string(&t).unwrap();

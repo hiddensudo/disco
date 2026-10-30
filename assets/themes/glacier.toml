@@ -1,0 +1,10 @@
+name = "Glacier"
+accent = "#28789e"
+trash = "#8c6a28"
+background = "#edf4f8"
+panel = "#f8fcff"
+raised = "#ddeaf2"
+border = "#b8cdda"
+text = "#203440"
+muted = "#526d7c"
+radius = 3

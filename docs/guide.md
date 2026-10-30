@@ -157,14 +157,22 @@ Settings open in one separate, resizable window. Reopening raises it with its dr
 
 Under Interface, **Text size** uses a new 100% baseline equal to the previous 85%. Existing layouts keep their actual size through a one-time migration. **Sidebar text size** (80–120%) independently resizes the Focus tree; its Reset button restores 100%. It does not resize your document or terminal. Nested folders use compact 8 px indentation and truncate long names before the size column; hover for the full path.
 
+Appearance includes five dark themes (Carbon, Ember, Noir, Midnight, Forest) and three light ones (Paper, Cairo, Glacier). The rounded swatch before each name shows its accent. The picker shows up to five theme rows at a time; **Create new…** stays pinned below the scrolling list. Give a new theme a name, edit its colors and click Save. Cancel discards pending themes and color changes without creating files.
+
+The robot button opens an editable theme-generation prompt with the full color schema, actual configuration paths and the existing theme catalog. Copy it to your assistant and append the colors or mood you want. It tells assistants with PC access to create and register the theme; assistants without access must return the file and exact placement commands. Prompts currently follow the interface language. After external changes, click **Reload themes**, then Save. Invalid theme files are disabled with an explanation on hover; other themes remain available. Disco refuses to overwrite external theme changes made while Settings was open.
+
 | File | Purpose |
 | --- | --- |
-| `~/.config/disco/theme.toml` | Colors and theme |
+| `~/.config/disco/themes.toml` | Theme index and active theme ID |
+| `~/.config/disco/themes/<id>.toml` | Individual theme colors |
+| `~/.config/disco/theme.toml` | Original legacy theme, retained as a migration backup |
 | `~/.config/disco/layout.toml` | Language, sizes, layout and interface options |
 | `~/.config/disco/categories.toml` | Category index |
 | `~/.cache/disco/last-scan.bin.gz` | Last complete scan |
 
 `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` are supported. `language = "en"` / `"uk"` and `preview_mode = "overview"` / `"focus"` can also be edited in `layout.toml`.
+
+The unstable launcher uses its separate configuration directory. The catalog contains `version = 1`, an `active` ID and `[themes.<id>]` entries with `name` and `file = "themes/<id>.toml"`. See the bundled [catalog](../assets/themes.toml) and [Paper color file](../assets/themes/paper.toml) for complete examples. Once migrated, edit the catalog/theme files rather than the old backup `theme.toml`.
 
 ## Custom shortcuts
 

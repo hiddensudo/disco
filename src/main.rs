@@ -27,6 +27,7 @@ mod snapshot;
 mod syntax;
 mod terminal;
 mod text_editor;
+mod themes;
 
 use eframe::egui;
 use scan::{Control, background_priority, human, scan};

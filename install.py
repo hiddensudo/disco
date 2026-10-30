@@ -44,11 +44,20 @@ def register_desktop_icon(bundle, desktop):
     background = '#101417'
     try:
         import tomllib
-        candidate = tomllib.loads((config / 'theme.toml').read_text()).get('background', background)
+        theme_file = config / 'theme.toml'
+        if (config / 'themes.toml').is_file():
+            catalog = tomllib.loads((config / 'themes.toml').read_text())
+            descriptor = catalog.get('themes', {}).get(catalog.get('active'), {})
+            relative = Path(descriptor.get('file', ''))
+            candidate_file = (config / relative).resolve()
+            candidate_file.relative_to(config)
+            if relative.parts and not relative.is_absolute() and candidate_file.is_file():
+                theme_file = candidate_file
+        candidate = tomllib.loads(theme_file.read_text()).get('background', background)
         if isinstance(candidate, str) and len(candidate) == 7 and candidate.startswith('#'):
             int(candidate[1:], 16)
             background = candidate
-    except (ImportError, OSError, ValueError, TypeError):
+    except (ImportError, OSError, ValueError, TypeError, AttributeError):
         pass
     def linear(channel):
         value = int(channel, 16) / 255

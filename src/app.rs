@@ -35,6 +35,7 @@ use self::{
 };
 pub(crate) struct Disco {
     art: art::Art,
+    themes: crate::themes::Manager,
     collections: crate::categories::Manager,
     frame_probe: Option<frame_probe::FrameProbe>,
     scan: ScanState,
@@ -105,6 +106,7 @@ impl Disco {
         }
         layout.normalize_file_mode();
         i18n::set_current(layout.language);
+        let themes = crate::themes::Manager::load(settings::config_dir(), &theme);
         let root = argument("--folder")
             .unwrap_or_else(|| std::env::var("HOME").unwrap_or_else(|_| "/home".into()));
         let (drive_name, drive_model) = if demo {
@@ -149,6 +151,7 @@ impl Disco {
         let settings_open = argument("--settings").is_some();
         let mut s = Self {
             art: art::Art::load(&cc.egui_ctx),
+            themes,
             collections: crate::categories::Manager::load(),
             frame_probe: if demo {
                 argument("--frame-probe")

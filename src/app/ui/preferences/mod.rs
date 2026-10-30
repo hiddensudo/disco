@@ -46,6 +46,7 @@ impl Disco {
             return;
         }
         let ctx = ui.ctx().clone();
+        self.themes.begin_edit();
         let mut opened = !ctx.input(|i| i.viewport().close_requested());
         let save;
         let mut cancel;
@@ -231,7 +232,15 @@ impl Disco {
                                     cols[0].spacing_mut().item_spacing.y =
                                         if self.preferences.page == 0 { 10. } else { 4. };
                                     if self.preferences.page == 0 {
-                                        appearance::show(cols, &self.art, &mut theme, &layout, &t);
+                                        appearance::show(
+                                            cols,
+                                            &self.art,
+                                            &mut theme,
+                                            &layout,
+                                            &t,
+                                            &mut self.themes,
+                                            self.screenshot.is_some(),
+                                        );
                                     } else {
                                         interface::show(
                                             cols,
@@ -338,7 +347,10 @@ impl Disco {
                             1 => action = Some((name, true)),
                             _ => {
                                 if self.preferences.page == 0 {
-                                    theme = Theme::default();
+                                    match self.themes.import(&Theme::default(), &theme) {
+                                        Ok(default) => theme = default,
+                                        Err(error) => self.preferences.error = error,
+                                    }
                                 } else {
                                     layout = Layout {
                                         language: layout.language,
@@ -450,10 +462,12 @@ impl Disco {
                         settings::write(&p, &self.preferences.layout)
                     }
                 } else if name == "theme.toml" {
-                    settings::read_theme(&p).map(|t| {
-                        self.preferences.theme = t.clone();
-                        self.preferences.draft = Some(t);
-                    })
+                    settings::read_theme(&p)
+                        .and_then(|t| self.themes.import(&t, &self.preferences.theme))
+                        .map(|t| {
+                            self.preferences.theme = t.clone();
+                            self.preferences.draft = Some(t);
+                        })
                 } else {
                     settings::read_layout(&p).map(|l| self.preferences.layout = l)
                 };
@@ -490,7 +504,7 @@ impl Disco {
                         .unwrap_or(Ok(()))
                 })
                 .and_then(|_| self.collections.save())
-                .and_then(|_| settings::write(&p.join("theme.toml"), &self.preferences.theme))
+                .and_then(|_| self.themes.save(&self.preferences.theme))
                 .and_then(|_| settings::write(&p.join("layout.toml"), &self.preferences.layout))
             {
                 Ok(()) => {
@@ -517,6 +531,7 @@ impl Disco {
             self.preferences.recorder.cancel();
         }
         if cancel || !opened {
+            self.themes.cancel();
             self.collections.draft = None;
             self.collections.folder_input.clear();
             if let Some((t, l)) = self.preferences.snapshot.take() {

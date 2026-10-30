@@ -56,6 +56,23 @@ class InstallerTests(unittest.TestCase):
             self.assertFalse((home / '.local/bin/disco').exists())
             self.assertFalse((home / '.local/share/applications/ua.disco.desktop').exists())
 
+    def test_install_uses_active_catalog_theme_instead_of_legacy_backup(self):
+        with tempfile.TemporaryDirectory(prefix='disco-install-catalog-') as temporary:
+            home = Path(temporary)
+            config = home / 'config'
+            (config / 'themes').mkdir(parents=True)
+            (config / 'theme.toml').write_text('background = "#101417"\n')
+            (config / 'themes/paper.toml').write_text('background = "#f5f6f7"\n')
+            (config / 'themes.toml').write_text('version=1\nactive="paper"\n[themes.paper]\nname="Paper"\nfile="themes/paper.toml"\n')
+            binary = home / 'disco'
+            binary.write_text('#!/bin/sh\nexit 0\n')
+            binary.chmod(0o755)
+            subprocess.run([sys.executable, str(INSTALL), '--binary', str(binary)],
+                           env=dict(os.environ, HOME=str(home), DISCO_CONFIG_DIR=str(config)),
+                           check=True, capture_output=True)
+            desktop = (home / '.local/share/applications/ua.disco.desktop').read_text()
+            self.assertIn(f'Icon={config / "app-icon-light.svg"}', desktop)
+
 
 if __name__ == '__main__':
     unittest.main()

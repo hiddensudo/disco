@@ -1,0 +1,34 @@
+version = 1
+active = "carbon"
+
+[themes.carbon]
+name = "Carbon"
+file = "themes/carbon.toml"
+
+[themes.ember]
+name = "Ember"
+file = "themes/ember.toml"
+
+[themes.noir]
+name = "Noir"
+file = "themes/noir.toml"
+
+[themes.midnight]
+name = "Midnight"
+file = "themes/midnight.toml"
+
+[themes.forest]
+name = "Forest"
+file = "themes/forest.toml"
+
+[themes.paper]
+name = "Paper"
+file = "themes/paper.toml"
+
+[themes.cairo]
+name = "Cairo"
+file = "themes/cairo.toml"
+
+[themes.glacier]
+name = "Glacier"
+file = "themes/glacier.toml"

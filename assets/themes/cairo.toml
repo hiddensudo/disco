@@ -1,0 +1,10 @@
+name = "Cairo"
+accent = "#a55b35"
+trash = "#8d6c22"
+background = "#f6f0e3"
+panel = "#fffaf0"
+raised = "#ece1ca"
+border = "#cdbfa5"
+text = "#302a22"
+muted = "#746954"
+radius = 3

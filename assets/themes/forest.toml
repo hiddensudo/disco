@@ -1,0 +1,10 @@
+name = "Forest"
+accent = "#67b88c"
+trash = "#d8b567"
+background = "#101a17"
+panel = "#15241e"
+raised = "#20332b"
+border = "#334c40"
+text = "#e4efe8"
+muted = "#a7beb0"
+radius = 3

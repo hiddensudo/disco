@@ -1,0 +1,10 @@
+name = "Midnight"
+accent = "#62a9dd"
+trash = "#d2ab60"
+background = "#0d1722"
+panel = "#121f2d"
+raised = "#1b2c3c"
+border = "#314657"
+text = "#e6edf3"
+muted = "#a9b8c5"
+radius = 3

@@ -1,0 +1,10 @@
+name = "Paper"
+accent = "#bc5148"
+trash = "#967039"
+background = "#f5f6f7"
+panel = "#ffffff"
+raised = "#e9edf0"
+border = "#c8d0d6"
+text = "#1e2933"
+muted = "#566572"
+radius = 3

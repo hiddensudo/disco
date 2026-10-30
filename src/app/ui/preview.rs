@@ -1,7 +1,7 @@
 use crate::app::ui::widgets::{mix, paint_logo};
 use crate::art;
 use crate::settings::{Layout, Theme, color};
-use eframe::egui::{self, Align2, Color32 as C, FontId, Pos2, Rect, Sense, Stroke, Vec2};
+use eframe::egui::{self, Align2, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 
 pub(super) fn show(ui: &mut egui::Ui, art: &art::Art, theme: &Theme, layout: &Layout) {
     let (rect, _) = ui.allocate_exact_size(
@@ -127,7 +127,7 @@ pub(super) fn show(ui: &mut egui::Ui, art: &art::Art, theme: &Theme, layout: &La
                 row.min + Vec2::new(20. + indent, row_h * 0.5),
                 Vec2::splat(13. * layout.icon_scale * tree_scale),
             ),
-            C::WHITE,
+            fg,
         );
         p.line_segment(
             [
@@ -157,7 +157,7 @@ pub(super) fn show(ui: &mut egui::Ui, art: &art::Art, theme: &Theme, layout: &La
         p.vline(detail.left(), detail.y_range(), border);
         let tile = Rect::from_min_size(detail.min + Vec2::new(10., 14.), Vec2::splat(44.));
         p.rect_filled(tile, theme.radius, color(&theme.raised));
-        art.paint(ui, 0, tile.shrink(7.), C::WHITE);
+        art.paint(ui, 0, tile.shrink(7.), fg);
         for i in 0..5 {
             let y = detail.top() + 77. + i as f32 * 14.;
             p.line_segment(

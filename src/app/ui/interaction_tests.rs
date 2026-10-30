@@ -52,6 +52,137 @@ fn wait_search(app: &mut Disco, ctx: &egui::Context, time: &mut f64, query: &str
     }
     assert!(app.search.for_query(query).is_some());
 }
+
+#[test]
+fn theme_picker_keeps_create_visible_with_twenty_themes_and_cancel_writes_nothing() {
+    let Ok(root) = std::env::var("DISCO_THEME_UI_FIXTURE") else {
+        let root = std::env::temp_dir().join(format!("disco-theme-ui-{}", std::process::id()));
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::write(root.join("config/layout.toml"),"language='en'\ntext_scale_version=1\nsave_scan=false\nauto_refresh=false\nanimations=false\n").unwrap();
+        let out=Command::new(std::env::current_exe().unwrap())
+            .args(["--exact","app::ui::interaction_tests::theme_picker_keeps_create_visible_with_twenty_themes_and_cancel_writes_nothing","--nocapture"])
+            .env("DISCO_THEME_UI_FIXTURE",&root).env("DISCO_CONFIG_DIR",root.join("config")).env("XDG_DATA_HOME",root.join("data")).output().unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            out.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return;
+    };
+    let root = PathBuf::from(root);
+    let ctx = egui::Context::default();
+    let mut time = 0.;
+    let mut app = Disco::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+    app.demo = true;
+    let mut theme = app.preferences.theme.clone();
+    for i in 0..20 {
+        theme = app.themes.create(&format!("Custom {i}"), &theme).unwrap();
+    }
+    app.themes.save(&theme).unwrap();
+    app.preferences.theme = theme;
+    for _ in 0..3 {
+        frame(&mut app, &ctx, &mut time, vec![]);
+    }
+    click(&mut app, &ctx, &mut time, Id::unique("open-settings"));
+    click(&mut app, &ctx, &mut time, Id::unique("theme-picker"));
+    let visible = ctx
+        .read_response(Id::unique("theme-list-visible"))
+        .expect("theme list")
+        .rect;
+    let footer = ctx
+        .read_response(Id::unique("theme-create-fixed"))
+        .expect("fixed create action")
+        .rect;
+    assert!(visible.height() <= 150.1);
+    assert!(footer.top() >= visible.bottom());
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![
+            egui::Event::PointerMoved(visible.center()),
+            egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                source: egui::MouseWheelSource::Wheel,
+                phase: egui::TouchPhase::Move,
+                delta: Vec2::new(0., -600.),
+                modifiers: egui::Modifiers::NONE,
+            },
+        ],
+    );
+    frame(&mut app, &ctx, &mut time, vec![]);
+    let after = ctx
+        .read_response(Id::unique("theme-create-fixed"))
+        .unwrap()
+        .rect;
+    assert!(
+        (after.top() - footer.top()).abs() < 1.,
+        "creation footer must not scroll"
+    );
+    click(&mut app, &ctx, &mut time, Id::unique("theme-create-fixed"));
+    assert!(app.themes.creating);
+    app.themes.new_name = "UI draft theme".into();
+    frame(&mut app, &ctx, &mut time, vec![]);
+    click(
+        &mut app,
+        &ctx,
+        &mut time,
+        Id::unique("theme-create-confirm"),
+    );
+    let id = app.themes.selected().to_string();
+    assert_eq!(app.preferences.theme.name, "UI draft theme");
+    assert!(!root.join(format!("config/themes/{id}.toml")).exists());
+    click(
+        &mut app,
+        &ctx,
+        &mut time,
+        Id::unique("settings-cancel-bounds"),
+    );
+    assert_eq!(app.themes.entries().len(), 28);
+    assert!(!root.join(format!("config/themes/{id}.toml")).exists());
+    click(&mut app, &ctx, &mut time, Id::unique("open-settings"));
+    app.themes.creating = true;
+    app.themes.new_name = "UI saved theme".into();
+    frame(&mut app, &ctx, &mut time, vec![]);
+    click(
+        &mut app,
+        &ctx,
+        &mut time,
+        Id::unique("theme-create-confirm"),
+    );
+    app.preferences.layout.sidebar_text_scale = 0.9;
+    click(
+        &mut app,
+        &ctx,
+        &mut time,
+        Id::unique("settings-save-bounds"),
+    );
+    assert!(!app.preferences.open);
+    assert_eq!(
+        crate::themes::load_active(&root.join("config"))
+            .unwrap()
+            .name,
+        "UI saved theme"
+    );
+    assert_eq!(
+        settings::read_layout(&root.join("config/layout.toml"))
+            .unwrap()
+            .sidebar_text_scale,
+        0.9
+    );
+    click(&mut app, &ctx, &mut time, Id::unique("open-settings"));
+    click(&mut app, &ctx, &mut time, Id::unique("theme-prompt-button"));
+    assert!(
+        app.themes
+            .prompt
+            .as_ref()
+            .unwrap()
+            .1
+            .contains("If you do not have access to my PC")
+    );
+}
 #[test]
 fn full_window_view_switches_properties_and_breadcrumbs_work_with_dirty_text() {
     let Ok(root) = std::env::var("DISCO_BROWSE_FIXTURE") else {
