@@ -61,7 +61,7 @@ impl Disco {
         s.visuals.widgets.active.bg_stroke = Stroke::new(1., color(&t.accent));
         s.spacing.item_spacing = Vec2::new(9., 6.);
         s.spacing.button_padding = Vec2::new(12., 8.);
-        let scale = self.preferences.layout.text_scale;
+        let scale = self.preferences.layout.effective_text_scale();
         for (style, size) in [
             (egui::TextStyle::Body, 16.),
             (egui::TextStyle::Button, 15.),

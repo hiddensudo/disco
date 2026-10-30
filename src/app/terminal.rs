@@ -257,7 +257,7 @@ impl Disco {
                             .set_theme(theme)
                             .set_font(TerminalFont::new(FontSettings {
                                 font_type: FontId::new(
-                                    14. * self.preferences.layout.text_scale,
+                                    14. * self.preferences.layout.effective_text_scale(),
                                     family,
                                 ),
                             }))

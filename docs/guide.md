@@ -155,6 +155,8 @@ A failed or partially completed action still triggers reconciliation. Remaining 
 
 Settings open in one separate, resizable window. Reopening raises it with its draft intact. Save persists changes; Cancel, Escape or closing restores the previous configuration. Your main file draft and folder context remain intact.
 
+Under Interface, **Text size** uses a new 100% baseline equal to the previous 85%. Existing layouts keep their actual size through a one-time migration. **Sidebar text size** (80–120%) independently resizes the Focus tree; its Reset button restores 100%. It does not resize your document or terminal. Nested folders use compact 8 px indentation and truncate long names before the size column; hover for the full path.
+
 | File | Purpose |
 | --- | --- |
 | `~/.config/disco/theme.toml` | Colors and theme |

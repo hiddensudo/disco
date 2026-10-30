@@ -342,7 +342,12 @@ impl eframe::App for Disco {
                 }) {
                     self.browser.category = Category::All;
                     self.browser.focus = parent;
-                    self.browser.table_root = Some(parent);
+                    self.browser.table_root =
+                        if self.preferences.layout.preview_mode == settings::PreviewMode::Focus {
+                            None
+                        } else {
+                            Some(parent)
+                        };
                     let mut at = Some(parent);
                     while let Some(id) = at {
                         self.browser.expanded.insert(id);

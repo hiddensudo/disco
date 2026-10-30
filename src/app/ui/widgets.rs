@@ -27,6 +27,19 @@ pub(in crate::app) fn logo(ui: &mut egui::Ui, size: f32, surface: C) {
 pub(in crate::app) fn paint_logo(ui: &egui::Ui, r: Rect, surface: C) {
     art::paint_app_logo(ui, r, surface);
 }
+pub(in crate::app) fn row_text(ui: &egui::Ui, rect: Rect, text: String, font: FontId, color: C) {
+    if rect.width() <= 0. {
+        return;
+    }
+    let mut job = egui::text::LayoutJob::simple_singleline(text, font, color);
+    job.wrap.max_width = rect.width();
+    job.wrap.max_rows = 1;
+    job.wrap.break_anywhere = true;
+    job.wrap.overflow_character = Some('…');
+    let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
+    let pos = Pos2::new(rect.left(), rect.center().y - galley.size().y * 0.5);
+    ui.painter().with_clip_rect(rect).galley(pos, galley, color);
+}
 pub(in crate::app) fn visual_button(
     ui: &mut egui::Ui,
     art: &art::Art,

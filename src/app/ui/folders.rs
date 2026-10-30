@@ -2,10 +2,10 @@ use crate::app::Disco;
 use crate::app::state::{FolderRows, RowsKey, TreeRow};
 use crate::app::ui::widgets::mix;
 use crate::filesystem::Properties;
-use crate::format::{display_size, group_digits, label, shorten};
+use crate::format::{display_size, group_digits, label};
 use crate::index::Category;
 use crate::motion;
-use crate::settings::color;
+use crate::settings::{Layout, PreviewMode, color};
 use eframe::egui::{self, Align2, Color32 as C, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 use std::sync::Arc;
 
@@ -24,27 +24,27 @@ impl Disco {
         if response.hovered() {
             ui.painter().rect_filled(rect, t.radius, color(&t.raised));
         }
+        let indent = Layout::tree_indent(depth, name_width);
+        let icon_size = 18. * self.preferences.layout.tree_icon_scale();
         self.art.paint(
             ui,
             0,
             Rect::from_center_size(
-                rect.left_center() + Vec2::new(28. + depth as f32 * 19., 0.),
-                Vec2::splat(22.),
+                rect.left_center() + Vec2::new(28. + indent, 0.),
+                Vec2::splat(icon_size),
             ),
-            C::WHITE,
+            color(&t.text),
         );
-        ui.painter()
-            .with_clip_rect(Rect::from_min_max(
-                rect.min,
-                Pos2::new(rect.left() + name_width, rect.bottom()),
-            ))
-            .text(
-                rect.left_center() + Vec2::new(48., 0.),
-                Align2::LEFT_CENTER,
-                label(&file.path),
-                FontId::proportional(14.),
-                color(&t.text),
-            );
+        super::widgets::row_text(
+            ui,
+            Rect::from_min_max(
+                Pos2::new(rect.left() + 42. + indent, rect.top()),
+                Pos2::new(rect.left() + name_width - 6., rect.bottom()),
+            ),
+            label(&file.path),
+            FontId::proportional((14. * self.preferences.layout.tree_text_scale()).max(10.5)),
+            color(&t.text),
+        );
         if response.clicked() {
             self.editor_action(
                 crate::app::editor::Action::Navigate(file.path.clone()),
@@ -224,19 +224,25 @@ impl Disco {
     }
     pub(in crate::app) fn folder_table(&mut self, ui: &mut egui::Ui) {
         let t = self.preferences.theme.clone();
-        let count_width = if self.preferences.layout.show_count {
+        let focus = self.preferences.layout.preview_mode == PreviewMode::Focus;
+        let count_width = if self.preferences.layout.show_count && !focus {
             80.
         } else {
             0.
         };
-        let size_width = if ui.available_width() < 500. {
+        let size_width = if focus {
+            66.
+        } else if ui.available_width() < 500. {
             112.
         } else {
             145.
         };
         let width = ui.available_width();
         let name_width = (width - size_width - count_width).max(80.);
-        let (h, _) = ui.allocate_exact_size(Vec2::new(width, 35.), Sense::hover());
+        let (h, _) = ui.allocate_exact_size(
+            Vec2::new(width, if focus { 30. } else { 35. }),
+            Sense::hover(),
+        );
         ui.painter()
             .rect_filled(h, t.radius, mix(color(&t.panel), color(&t.raised), 0.45));
         ui.painter().rect_stroke(
@@ -246,10 +252,10 @@ impl Disco {
             egui::StrokeKind::Inside,
         );
         ui.painter().text(
-            h.min + Vec2::new(15., 17.),
+            h.left_center() + Vec2::new(10., 0.),
             Align2::LEFT_CENTER,
             crate::tr!("Назва", "Name"),
-            FontId::proportional(14.),
+            FontId::proportional(if focus { 11.5 } else { 14. }),
             color(&t.text),
         );
         sort_arrow(
@@ -263,15 +269,21 @@ impl Disco {
         ui.painter()
             .vline(size_left, h.y_range(), Stroke::new(1., color(&t.border)));
         ui.painter().text(
-            Pos2::new(h.right() - count_width - 48., h.center().y),
+            Pos2::new(
+                h.right() - count_width - if focus { 18. } else { 48. },
+                h.center().y,
+            ),
             Align2::RIGHT_CENTER,
             crate::tr!("Розмір", "Size"),
-            FontId::proportional(14.),
+            FontId::proportional(if focus { 11.5 } else { 14. }),
             color(&t.text),
         );
         sort_arrow(
             ui,
-            Pos2::new(h.right() - count_width - 26., h.center().y),
+            Pos2::new(
+                h.right() - count_width - if focus { 8. } else { 26. },
+                h.center().y,
+            ),
             self.browser.descending,
             self.browser.sort_size,
             &t,
@@ -306,7 +318,7 @@ impl Disco {
             };
             self.browser.sort_size = true;
         }
-        if self.preferences.layout.show_count {
+        if count_width > 0. {
             ui.painter().text(
                 Pos2::new(h.right() - 9., h.center().y),
                 Align2::RIGHT_CENTER,
@@ -378,12 +390,7 @@ impl Disco {
             return;
         }
         let rows = self.visible_rows();
-        let height = ((if self.preferences.layout.compact {
-            28.
-        } else {
-            34.
-        }) * self.preferences.layout.text_scale)
-            .max(23. * self.preferences.layout.icon_scale + 6.);
+        let height = self.preferences.layout.tree_row_height();
 
         let mut area = egui::ScrollArea::vertical()
             .id_salt("folder-table")
@@ -510,7 +517,7 @@ impl Disco {
                 let mut child_clicked = false;
                 let can_select =
                     self.scan.index.cleanup_ids().contains(&id) && !self.scan.busy && !self.demo;
-                let mut x = rect.left() + 11. + (depth as f32 * 19.).min(name_width * 0.35);
+                let mut x = rect.left() + 8. + Layout::tree_indent(depth, name_width);
                 if can_select {
                     let cbrect =
                         Rect::from_min_size(Pos2::new(x, rect.center().y - 9.), Vec2::splat(18.));
@@ -526,7 +533,7 @@ impl Disco {
                             self.browser.selected.remove(&f.path);
                         }
                     }
-                    x += 24.;
+                    x += 21.;
                 }
                 let arrow = Rect::from_center_size(
                     Pos2::new(x + 9., rect.center().y),
@@ -557,36 +564,51 @@ impl Disco {
                         }
                     }
                 }
-                x += 29.;
+                x += 20.;
+                let icon_size =
+                    (if focus { 18. } else { 23. }) * self.preferences.layout.tree_icon_scale();
                 self.art.paint(
                     ui,
                     0,
                     Rect::from_center_size(
-                        Pos2::new(x + 11., rect.center().y),
-                        Vec2::splat(23. * self.preferences.layout.icon_scale),
+                        Pos2::new(x + icon_size * 0.5, rect.center().y),
+                        Vec2::splat(icon_size),
                     ),
-                    C::WHITE,
-                );
-                x += 32. + (23. * (self.preferences.layout.icon_scale - 1.)).max(0.) * 0.5;
-                let shown = shorten(
-                    &label(&f.path),
-                    ((name_width - (x - rect.left()) - 8.) / 7.2).max(5.) as usize,
-                );
-                ui.painter().text(
-                    Pos2::new(x, rect.center().y),
-                    Align2::LEFT_CENTER,
-                    shown,
-                    FontId::proportional(15. * self.preferences.layout.text_scale),
                     color(&t.text),
                 );
-                ui.painter().text(
-                    Pos2::new(rect.right() - count_width - 12., rect.center().y),
-                    Align2::RIGHT_CENTER,
-                    display_size(f.bytes),
-                    FontId::proportional(15. * self.preferences.layout.text_scale),
+                x += icon_size + 6.;
+                super::widgets::row_text(
+                    ui,
+                    Rect::from_min_max(
+                        Pos2::new(x, rect.top()),
+                        Pos2::new(rect.left() + name_width - 6., rect.bottom()),
+                    ),
+                    label(&f.path),
+                    FontId::proportional(
+                        (15. * self.preferences.layout.tree_text_scale()).max(10.5),
+                    ),
                     color(&t.text),
                 );
-                if self.preferences.layout.show_count {
+                ui.painter()
+                    .with_clip_rect(Rect::from_min_max(
+                        Pos2::new(rect.left() + name_width, rect.top()),
+                        rect.max,
+                    ))
+                    .text(
+                        Pos2::new(
+                            rect.right() - count_width - if focus { 8. } else { 12. },
+                            rect.center().y,
+                        ),
+                        Align2::RIGHT_CENTER,
+                        display_size(f.bytes),
+                        FontId::proportional(if focus {
+                            (14. * self.preferences.layout.tree_text_scale()).clamp(10., 13.)
+                        } else {
+                            15. * self.preferences.layout.tree_text_scale()
+                        }),
+                        color(&t.text),
+                    );
+                if count_width > 0. {
                     ui.painter().text(
                         Pos2::new(rect.right() - 9., rect.center().y),
                         Align2::RIGHT_CENTER,

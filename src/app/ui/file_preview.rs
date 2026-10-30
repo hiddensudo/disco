@@ -93,15 +93,25 @@ impl Disco {
     pub(in crate::app) fn browser_content(&mut self, ui: &mut egui::Ui) {
         if self.preferences.layout.preview_mode == PreviewMode::Focus {
             let t = self.preferences.theme.clone();
+            let initial_width = if self.screenshot.is_some() {
+                std::env::var("DISCO_QA_TREE_WIDTH")
+                    .ok()
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .filter(|w| w.is_finite())
+                    .unwrap_or(300.)
+                    .clamp(240., 480.)
+            } else {
+                300.
+            };
             let tree = egui::Panel::left("focus-file-tree")
-                .default_size(300.)
+                .default_size(initial_width)
                 .min_size(240.)
                 .max_size(480.)
                 .resizable(true)
                 .frame(
                     egui::Frame::new()
                         .fill(color(&t.background))
-                        .inner_margin(egui::Margin::symmetric(12, 8)),
+                        .inner_margin(egui::Margin::symmetric(8, 8)),
                 )
                 .show(ui, |ui| {
                     self.file_list_content(ui);
@@ -324,7 +334,8 @@ impl Disco {
                     // Saving snapshots the document; keep this widget enabled
                     // so focus, cursor, selection and further typing survive IO.
                     let busy = self.scan.busy;
-                    let font = FontId::monospace(13. * self.preferences.layout.text_scale);
+                    let font =
+                        FontId::monospace(13. * self.preferences.layout.effective_text_scale());
                     egui::ScrollArea::both()
                         .id_salt(("editable-content", &path))
                         .auto_shrink([false, false])
@@ -436,7 +447,9 @@ impl Disco {
                             }
                         }
                         Some(Content::Text { display_source, .. }) => {
-                            let font = FontId::monospace(13. * self.preferences.layout.text_scale);
+                            let font = FontId::monospace(
+                                13. * self.preferences.layout.effective_text_scale(),
+                            );
                             let galley = self.syntax.layout(
                                 ui,
                                 display_source,

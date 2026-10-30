@@ -22,6 +22,8 @@ The installer also registers that desktop entry in `desktop-integration.toml` in
 
 ## Useful commands
 
+Layout text scaling is versioned with `text_scale_version = 1`. The new 100% baseline is the former 85%; legacy files are converted once by dividing `text_scale` by 0.85 and preserve their actual font size. New/reset configurations use 100%. `sidebar_text_scale` (0.8–1.2) affects only the Focus tree; it does not resize the document editor or terminal. Tree indentation is 8 logical pixels and capped by available name width; names are measured and elided before the size column.
+
 ```sh
 ./target/release/disco --version
 ./target/release/disco --new-tab       # in-memory text tab

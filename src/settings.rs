@@ -112,6 +112,9 @@ pub struct Layout {
     pub property_width: f32,
     pub compact: bool,
     pub text_scale: f32,
+    #[serde(default)]
+    pub text_scale_version: u8,
+    pub sidebar_text_scale: f32,
     pub show_count: bool,
     pub drive_name: String,
     pub icon_scale: f32,
@@ -165,6 +168,8 @@ impl Default for Layout {
             property_width: 300.,
             compact: false,
             text_scale: 1.,
+            text_scale_version: 1,
+            sidebar_text_scale: 1.,
             show_count: false,
             drive_name: String::new(),
             icon_scale: 1.,
@@ -190,6 +195,49 @@ impl Default for Layout {
     }
 }
 impl Layout {
+    pub fn migrate_text_scale(&mut self) {
+        if self.text_scale_version == 0 {
+            self.text_scale /= 0.85;
+            self.text_scale_version = 1;
+        }
+    }
+    pub fn effective_text_scale(&self) -> f32 {
+        self.text_scale
+            * if self.text_scale_version == 0 {
+                1.
+            } else {
+                0.85
+            }
+    }
+    pub fn tree_text_scale(&self) -> f32 {
+        self.effective_text_scale()
+            * if self.preview_mode == PreviewMode::Focus {
+                self.sidebar_text_scale
+            } else {
+                1.
+            }
+    }
+    pub fn tree_icon_scale(&self) -> f32 {
+        self.icon_scale
+            * if self.preview_mode == PreviewMode::Focus {
+                self.sidebar_text_scale
+            } else {
+                1.
+            }
+    }
+    pub fn tree_indent(depth: usize, name_width: f32) -> f32 {
+        (depth as f32 * 8.).min((name_width - 90.).clamp(0., 80.))
+    }
+    pub fn tree_row_height(&self) -> f32 {
+        if self.preview_mode == PreviewMode::Focus {
+            ((if self.compact { 26. } else { 32. }) * self.tree_text_scale())
+                .max(18. * self.tree_icon_scale() + 6.)
+                .max(22.)
+        } else {
+            ((if self.compact { 28. } else { 34. }) * self.effective_text_scale())
+                .max(23. * self.icon_scale + 6.)
+        }
+    }
     pub fn home_directory(&self) -> PathBuf {
         let path = PathBuf::from(&self.home_path);
         if path.is_absolute() && path.is_dir() {
@@ -228,7 +276,15 @@ impl Layout {
             || !self.property_width.is_finite()
             || !(Self::MIN_PROPERTY_WIDTH..=Self::MAX_PROPERTY_WIDTH).contains(&self.property_width)
             || !self.text_scale.is_finite()
-            || !(0.85..=1.4).contains(&self.text_scale)
+            || self.text_scale_version > 1
+            || !(if self.text_scale_version == 0 {
+                0.85..=1.4
+            } else {
+                1.0..=1.65
+            })
+            .contains(&self.text_scale)
+            || !self.sidebar_text_scale.is_finite()
+            || !(0.8..=1.2).contains(&self.sidebar_text_scale)
             || !self.icon_scale.is_finite()
             || !(0.8..=1.4).contains(&self.icon_scale)
             || !self.motion_speed.is_finite()
@@ -289,8 +345,10 @@ pub fn read_theme(p: &Path) -> Result<Theme, String> {
     Ok(x)
 }
 pub fn read_layout(p: &Path) -> Result<Layout, String> {
-    let x: Layout = toml::from_str(&fs::read_to_string(p).map_err(|e| e.to_string())?)
+    let mut x: Layout = toml::from_str(&fs::read_to_string(p).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())?;
+    x.validate()?;
+    x.migrate_text_scale();
     x.validate()?;
     Ok(x)
 }
@@ -340,6 +398,28 @@ pub fn write<T: Serialize>(p: &Path, value: &T) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn text_scale_migration_preserves_physical_size_once_and_sidebar_is_independent() {
+        for scale in [0.85, 1., 1.15, 1.4] {
+            let mut old: Layout = toml::from_str(&format!("text_scale = {scale}\n")).unwrap();
+            assert_eq!(old.text_scale_version, 0);
+            old.migrate_text_scale();
+            old.validate().unwrap();
+            assert!((old.effective_text_scale() - scale).abs() < 0.00001);
+            let mut again: Layout = toml::from_str(&toml::to_string(&old).unwrap()).unwrap();
+            again.migrate_text_scale();
+            assert_eq!(again, old);
+        }
+        let mut layout = Layout::default();
+        assert_eq!(layout.effective_text_scale(), 0.85);
+        layout.preview_mode = PreviewMode::Focus;
+        layout.sidebar_text_scale = 0.8;
+        assert!((layout.tree_text_scale() - 0.68).abs() < 0.00001);
+        assert_eq!(layout.effective_text_scale(), 0.85);
+        assert_eq!(Layout::tree_indent(3, 158.), 24.);
+        assert!(Layout::tree_indent(100, 158.) < 70.);
+        assert!(layout.tree_row_height() >= 22.);
+    }
     #[test]
     fn presets_contrast_and_roundtrip() {
         for name in ["Carbon", "Ember", "Noir"] {

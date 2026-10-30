@@ -2,8 +2,8 @@ use crate::{
     app::Disco,
     directory_files::Entry,
     filesystem::Properties,
-    format::{display_size, label, shorten},
-    settings::{Theme, color},
+    format::{display_size, label},
+    settings::{Layout, PreviewMode, Theme, color},
 };
 use eframe::egui::{self, Align2, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 use std::{
@@ -91,40 +91,48 @@ impl Disco {
                 );
             }
         }
-        let x = rect.left() + 40. + (depth as f32 * 19.).min(name_width * 0.25);
+        let focus = self.preferences.layout.preview_mode == PreviewMode::Focus;
+        let x = rect.left() + 28. + Layout::tree_indent(depth, name_width);
+        let icon_size = (if focus { 18. } else { 21. }) * self.preferences.layout.tree_icon_scale();
         self.art.paint(
             ui,
             crate::art::file_icon(&file.path),
             Rect::from_center_size(
-                Pos2::new(x + 10., rect.center().y),
-                Vec2::splat(21. * self.preferences.layout.icon_scale),
+                Pos2::new(x + icon_size * 0.5, rect.center().y),
+                Vec2::splat(icon_size),
             ),
             color(&t.text),
         );
-        let text_x = x + 28.;
-        let shown = shorten(
-            &label(&file.path),
-            ((name_width - (text_x - rect.left()) - 7.) / 7.2).max(3.) as usize,
+        let text_x = x + icon_size + 6.;
+        super::widgets::row_text(
+            ui,
+            Rect::from_min_max(
+                Pos2::new(text_x, rect.top()),
+                Pos2::new(rect.left() + name_width - 6., rect.bottom()),
+            ),
+            label(&file.path),
+            FontId::proportional((14. * self.preferences.layout.tree_text_scale()).max(10.5)),
+            color(&t.text),
         );
         ui.painter()
             .with_clip_rect(Rect::from_min_max(
-                rect.min,
-                Pos2::new(rect.left() + name_width, rect.bottom()),
+                Pos2::new(rect.left() + name_width, rect.top()),
+                rect.max,
             ))
             .text(
-                Pos2::new(text_x, rect.center().y),
-                Align2::LEFT_CENTER,
-                shown,
-                FontId::proportional(14. * self.preferences.layout.text_scale),
+                Pos2::new(
+                    rect.right() - count_width - if focus { 8. } else { 12. },
+                    rect.center().y,
+                ),
+                Align2::RIGHT_CENTER,
+                display_size(file.bytes),
+                FontId::proportional(if focus {
+                    (14. * self.preferences.layout.tree_text_scale()).clamp(10., 13.)
+                } else {
+                    14. * self.preferences.layout.tree_text_scale()
+                }),
                 color(&t.text),
             );
-        ui.painter().text(
-            Pos2::new(rect.right() - count_width - 12., rect.center().y),
-            Align2::RIGHT_CENTER,
-            display_size(file.bytes),
-            FontId::proportional(14. * self.preferences.layout.text_scale),
-            color(&t.text),
-        );
         if self.preferences.layout.row_separators {
             ui.painter().hline(
                 rect.x_range(),
@@ -186,10 +194,10 @@ impl Disco {
         let (r, _) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::hover());
         ui.painter().with_clip_rect(r).text(
-            r.left_center() + Vec2::new(16. + depth as f32 * 14., 0.),
+            r.left_center() + Vec2::new(16. + Layout::tree_indent(depth, r.width()), 0.),
             Align2::LEFT_CENTER,
             text,
-            FontId::proportional(11.),
+            FontId::proportional((11. * self.preferences.layout.tree_text_scale()).max(10.)),
             color(&t.muted),
         );
     }

@@ -29,11 +29,32 @@ pub(super) fn show(
     cols[0].label(RichText::new(crate::tr!("Масштаб тексту", "Text size")).size(13.));
     let mut pct = layout.text_scale * 100.;
     cols[0].add(
-        egui::Slider::new(&mut pct, 85.0..=140.0)
+        egui::Slider::new(&mut pct, 100.0..=165.0)
             .suffix("%")
             .fixed_decimals(0),
     );
     layout.text_scale = pct / 100.;
+    cols[0].label(RichText::new(crate::tr!("Текст бічної панелі", "Sidebar text size")).size(13.));
+    let mut sidebar_pct = layout.sidebar_text_scale * 100.;
+    cols[0].horizontal(|ui| {
+        ui.add(
+            egui::Slider::new(&mut sidebar_pct, 80.0..=120.0)
+                .suffix("%")
+                .fixed_decimals(0),
+        );
+        if ui.small_button(crate::tr!("Скинути", "Reset")).clicked() {
+            sidebar_pct = 100.;
+        }
+    });
+    layout.sidebar_text_scale = sidebar_pct / 100.;
+    cols[0].label(
+        RichText::new(crate::tr!(
+            "Лише дерево файлів у «Фокусі». 100% UI відповідають попереднім 85%.",
+            "Only the file tree in Focus. UI 100% matches the previous 85%."
+        ))
+        .small()
+        .color(color(&t.muted)),
+    );
     cols[0].add_space(4.);
     check_row(
         &mut cols[0],

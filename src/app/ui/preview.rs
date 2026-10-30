@@ -82,7 +82,12 @@ pub(super) fn show(ui: &mut egui::Ui, art: &art::Art, theme: &Theme, layout: &La
         muted,
     );
     p.hline(table.x_range(), table.top() + 21., border);
-    let row_h = if layout.compact { 19. } else { 23. };
+    let tree_scale = if layout.preview_mode == crate::settings::PreviewMode::Focus {
+        layout.sidebar_text_scale
+    } else {
+        1.
+    };
+    let row_h = (if layout.compact { 19. } else { 23. }) * tree_scale;
     for i in 0..5 {
         let row = Rect::from_min_size(
             table.min + Vec2::new(0., 27. + i as f32 * row_h),
@@ -120,7 +125,7 @@ pub(super) fn show(ui: &mut egui::Ui, art: &art::Art, theme: &Theme, layout: &La
             0,
             Rect::from_center_size(
                 row.min + Vec2::new(20. + indent, row_h * 0.5),
-                Vec2::splat(13. * layout.icon_scale),
+                Vec2::splat(13. * layout.icon_scale * tree_scale),
             ),
             C::WHITE,
         );
@@ -129,7 +134,7 @@ pub(super) fn show(ui: &mut egui::Ui, art: &art::Art, theme: &Theme, layout: &La
                 row.min + Vec2::new(32. + indent, row_h * 0.5),
                 row.min + Vec2::new(65. + (i % 3) as f32 * 8., row_h * 0.5),
             ],
-            Stroke::new(3., muted),
+            Stroke::new(3. * tree_scale, muted),
         );
         p.line_segment(
             [
