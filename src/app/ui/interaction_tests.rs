@@ -1386,8 +1386,10 @@ fn keyboard_workspace_walk_preserves_words_drafts_and_reorders_categories() {
     app.expand_folder(0);
     app.select_file(a.clone(), 4096);
     wait_document(&mut app, &ctx, &mut time);
+    click(&mut app, &ctx, &mut time, Id::unique("preview-viewport"));
     app.select_file(b.clone(), 4096);
     wait_document(&mut app, &ctx, &mut time);
+    click(&mut app, &ctx, &mut time, Id::unique("preview-viewport"));
     app.activate_tab(&a, &ctx);
     wait_document(&mut app, &ctx, &mut time);
     let editor_id = Id::unique(("file-editor", Some(a.clone())));
@@ -1710,6 +1712,44 @@ fn keyboard_preview_reuses_one_tab_and_enter_right_keep_before_opening_or_focusi
     press_key(&mut app, &ctx, &mut time, Key::ArrowRight, Modifiers::NONE);
     assert!(app.keyboard.area == Area::Editor);
     assert_eq!(app.tabs.order.len(), 4);
+    // DSC-013: tree clicks replace one preview; only the content click keeps it.
+    let first = files.join("25.txt");
+    let second = files.join("26.txt");
+    app.select_file(first.clone(), 0);
+    wait_document(&mut app, &ctx, &mut time);
+    assert_eq!(app.tabs.preview.as_ref(), Some(&first));
+    let retained_count = app.tabs.order.len();
+    app.select_file(second.clone(), 0);
+    wait_document(&mut app, &ctx, &mut time);
+    assert_eq!(app.tabs.order.len(), retained_count);
+    assert!(!app.tabs.order.contains(&first));
+    // Selecting the same file repeatedly (including the double-click sequence)
+    // and hovering the content must not retain it.
+    app.select_file(second.clone(), 0);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    let viewport = ctx
+        .read_response(Id::unique("preview-viewport"))
+        .unwrap()
+        .rect;
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::PointerMoved(viewport.center())],
+    );
+    assert_eq!(app.tabs.preview.as_ref(), Some(&second));
+    click(&mut app, &ctx, &mut time, Id::unique("preview-viewport"));
+    assert!(app.tabs.preview.is_none());
+    app.select_file(first.clone(), 0);
+    wait_document(&mut app, &ctx, &mut time);
+    assert!(app.tabs.order.contains(&second));
+    assert_eq!(app.tabs.preview.as_ref(), Some(&first));
+    // Reuse the same temporary slot for an image, then pin its viewport too.
+    app.select_file(image.clone(), 0);
+    // The image already has a retained tab; it must activate without duplicates.
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert_eq!(app.tabs.order.iter().filter(|p| *p == &image).count(), 1);
+    assert_eq!(app.tabs.preview.as_ref(), Some(&first));
 }
 
 #[test]

@@ -514,6 +514,13 @@ impl Disco {
                     }
                 }
             });
+        if self.preferences.layout.preview_mode == PreviewMode::Focus
+            && ui.rect_contains_pointer(viewport.response.rect)
+            && ui.input(|i| i.pointer.primary_pressed())
+            && let Some(path) = &path
+        {
+            self.keep_preview_tab(path);
+        }
         if text_changed {
             self.note_editor_change(ui.ctx());
         }

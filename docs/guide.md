@@ -207,3 +207,5 @@ File-list shortcuts do not run while typing in text fields. Ctrl+Tab follows vis
 
 - Search does not yet reliably follow the requested selected-folder → category → Home priority. Improving file results and scope selection is tracked for a later update.
 - The integrated terminal is a native embedding of an adapted widget, not a promise of compatibility with every terminal application. LSP/code completion is not included.
+
+In Focus, clicking files in the tree reuses one temporary tab. Click inside its document or image to keep it open; tree double-clicks do not pin it. Enter/Right-arrow keyboard actions still keep the preview. Unsaved documents remain protected.

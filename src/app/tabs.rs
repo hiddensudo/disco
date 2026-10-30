@@ -26,7 +26,7 @@ pub(super) struct Tabs {
     pub order: Vec<PathBuf>,
     pub next_untitled: u64,
     pub inactive: HashMap<PathBuf, Tab>,
-    /// At most one replaceable tab, requested only by keyboard file browsing.
+    /// At most one replaceable tab, shared by mouse and keyboard file browsing.
     pub preview: Option<PathBuf>,
     pub preview_request: Option<PathBuf>,
     reveal: bool,
@@ -83,7 +83,7 @@ impl Disco {
                         .is_some_and(|tab| tab.editor.dirty() || tab.editor.saving.is_some())
                 };
                 // Drafts/save jobs become retained documents; only a clean
-                // preview may be discarded as the keyboard selection moves.
+                // preview may be discarded as the file selection moves.
                 self.tabs.preview = None;
                 if !protected {
                     slot = self.tabs.order.iter().position(|p| p == &old);

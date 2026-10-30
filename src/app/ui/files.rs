@@ -27,10 +27,9 @@ impl Disco {
             .is_none_or(|l| !l.files.is_empty() || l.limited || l.error.is_some())
     }
     pub(in crate::app) fn select_file(&mut self, path: PathBuf, bytes: u64) {
-        self.tabs.preview_request = None;
-        if self.preferences.layout.preview_mode == crate::settings::PreviewMode::Focus {
-            self.keep_preview_tab(&path);
-        }
+        self.tabs.preview_request = (self.preferences.layout.preview_mode
+            == crate::settings::PreviewMode::Focus)
+            .then(|| path.clone());
         self.browser.properties = Some(Properties::load(path, bytes, None, self.demo));
     }
     pub(in crate::app) fn preview_keyboard_file(&mut self, path: PathBuf, bytes: u64) {
