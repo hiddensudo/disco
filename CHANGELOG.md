@@ -4,13 +4,15 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- Soft Rose: a gentle light pink preset with blush surfaces, a dusty rose accent and warm dark text. New bundled presets are added to existing catalogs without changing the current selection or replacing custom colors.
+
 - Docker/BuildKit native Linux bundle build with a pinned Rust/Debian builder, Cargo caches, user-owned export, checksums, runtime report and CI artifacts. Host Rust/dev packages are unnecessary.
 
 - Markdown Read/Edit modes share one document, draft and undo history. Native cached rendering supports tables, lists, code highlighting, heading anchors and local images without automatic network fetches.
 - AI prompts follow the UI language unless Separate AI prompt language is checked; category and theme prompts then use the independent Ukrainian/English selection.
 - Tree clicks reuse one preview tab; clicking document/image content keeps it open. Development builds install under the disco name, replacing the old duplicate launcher.
 
-- Theme catalog with five dark and three light presets, accent swatches, a five-row scrolling picker and a fixed Create new action. Custom themes stay in draft until Save. A robot button shows a UA/EN prompt with the full TOML schema, actual paths, catalog context and instructions for assistants without PC access. Legacy colors migrate without losing their original file.
+- Theme catalog with five dark and four light presets, accent swatches, a five-row scrolling picker and a fixed Create new action. Custom themes stay in draft until Save. A robot button shows a UA/EN prompt with the full TOML schema, actual paths, catalog context and instructions for assistants without PC access. Legacy colors migrate without losing their original file.
 - Compact 8 px tree indentation, width-aware ellipsis and a narrower size column keep nested folders readable in Focus. The sidebar has its own 80–120% text scale. New UI 100% matches the old 85%; existing scales migrate once without changing their physical size.
 - A minimal line disco-ball logo stays transparent throughout the app, with white or black lines selected for contrast against each surface. Window/taskbar icons keep a rounded dark/light background with transparent corners matching the theme; the installed launcher follows the saved theme. Both READMEs use the line logo and adapt to GitHub's light/dark color scheme.
 - Sharp in-app logo rendering at physical pixel size.

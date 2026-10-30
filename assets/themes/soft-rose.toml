@@ -1,0 +1,10 @@
+name = "Soft Rose"
+accent = "#b55677"
+trash = "#997043"
+background = "#fff3f6"
+panel = "#fff9fb"
+raised = "#f6dfe7"
+border = "#dfb5c4"
+text = "#49343e"
+muted = "#805969"
+radius = 5

@@ -10,7 +10,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const PRESETS: [(&str, &str); 8] = [
+const PRESETS: [(&str, &str); 9] = [
     ("carbon", include_str!("../assets/themes/carbon.toml")),
     ("ember", include_str!("../assets/themes/ember.toml")),
     ("noir", include_str!("../assets/themes/noir.toml")),
@@ -19,6 +19,7 @@ const PRESETS: [(&str, &str); 8] = [
     ("paper", include_str!("../assets/themes/paper.toml")),
     ("cairo", include_str!("../assets/themes/cairo.toml")),
     ("glacier", include_str!("../assets/themes/glacier.toml")),
+    ("soft-rose", include_str!("../assets/themes/soft-rose.toml")),
 ];
 
 pub fn preset(name: &str) -> Option<Theme> {
@@ -191,6 +192,37 @@ fn state_from(root: &Path, catalog: Catalog) -> State {
 }
 fn bootstrap(root: &Path, current: &Theme) -> Result<(), String> {
     if root.join("themes.toml").exists() {
+        // Updates may ship new presets. Add only absent, unclaimed IDs/files;
+        // keep the selected theme and every user-modified palette unchanged.
+        let mut catalog = read_catalog(root)?;
+        let mut changed = false;
+        for (id, text) in PRESETS {
+            if catalog.themes.contains_key(id) {
+                continue;
+            }
+            let theme: Theme = toml::from_str(text).expect("bundled theme");
+            let relative = PathBuf::from(format!("themes/{id}.toml"));
+            let file = root.join(&relative);
+            if file.exists() {
+                if !settings::read_theme(&file).is_ok_and(|existing| existing == theme) {
+                    continue;
+                }
+            } else {
+                fs::create_dir_all(root.join("themes")).map_err(|e| e.to_string())?;
+                settings::write(&file, &theme)?;
+            }
+            catalog.themes.insert(
+                id.into(),
+                Descriptor {
+                    name: theme.name,
+                    file: relative,
+                },
+            );
+            changed = true;
+        }
+        if changed {
+            settings::write(&root.join("themes.toml"), &catalog)?;
+        }
         return Ok(());
     }
     fs::create_dir_all(root.join("themes")).map_err(|e| e.to_string())?;
@@ -526,6 +558,45 @@ mod tests {
         root
     }
     #[test]
+    fn upgrade_adds_new_presets_without_changing_selection_or_custom_files() {
+        let root = root("upgrade");
+        let _ = Manager::load(root.clone(), &Theme::default());
+        let mut catalog = read_catalog(&root).unwrap();
+        catalog.active = "paper".into();
+        catalog.themes.remove("soft-rose");
+        settings::write(&root.join("themes.toml"), &catalog).unwrap();
+        fs::remove_file(root.join("themes/soft-rose.toml")).unwrap();
+        let paper = fs::read(root.join("themes/paper.toml")).unwrap();
+        let manager = Manager::load(root.clone(), &preset("paper").unwrap());
+        assert_eq!(manager.selected(), "paper");
+        assert!(
+            manager
+                .entries()
+                .iter()
+                .any(|e| e.id == "soft-rose" && e.theme.is_some())
+        );
+        assert_eq!(fs::read(root.join("themes/paper.toml")).unwrap(), paper);
+        // An unregistered custom file at the preset path is never overwritten.
+        let mut catalog = read_catalog(&root).unwrap();
+        catalog.themes.remove("soft-rose");
+        settings::write(&root.join("themes.toml"), &catalog).unwrap();
+        fs::write(root.join("themes/soft-rose.toml"), "custom = true\n").unwrap();
+        let manager = Manager::load(root.clone(), &preset("paper").unwrap());
+        assert_eq!(manager.selected(), "paper");
+        assert_eq!(
+            fs::read_to_string(root.join("themes/soft-rose.toml")).unwrap(),
+            "custom = true\n"
+        );
+        assert!(
+            !read_catalog(&root)
+                .unwrap()
+                .themes
+                .contains_key("soft-rose")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn bootstrap_preserves_legacy_colors_and_every_preset_is_valid() {
         let root = root("migration");
         let mut legacy = Theme::default();
@@ -533,7 +604,7 @@ mod tests {
         settings::write(&root.join("theme.toml"), &legacy).unwrap();
         let bytes = fs::read(root.join("theme.toml")).unwrap();
         let manager = Manager::load(root.clone(), &legacy);
-        assert_eq!(manager.entries().len(), 9);
+        assert_eq!(manager.entries().len(), PRESETS.len() + 1);
         assert_eq!(load_active(&root).unwrap(), legacy);
         assert_eq!(fs::read(root.join("theme.toml")).unwrap(), bytes);
         for (_, text) in PRESETS {
@@ -552,14 +623,17 @@ mod tests {
         let id = manager.selected().to_string();
         assert!(!root.join(format!("themes/{id}.toml")).exists());
         manager.cancel();
-        assert_eq!(manager.entries().len(), 8);
+        assert_eq!(manager.entries().len(), PRESETS.len());
         manager.begin_edit();
         let mut current = original.clone();
         for i in 0..20 {
             current = manager.create(&format!("Custom {i}"), &current).unwrap();
         }
         manager.save(&current).unwrap();
-        assert_eq!(read_catalog(&root).unwrap().themes.len(), 28);
+        assert_eq!(
+            read_catalog(&root).unwrap().themes.len(),
+            PRESETS.len() + 20
+        );
         assert_eq!(load_active(&root).unwrap().name, "Custom 19");
         let path = root.join(format!("themes/{}.toml", manager.selected()));
         fs::write(&path, "external = true\n").unwrap();

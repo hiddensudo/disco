@@ -140,7 +140,7 @@ fn theme_picker_keeps_create_visible_with_twenty_themes_and_cancel_writes_nothin
         &mut time,
         Id::unique("settings-cancel-bounds"),
     );
-    assert_eq!(app.themes.entries().len(), 28);
+    assert_eq!(app.themes.entries().len(), 29);
     assert!(!root.join(format!("config/themes/{id}.toml")).exists());
     click(&mut app, &ctx, &mut time, Id::unique("open-settings"));
     app.themes.creating = true;

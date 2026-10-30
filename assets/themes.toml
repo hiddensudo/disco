@@ -32,3 +32,7 @@ file = "themes/cairo.toml"
 [themes.glacier]
 name = "Glacier"
 file = "themes/glacier.toml"
+
+[themes.soft-rose]
+name = "Soft Rose"
+file = "themes/soft-rose.toml"
