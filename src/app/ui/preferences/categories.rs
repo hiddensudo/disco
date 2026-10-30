@@ -213,8 +213,12 @@ impl Disco {
                     ui.horizontal(|ui| {
                         let icon = self.art.category_icon(&c.icon);
                         let (rect, _) = ui.allocate_exact_size(Vec2::splat(32.), Sense::hover());
-                        self.art
-                            .paint(ui, icon, rect.shrink(3.), egui::Color32::WHITE);
+                        self.art.paint(
+                            ui,
+                            icon,
+                            rect.shrink(3.),
+                            crate::art::category_tint(icon, color(&self.preferences.theme.text)),
+                        );
                         ui.label(crate::tr!("Іконка", "Icon"));
                         if ui
                             .button(crate::tr!("Завантажити свою…", "Import your own…"))
@@ -271,7 +275,7 @@ impl Disco {
                                         ui,
                                         *icon,
                                         Rect::from_center_size(rect.center(), Vec2::splat(23.)),
-                                        egui::Color32::WHITE,
+                                        color(&self.preferences.theme.text),
                                     );
                                     if response.on_hover_text(*name).clicked() {
                                         c.icon = name.to_string();

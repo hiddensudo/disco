@@ -474,6 +474,15 @@ pub(crate) fn file_icon(path: &std::path::Path) -> usize {
     }
 }
 
+/// Bundled symbols follow the theme ink. Imported artwork keeps its own colors.
+pub(crate) fn category_tint(index: usize, ink: Color32) -> Color32 {
+    if index < BUNDLED_ICONS {
+        ink
+    } else {
+        Color32::WHITE
+    }
+}
+
 /// Stable names used in categories.toml; indices are internal to the renderer.
 pub fn category_icons() -> &'static [(&'static str, usize)] {
     &[

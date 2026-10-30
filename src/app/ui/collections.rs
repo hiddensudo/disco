@@ -5,7 +5,7 @@ use crate::{
     index::Category,
     settings::color,
 };
-use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Vec2};
+use eframe::egui::{self, Align2, FontId, Pos2, Rect, Sense, Vec2};
 
 #[derive(Clone)]
 struct CategoryDrag(String);
@@ -397,7 +397,7 @@ impl Disco {
                                     * self.preferences.layout.icon_scale,
                             ),
                         ),
-                        Color32::WHITE,
+                        crate::art::category_tint(icon, color(&t.text)),
                     );
                     if labels {
                         let text = Rect::from_min_max(

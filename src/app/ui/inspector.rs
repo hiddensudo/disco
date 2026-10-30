@@ -70,7 +70,7 @@ impl Disco {
                                     * self.preferences.layout.icon_scale,
                             ),
                         ),
-                        C::WHITE,
+                        color(&t.text),
                     );
                     let text_x = if p.is_dir { 84. } else { 62. };
                     let title_width = rect.width() - text_x;
