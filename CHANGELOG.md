@@ -4,7 +4,7 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
-- Soft Rose: a gentle light pink preset with blush surfaces, a dusty rose accent and warm dark text. New bundled presets are added to existing catalogs without changing the current selection or replacing custom colors.
+- Soft Rose: a gentle pink preset with distinctly pink backgrounds and panels, a dusty rose accent and warm dark text. New bundled presets are added to existing catalogs without changing the current selection or replacing custom colors.
 
 - Docker/BuildKit native Linux bundle build with a pinned Rust/Debian builder, Cargo caches, user-owned export, checksums, runtime report and CI artifacts. Host Rust/dev packages are unnecessary.
 
