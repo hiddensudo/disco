@@ -2695,3 +2695,109 @@ fn untitled_tabs_paste_keep_drafts_and_save_relative_absolute_without_overwrite(
     assert!(!app.editor.dirty());
     assert!(app.editor.untitled.is_none());
 }
+
+#[test]
+fn markdown_modes_preserve_drafts_undo_and_tab_identity() {
+    let Ok(root) = std::env::var("DISCO_MARKDOWN_FIXTURE") else {
+        let root = std::env::temp_dir().join(format!("disco-markdown-ui-{}", std::process::id()));
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::create_dir_all(root.join("files")).unwrap();
+        fs::write(root.join("files/README.md"),"# disco\n\nA **native** workspace.\n\n| File | Size |\n| --- | --- |\n| example | 2 KiB |\n\n- Parent\n  - Child\n\n> Quote\n\n```rust\nfn main() {}\n```\n\n![local](photo.png)\n\n[Details](#details)\n\n## Details\n\nBody\n").unwrap();
+        image::RgbImage::from_pixel(24, 16, image::Rgb([42, 100, 140]))
+            .save(root.join("files/photo.png"))
+            .unwrap();
+        fs::write(
+            root.join("config/layout.toml"),
+            "preview_mode='focus'\nsave_scan=false\nanimations=false\n",
+        )
+        .unwrap();
+        let out = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "app::ui::interaction_tests::markdown_modes_preserve_drafts_undo_and_tab_identity",
+                "--nocapture",
+            ])
+            .env("DISCO_MARKDOWN_FIXTURE", &root)
+            .env("DISCO_CONFIG_DIR", root.join("config"))
+            .env("XDG_DATA_HOME", root.join("data"))
+            .output()
+            .unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            out.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return;
+    };
+    use crate::app::workspace_keyboard::Area;
+    use egui::{Key, Modifiers};
+    let root = PathBuf::from(root);
+    let path = root.join("files/README.md");
+    let original = fs::read_to_string(&path).unwrap();
+    let ctx = egui::Context::default();
+    let mut time = 0.;
+    let mut app = Disco::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+    let report = crate::scan::scan(
+        &root.join("files"),
+        &crate::scan::Control::default(),
+        |_| {},
+    )
+    .unwrap();
+    app.scan.index = crate::index::Index::new(&report);
+    app.scan.report = Some(std::sync::Arc::new(report));
+    app.browser.root = root.join("files").display().to_string();
+    app.browser.category = Category::All;
+    app.expand_folder(0);
+    app.select_file(path.clone(), 4096);
+    wait_document(&mut app, &ctx, &mut time);
+    assert!(!app.editor.markdown.editing);
+    assert!(ctx.read_response(Id::unique("markdown-edit")).is_some());
+    click(&mut app, &ctx, &mut time, Id::unique("markdown-edit"));
+    app.focus_area(Area::Editor, &ctx);
+    press_key(&mut app, &ctx, &mut time, Key::End, Modifiers::CTRL);
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Text("draft text".into())],
+    );
+    let draft = app.editor.document.as_ref().unwrap().text.clone();
+    assert!(draft.ends_with("draft text"));
+    let editor_id = Id::unique(("file-editor", Some(path.clone())));
+    let cursor = egui::TextEdit::load_state(&ctx, editor_id)
+        .unwrap()
+        .cursor
+        .char_range();
+    click(&mut app, &ctx, &mut time, Id::unique("markdown-read"));
+    assert!(!app.editor.markdown.editing);
+    assert!(app.editor.dirty());
+    assert_eq!(app.editor.document.as_ref().unwrap().text, draft);
+    assert_eq!(fs::read_to_string(&path).unwrap(), original);
+    assert_eq!(app.tabs.order, vec![path.clone()]);
+    click(&mut app, &ctx, &mut time, Id::unique("markdown-edit"));
+    assert_eq!(
+        egui::TextEdit::load_state(&ctx, editor_id)
+            .unwrap()
+            .cursor
+            .char_range(),
+        cursor
+    );
+    app.focus_area(Area::Editor, &ctx);
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        Key::Z,
+        Modifiers::CTRL | Modifiers::COMMAND,
+    );
+    assert_eq!(app.editor.document.as_ref().unwrap().text, original);
+    // Reader and editor remain available in Overview and read-only categories.
+    app.preferences.layout.all_files_read_only = true;
+    app.preferences.layout.preview_mode = PreviewMode::Overview;
+    app.preferences.layout.properties = true;
+    frame(&mut app, &ctx, &mut time, vec![]);
+    click(&mut app, &ctx, &mut time, Id::unique("markdown-read"));
+    assert_eq!(app.editor.document.as_ref().unwrap().text, original);
+}

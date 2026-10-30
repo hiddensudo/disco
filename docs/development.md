@@ -24,7 +24,7 @@ The installer also registers that desktop entry in `desktop-integration.toml` in
 
 Layout text scaling is versioned with `text_scale_version = 1`. The new 100% baseline is the former 85%; legacy files are converted once by dividing `text_scale` by 0.85 and preserve their actual font size. New/reset configurations use 100%. `sidebar_text_scale` (0.8–1.2) affects only the Focus tree; it does not resize the document editor or terminal. Tree indentation is 8 logical pixels and capped by available name width; names are measured and elided before the size column.
 
-Themes use `themes.toml` (`version = 1`, `active`, `[themes.<id>]` with `name` and `file`) and one `themes/<id>.toml` color file per theme. Built-ins live in `assets/themes.toml` and `assets/themes/`; first startup materializes them without replacing existing files, preserves a customized legacy palette as a separate entry, and leaves `theme.toml` as a backup. Reads prefer the catalog, including the installer and window/launcher icon selection. Invalid individual files stay isolated; drafts are kept in memory until Save, with fingerprints preventing silent overwrite of external edits. The theme picker scrolls a 150 px list (five 30 px rows) above a fixed creation action. Prompt generation accepts an explicit UA/EN language; until DSC-021 adds its separate selector, the UI supplies its interface language.
+Themes use `themes.toml` (`version = 1`, `active`, `[themes.<id>]` with `name` and `file`) and one `themes/<id>.toml` color file per theme. Built-ins live in `assets/themes.toml` and `assets/themes/`; first startup materializes them without replacing existing files, preserves a customized legacy palette as a separate entry, and leaves `theme.toml` as a backup. Reads prefer the catalog, including the installer and window/launcher icon selection. Invalid individual files stay isolated; drafts are kept in memory until Save, with fingerprints preventing silent overwrite of external edits. The theme picker scrolls a 150 px list (five 30 px rows) above a fixed creation action. Prompt generation accepts an explicit UA/EN language; `Layout::effective_prompt_language` follows the UI unless the separate-language checkbox is enabled.
 
 ```sh
 ./target/release/disco --version
@@ -86,4 +86,6 @@ Only source, documentation and sample screenshots belong in Git. Local binaries,
 
 ## Testing the 0.2.3 preview
 
-Keep the stable launcher separate. Build this branch and run `DISCO_CONFIG_DIR=/tmp/disco-unstable ./target/release/disco` to try it with isolated settings. The preview version is `0.2.3-unstable`; main and stable tags remain unchanged during preparation.
+All builds install under the **disco** name; `install.py --config-dir ~/.config/disco-unstable` keeps development settings separate and replaces the previous duplicate launcher. Build this branch and run `DISCO_CONFIG_DIR=/tmp/disco-unstable ./target/release/disco` to try it with isolated settings. The preview version is `0.2.3-unstable`; main and stable tags remain unchanged during preparation.
+
+Markdown uses egui_commonmark 0.26 with pulldown-cmark, under MIT/Apache-2.0. The reader uses viewport caching; the editor and undo state remain the existing disco document. Local raster images reuse the bounded asynchronous decoder; HTTP image fetching and HTML execution are disabled.

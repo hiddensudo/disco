@@ -146,7 +146,12 @@ fn load_inner(path: &Path) -> Result<Content, Box<dyn std::error::Error>> {
         let mut image = image::DynamicImage::from_decoder(decoder)?;
         image.apply_orientation(orientation);
         let original = [image.width(), image.height()];
-        let image = image.thumbnail(THUMBNAIL_EDGE, THUMBNAIL_EDGE).into_rgba8();
+        let image = if image.width() > THUMBNAIL_EDGE || image.height() > THUMBNAIL_EDGE {
+            image.thumbnail(THUMBNAIL_EDGE, THUMBNAIL_EDGE)
+        } else {
+            image
+        }
+        .into_rgba8();
         Content::Image {
             size: [image.width() as usize, image.height() as usize],
             rgba: image.into_raw(),

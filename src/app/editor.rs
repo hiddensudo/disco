@@ -79,6 +79,7 @@ pub(super) enum Action {
 }
 #[derive(Default)]
 pub(super) struct Editor {
+    pub markdown: crate::markdown::Reader,
     pub path: Option<PathBuf>,
     pub untitled: Option<super::untitled::Untitled>,
     pub origin: Option<Category>,

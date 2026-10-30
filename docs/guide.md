@@ -211,3 +211,5 @@ File-list shortcuts do not run while typing in text fields. Ctrl+Tab follows vis
 In Focus, clicking files in the tree reuses one temporary tab. Click inside its document or image to keep it open; tree double-clicks do not pin it. Enter/Right-arrow keyboard actions still keep the preview. Unsaved documents remain protected.
 
 AI prompts follow the application language by default. Enable **Separate AI prompt language** in Settings → Interface to reveal the Ukrainian/English selector. This applies to both category and theme prompts; Save/Cancel cover both settings.
+
+Markdown (`.md`/`.markdown`) opens in **Read** mode. Use **Read / Edit** in the same document to switch without saving or losing your draft, undo history or cursor. Read mode supports tables, lists, quotations, highlighted code, relative local raster images, links and heading anchors. Remote images are not fetched. Links open only when clicked; local files open in disco. Read-only categories still prevent edits. Text previews keep the existing 128 KiB bound; larger documents show the bounded beginning.

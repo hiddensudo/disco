@@ -289,6 +289,20 @@ impl Disco {
                 }
             }
         }
+        let markdown = path.as_deref().is_some_and(crate::markdown::supported)
+            && matches!(self.file_preview.content, Some(Content::Text { .. }));
+        if markdown {
+            ui.horizontal(|ui| {
+                for (editing, label, id) in [
+                    (false, crate::tr!("Читання", "Read"), "markdown-read"),
+                    (true, crate::tr!("Редагування", "Edit"), "markdown-edit"),
+                ] {
+                    let response =
+                        ui.selectable_value(&mut self.editor.markdown.editing, editing, label);
+                    ui.interact(response.rect, egui::Id::unique(id), Sense::hover());
+                }
+            });
+        }
         ui.add_space(8.);
         let error_height = if self.editor.error.is_empty() {
             0.
@@ -321,6 +335,7 @@ impl Disco {
             room
         };
         let mut text_changed = false;
+        let mut markdown_target = None;
         let viewport = egui::Frame::new()
             .fill(color(&t.background))
             .stroke(Stroke::new(1., color(&t.border)))
@@ -330,7 +345,25 @@ impl Disco {
                 let inner = Vec2::new((width - 18.).max(30.), (height - 18.).max(60.));
                 ui.set_min_size(inner);
                 ui.set_max_width(inner.x);
-                if let Some(doc) = &mut self.editor.document {
+                if markdown && !self.editor.markdown.editing {
+                    let text = self
+                        .editor
+                        .document
+                        .as_ref()
+                        .map(|d| d.text.as_str())
+                        .or_else(|| match &self.file_preview.content {
+                            Some(Content::Text { display_source, .. }) => {
+                                Some(display_source.as_str())
+                            }
+                            _ => None,
+                        })
+                        .unwrap_or_default();
+                    ui.set_max_height(inner.y);
+                    markdown_target = self
+                        .editor
+                        .markdown
+                        .show(ui, path.as_deref().unwrap(), text);
+                } else if let Some(doc) = &mut self.editor.document {
                     // Saving snapshots the document; keep this widget enabled
                     // so focus, cursor, selection and further typing survive IO.
                     let busy = self.scan.busy;
@@ -529,6 +562,17 @@ impl Disco {
             egui::Id::unique("preview-viewport"),
             Sense::hover(),
         );
+        if let Some(target) = markdown_target {
+            match target {
+                crate::markdown::Target::Local(path) if path.is_file() => {
+                    self.select_file(path, 0);
+                }
+                crate::markdown::Target::External(uri) => {
+                    crate::filesystem::open(std::path::Path::new(&uri))
+                }
+                _ => self.message = crate::tr!("Посилання недоступне", "Link unavailable").into(),
+            }
+        }
         contain_preview_scroll(ui, viewport.response.rect);
         ui.add_space(6.);
         let footer = match &self.file_preview.content {
@@ -548,6 +592,8 @@ impl Disco {
                     crate::tr!("Категорія: лише читання", "Category: read only")
                 } else if self.editor.last_saved_at.is_some() {
                     crate::tr!("Збережено", "Saved")
+                } else if markdown && !self.editor.markdown.editing {
+                    crate::tr!("Читання", "Reading")
                 } else if self.editor.document.is_some() {
                     crate::tr!("Редагування", "Editable")
                 } else {
@@ -596,6 +642,7 @@ impl Disco {
         }
         ui.spacing_mut().item_spacing.y = old_spacing;
         if refresh {
+            self.editor.markdown.reload(ui.ctx());
             self.editor_action(Action::Reload, ui.ctx());
         }
     }
