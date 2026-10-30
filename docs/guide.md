@@ -209,3 +209,5 @@ File-list shortcuts do not run while typing in text fields. Ctrl+Tab follows vis
 - The integrated terminal is a native embedding of an adapted widget, not a promise of compatibility with every terminal application. LSP/code completion is not included.
 
 In Focus, clicking files in the tree reuses one temporary tab. Click inside its document or image to keep it open; tree double-clicks do not pin it. Enter/Right-arrow keyboard actions still keep the preview. Unsaved documents remain protected.
+
+AI prompts follow the application language by default. Enable **Separate AI prompt language** in Settings → Interface to reveal the Ukrainian/English selector. This applies to both category and theme prompts; Save/Cancel cover both settings.

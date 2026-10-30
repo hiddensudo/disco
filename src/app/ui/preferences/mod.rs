@@ -92,7 +92,7 @@ impl Disco {
                 |ui| {
                     ui.horizontal(|ui| {
                         ui.label(crate::tr!("Мова", "Language"));
-                        language_picker(ui, &mut layout.language);
+                        language_picker(ui, &mut layout.language, "interface-language");
                     });
                 },
             );
@@ -543,13 +543,18 @@ impl Disco {
         }
     }
 }
-fn language_picker(ui: &mut egui::Ui, language: &mut i18n::Language) {
-    egui::ComboBox::from_id_salt("interface-language")
+fn language_picker(ui: &mut egui::Ui, language: &mut i18n::Language, id: &str) {
+    egui::ComboBox::from_id_salt(id)
         .width(135.)
         .selected_text(language.name())
         .show_ui(ui, |ui| {
             for choice in [i18n::Language::Uk, i18n::Language::En] {
-                ui.selectable_value(language, choice, choice.name());
+                let response = ui.selectable_value(language, choice, choice.name());
+                ui.interact(
+                    response.rect,
+                    egui::Id::unique((id, choice.name())),
+                    Sense::hover(),
+                );
             }
         });
 }

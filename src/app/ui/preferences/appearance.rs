@@ -174,8 +174,8 @@ pub(super) fn show(
             .clicked()
         {
             store.prompt = Some((
-                layout.language,
-                store.generation_prompt(layout.language, theme),
+                layout.effective_prompt_language(),
+                store.generation_prompt(layout.effective_prompt_language(), theme),
             ));
         }
         if ui
@@ -257,18 +257,18 @@ pub(super) fn show(
         && std::env::var("DISCO_QA_THEME_PROMPT").is_ok_and(|s| s == "1")
     {
         store.prompt = Some((
-            layout.language,
-            store.generation_prompt(layout.language, theme),
+            layout.effective_prompt_language(),
+            store.generation_prompt(layout.effective_prompt_language(), theme),
         ));
     }
     if store
         .prompt
         .as_ref()
-        .is_some_and(|(language, _)| *language != layout.language)
+        .is_some_and(|(language, _)| *language != layout.effective_prompt_language())
     {
         store.prompt = Some((
-            layout.language,
-            store.generation_prompt(layout.language, theme),
+            layout.effective_prompt_language(),
+            store.generation_prompt(layout.effective_prompt_language(), theme),
         ));
     }
     let mut prompt_open = store.prompt.is_some();

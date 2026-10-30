@@ -182,6 +182,74 @@ fn theme_picker_keeps_create_visible_with_twenty_themes_and_cancel_writes_nothin
             .1
             .contains("If you do not have access to my PC")
     );
+    app.themes.prompt = None;
+    app.preferences.page = 1;
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert!(app.preferences.layout.prompt_language.is_none());
+    click(
+        &mut app,
+        &ctx,
+        &mut time,
+        Id::unique("separate-prompt-language"),
+    );
+    assert_eq!(
+        app.preferences.layout.prompt_language,
+        Some(crate::i18n::Language::En)
+    );
+    app.preferences.layout.prompt_language = Some(crate::i18n::Language::Uk);
+    click(
+        &mut app,
+        &ctx,
+        &mut time,
+        Id::unique("settings-cancel-bounds"),
+    );
+    assert!(app.preferences.layout.prompt_language.is_none());
+    click(&mut app, &ctx, &mut time, Id::unique("open-settings"));
+    app.preferences.page = 1;
+    frame(&mut app, &ctx, &mut time, vec![]);
+    click(
+        &mut app,
+        &ctx,
+        &mut time,
+        Id::unique("separate-prompt-language"),
+    );
+    app.preferences.layout.prompt_language = Some(crate::i18n::Language::Uk);
+    click(
+        &mut app,
+        &ctx,
+        &mut time,
+        Id::unique("settings-save-bounds"),
+    );
+    let saved = settings::read_layout(&root.join("config/layout.toml")).unwrap();
+    assert_eq!(saved.language, crate::i18n::Language::En);
+    assert_eq!(saved.prompt_language, Some(crate::i18n::Language::Uk));
+    click(&mut app, &ctx, &mut time, Id::unique("open-settings"));
+    app.preferences.page = 0;
+    frame(&mut app, &ctx, &mut time, vec![]);
+    click(&mut app, &ctx, &mut time, Id::unique("theme-prompt-button"));
+    assert_eq!(
+        app.themes.prompt.as_ref().unwrap().0,
+        crate::i18n::Language::Uk
+    );
+    assert_eq!(
+        app.themes.prompt.as_ref().unwrap().1,
+        app.themes
+            .generation_prompt(crate::i18n::Language::Uk, &app.preferences.theme)
+    );
+    app.themes.prompt = None;
+    app.preferences.page = 1;
+    frame(&mut app, &ctx, &mut time, vec![]);
+    click(
+        &mut app,
+        &ctx,
+        &mut time,
+        Id::unique("separate-prompt-language"),
+    );
+    assert!(app.preferences.layout.prompt_language.is_none());
+    assert_eq!(
+        app.preferences.layout.effective_prompt_language(),
+        crate::i18n::Language::En
+    );
 }
 #[test]
 fn full_window_view_switches_properties_and_breadcrumbs_work_with_dirty_text() {

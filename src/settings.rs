@@ -78,6 +78,8 @@ pub struct Layout {
     pub shortcuts: crate::shortcuts::Shortcuts,
     #[serde(default)]
     pub language: crate::i18n::Language,
+    /// None follows the interface language; Some enables the separate selector.
+    pub prompt_language: Option<crate::i18n::Language>,
     pub categories: bool,
     pub category_labels: bool,
     pub title_button_labels: bool,
@@ -134,6 +136,7 @@ impl Default for Layout {
         Self {
             shortcuts: Default::default(),
             language: crate::i18n::Language::En,
+            prompt_language: None,
             categories: true,
             category_labels: false,
             title_button_labels: false,
@@ -170,6 +173,10 @@ impl Default for Layout {
     }
 }
 impl Layout {
+    pub fn effective_prompt_language(&self) -> crate::i18n::Language {
+        self.prompt_language.unwrap_or(self.language)
+    }
+
     pub fn migrate_text_scale(&mut self) {
         if self.text_scale_version == 0 {
             self.text_scale /= 0.85;
@@ -378,6 +385,31 @@ pub fn write<T: Serialize>(p: &Path, value: &T) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn prompt_language_defaults_to_ui_and_roundtrips_independently() {
+        use crate::i18n::Language::{En, Uk};
+        for ui in [Uk, En] {
+            let mut layout: Layout = toml::from_str(&format!(
+                "language='{}'",
+                if ui == Uk { "uk" } else { "en" }
+            ))
+            .unwrap();
+            assert!(layout.prompt_language.is_none());
+            assert_eq!(layout.effective_prompt_language(), ui);
+            for prompt in [Uk, En] {
+                layout.prompt_language = Some(prompt);
+                let saved = toml::to_string(&layout).unwrap();
+                let mut restored: Layout = toml::from_str(&saved).unwrap();
+                assert_eq!(restored.language, ui);
+                assert_eq!(restored.effective_prompt_language(), prompt);
+                restored.language = if ui == Uk { En } else { Uk };
+                assert_eq!(restored.effective_prompt_language(), prompt);
+                restored.prompt_language = None;
+                assert_eq!(restored.effective_prompt_language(), restored.language);
+            }
+        }
+    }
+
     #[test]
     fn text_scale_migration_preserves_physical_size_once_and_sidebar_is_independent() {
         for scale in [0.85, 1., 1.15, 1.4] {

@@ -12,6 +12,35 @@ pub(super) fn show(
     t: &Theme,
     drive_name: &str,
 ) {
+    let mut separate = layout.prompt_language.is_some();
+    let check = cols[0].checkbox(
+        &mut separate,
+        crate::tr!("Окрема мова AI-промптів", "Separate AI prompt language"),
+    );
+    cols[0].interact(
+        check.rect,
+        egui::Id::unique("separate-prompt-language"),
+        egui::Sense::hover(),
+    );
+    if check.changed() {
+        layout.prompt_language = separate.then_some(layout.language);
+    }
+    if let Some(language) = &mut layout.prompt_language {
+        cols[0].horizontal(|ui| {
+            ui.label(crate::tr!("Мова промптів", "Prompt language"));
+            super::language_picker(ui, language, "prompt-language");
+        });
+    } else {
+        cols[0].label(
+            RichText::new(crate::tr!(
+                "Промпти використовують мову застосунка.",
+                "Prompts follow the application language."
+            ))
+            .small()
+            .color(color(&t.muted)),
+        );
+    }
+    cols[0].add_space(10.);
     cols[0].label(RichText::new(crate::tr!("Щільність рядків", "Row density")).size(13.));
     cols[0].horizontal(|ui| {
         ui.selectable_value(

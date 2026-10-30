@@ -113,7 +113,7 @@ impl Disco {
             ui.ctx().copy_text(categories::prompt(
                 collection,
                 &self.collections.file_for(collection),
-                self.preferences.layout.language,
+                self.preferences.layout.effective_prompt_language(),
             ));
             let now = ui.input(|i| i.time);
             ui.ctx().data_mut(|data| {
