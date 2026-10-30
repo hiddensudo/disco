@@ -9,3 +9,5 @@ __pycache__/
 
 /disco-unstable
 /disco-unstable.sha256
+
+/dist/

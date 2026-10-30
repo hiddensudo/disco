@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- Docker/BuildKit native Linux bundle build with a pinned Rust/Debian builder, Cargo caches, user-owned export, checksums, runtime report and CI artifacts. Host Rust/dev packages are unnecessary.
+
 - Markdown Read/Edit modes share one document, draft and undo history. Native cached rendering supports tables, lists, code highlighting, heading anchors and local images without automatic network fetches.
 - AI prompts follow the UI language unless Separate AI prompt language is checked; category and theme prompts then use the independent Ukrainian/English selection.
 - Tree clicks reuse one preview tab; clicking document/image content keeps it open. Development builds install under the disco name, replacing the old duplicate launcher.

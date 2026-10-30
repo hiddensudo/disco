@@ -18,6 +18,8 @@
 
 ## Встановлення
 
+Збірка без Rust/dev-пакетів на хості: `./scripts/build-docker.sh`. Дивись [Docker-збірку та вимоги запуску](docs/docker.uk.md).
+
 Потрібні Linux, **Rust 1.95+**, C-компілятор, Git та Python 3. Інтерфейс працює через Wayland або X11 з OpenGL.
 
 ```sh

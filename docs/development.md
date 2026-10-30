@@ -89,3 +89,5 @@ Only source, documentation and sample screenshots belong in Git. Local binaries,
 All builds install under the **disco** name; `install.py --config-dir ~/.config/disco-unstable` keeps development settings separate and replaces the previous duplicate launcher. Build this branch and run `DISCO_CONFIG_DIR=/tmp/disco-unstable ./target/release/disco` to try it with isolated settings. The preview version is `0.2.3-unstable`; main and stable tags remain unchanged during preparation.
 
 Markdown uses egui_commonmark 0.26 with pulldown-cmark, under MIT/Apache-2.0. The reader uses viewport caching; the editor and undo state remain the existing disco document. Local raster images reuse the bounded asynchronous decoder; HTTP image fetching and HTML execution are disabled.
+
+Docker builds: `scripts/build-docker.sh` exports a runtime bundle through the scratch artifacts stage. See [build details](docker.md); CI uploads the archive/checksum/runtime report without publishing a release.

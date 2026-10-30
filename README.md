@@ -18,6 +18,8 @@ A native Linux disk space analyzer with file previews, text editing, and an inte
 
 ## Install
 
+Build without host Rust/dev packages: `./scripts/build-docker.sh`. See the [Docker build and runtime guide](docs/docker.md).
+
 You need Linux, **Rust 1.95+**, a C compiler, Git and Python 3. The UI uses Wayland or X11 with OpenGL.
 
 ```sh

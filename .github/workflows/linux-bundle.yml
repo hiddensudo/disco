@@ -1,0 +1,37 @@
+name: Linux bundle
+on:
+  push:
+    branches: [disco-0.2.3-unstable]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  bundle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: artifacts
+          outputs: type=local,dest=dist
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Check exported checksum and native runtime
+        env:
+          DISCO_CONFIG_DIR: ${{ runner.temp }}/disco-smoke-config
+        run: |
+          cd dist
+          sha256sum -c disco-*.tar.gz.sha256
+          mkdir -p "$RUNNER_TEMP/disco-smoke"
+          tar -xzf disco-*.tar.gz -C "$RUNNER_TEMP/disco-smoke"
+          "$RUNNER_TEMP/disco-smoke/disco/disco" --version
+          "$RUNNER_TEMP/disco-smoke/disco/disco" --scan "$RUNNER_TEMP/disco-smoke/disco/docs"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: disco-linux-amd64
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14

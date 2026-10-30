@@ -1,4 +1,6 @@
 language = "en"
+# By default prompts follow the UI. Uncomment for a separate language:
+# prompt_language = "uk"
 categories = true
 category_labels = false
 categories_locked = false
@@ -7,6 +9,8 @@ category_width = 220.0
 property_width = 300.0
 compact = false
 text_scale = 1.0
+text_scale_version = 1
+sidebar_text_scale = 1.0
 show_count = false
 drive_name = ""
 icon_scale = 1.0

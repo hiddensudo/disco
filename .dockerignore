@@ -1,0 +1,16 @@
+.git
+.agents
+.codex
+.aws
+.ssh
+.env*
+**/target
+**/__pycache__
+**/*.pyc
+/disco
+/disco.sha256
+/disco-unstable
+/disco-unstable.sha256
+/dist
+/PERFORMANCE.md
+/VERIFICATION.md
