@@ -1,6 +1,7 @@
 mod app;
 mod art;
 mod associations;
+mod branding;
 mod categories;
 mod deletion;
 mod demo;
@@ -111,9 +112,11 @@ fn main() -> eframe::Result {
             .with_min_inner_size([1140., 620.])
             .with_decorations(false)
             .with_transparent(false)
-            .with_app_id("ua.disco")
+            .with_app_id(branding::desktop_app_id(&settings::config_dir()))
             .with_title(format!("disco {}", env!("CARGO_PKG_VERSION")))
-            .with_icon(art::app_icon()),
+            .with_icon(art::app_icon(settings::color(
+                &settings::load().0.background,
+            ))),
         renderer: eframe::Renderer::Glow,
         ..Default::default()
     };

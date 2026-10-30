@@ -22,6 +22,7 @@ impl Disco {
             Self::settings_viewport_id(),
             egui::ViewportBuilder::default()
                 .with_title(crate::tr!("disco — Налаштування", "disco — Settings"))
+                .with_icon(art::app_icon(color(&self.preferences.theme.background)))
                 .with_inner_size([900., 640.])
                 .with_min_inner_size([850., 600.])
                 .with_decorations(false)
@@ -68,7 +69,7 @@ impl Disco {
             paint_logo(
                 ui,
                 Rect::from_min_size(head.min + Vec2::new(14., 10.), Vec2::splat(20.)),
-                color(&t.accent),
+                mix(color(&t.panel), color(&t.raised), 0.3),
             );
             ui.painter().text(
                 head.min + Vec2::new(44., 20.),
@@ -253,7 +254,7 @@ impl Disco {
                     } else {
                         ui.add_space(10.);
                         ui.horizontal(|ui| {
-                            logo(ui, 45., color(&t.accent));
+                            logo(ui, 45., color(&t.background));
                             ui.label(
                                 RichText::new(format!("disco {}", env!("CARGO_PKG_VERSION")))
                                     .font(art::bold(25.)),
@@ -497,6 +498,14 @@ impl Disco {
                     self.preferences.snapshot = None;
                     self.preferences.draft = None;
                     self.message = crate::tr!("Налаштування збережено", "Settings saved").into();
+                    if !self.demo && self.screenshot.is_none() {
+                        if let Err(error) = crate::branding::sync_installed_icon(
+                            &settings::config_dir(),
+                            color(&self.preferences.theme.background),
+                        ) {
+                            eprintln!("disco desktop icon: {error}");
+                        }
+                    }
                 }
                 Err(e) => self.preferences.error = e,
             }

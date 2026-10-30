@@ -1,4 +1,12 @@
-# disco
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/disco.svg">
+    <img src="assets/disco-black.svg" width="144" height="144" alt="disco line mirrorball logo">
+  </picture>
+</p>
+<h1 align="center">disco</h1>
+<p align="center"><strong>Your disk, files and terminal in one native workspace.</strong><br>Built with Rust · Linux · No browser engine</p>
+<p align="center"><a href="#install">Install</a> · <a href="docs/guide.md">User guide</a> · <a href="CHANGELOG.md">What's new</a> · <a href="README.uk.md">Українська</a></p>
 
 **Development: 0.2.3-unstable.** Work is staged on `disco-0.2.3-unstable`; [main](https://github.com/hiddensudo/disco) remains stable.
 

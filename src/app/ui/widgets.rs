@@ -20,34 +20,12 @@ pub(in crate::app) fn chevron(ui: &egui::Ui, c: Pos2, down: bool, color: C) {
     ui.painter()
         .add(egui::Shape::line(points, Stroke::new(1.5, color)));
 }
-pub(in crate::app) fn logo(ui: &mut egui::Ui, size: f32, c: C) {
+pub(in crate::app) fn logo(ui: &mut egui::Ui, size: f32, surface: C) {
     let (r, _) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
-    let p = ui.painter();
-    let center = r.center();
-    for i in 0..3 {
-        let start = i as f32 * std::f32::consts::TAU / 3. + 0.08;
-        let end = (i + 1) as f32 * std::f32::consts::TAU / 3. - 0.08;
-        let points = (0..20)
-            .map(|j| {
-                let a = start + (end - start) * j as f32 / 19.;
-                center + Vec2::angled(a) * size * 0.35
-            })
-            .collect();
-        p.add(egui::Shape::line(points, Stroke::new(size * 0.2, c)));
-    }
+    paint_logo(ui, r, surface);
 }
-pub(in crate::app) fn paint_logo(ui: &egui::Ui, r: Rect, c: C) {
-    for i in 0..3 {
-        let start = i as f32 * std::f32::consts::TAU / 3. + 0.08;
-        let end = (i + 1) as f32 * std::f32::consts::TAU / 3. - 0.08;
-        let points = (0..22)
-            .map(|j| {
-                r.center() + Vec2::angled(start + (end - start) * j as f32 / 21.) * r.width() * 0.35
-            })
-            .collect();
-        ui.painter()
-            .add(egui::Shape::line(points, Stroke::new(r.width() * 0.22, c)));
-    }
+pub(in crate::app) fn paint_logo(ui: &egui::Ui, r: Rect, surface: C) {
+    art::paint_app_logo(ui, r, surface);
 }
 pub(in crate::app) fn visual_button(
     ui: &mut egui::Ui,

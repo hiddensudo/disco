@@ -26,7 +26,7 @@ impl Disco {
             Stroke::new(1., color(&t.border)),
         );
         let logo_rect = Rect::from_min_size(rect.min + Vec2::new(17., 9.), Vec2::splat(25.));
-        paint_logo(ui, logo_rect, color(&t.accent));
+        paint_logo(ui, logo_rect, mix(color(&t.panel), color(&t.raised), 0.35));
         ui.painter().text(
             rect.min + Vec2::new(52., 21.),
             Align2::LEFT_CENTER,

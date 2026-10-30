@@ -13,6 +13,15 @@ impl Disco {
             return;
         }
         let t = &self.preferences.theme;
+        if !self.preferences.applied.as_ref().is_some_and(|(old, _)| {
+            crate::branding::dark(color(&old.background))
+                == crate::branding::dark(color(&t.background))
+        }) {
+            ctx.send_viewport_cmd_to(
+                egui::ViewportId::ROOT,
+                egui::ViewportCommand::Icon(Some(crate::art::app_icon(color(&t.background)))),
+            );
+        }
         let mut s = egui::Style::default();
         if self.screenshot.is_some() {
             s.interaction.tooltip_delay = 60.;

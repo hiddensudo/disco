@@ -18,6 +18,8 @@ git diff --check
 
 The installer links the selected binary into `~/.local/bin/disco` and creates its desktop entry. Use `python3 install.py --binary /absolute/path/to/disco` for a custom build directory. Keep that binary available after installation.
 
+The installer also registers that desktop entry in `desktop-integration.toml` inside the app's configuration directory and installs `app-icon-dark.svg` and `app-icon-light.svg` there. On startup and after saving a theme, disco selects the matching launcher icon. It preserves unrelated desktop fields and user-selected custom icons. Demo and screenshot runs never modify desktop integration. Separate `DISCO_CONFIG_DIR` installations keep their icon registration separate; the window app ID matches the registered desktop entry (including the unstable launcher).
+
 ## Useful commands
 
 ```sh
@@ -67,6 +69,9 @@ The old native capture had five rows below the custom title bar with alpha 180. 
 A window-level regression covers Overview/Focus transitions, resizing and 100%, 125%, 150%, 200% scale. PTY interaction tests cover panel resizing, session continuity, teardown, keyboard isolation and terminal focus routes.
 
 ## Component credits
+
+- App artwork: `assets/disco.svg` is a monochrome line mirrorball projected from a tilted sphere. `disco-black.svg`, `disco-dark.svg` and `disco-light.svg` provide its other monochrome variants. Every in-app logo is transparent; its white/black lines maximize contrast against the actual surface color. Launcher/window icons have a rounded dark/light theme tile with transparent corners because the surrounding desktop color is unknown; window icons are rendered directly from the same rounded SVG variants. Both READMEs select a transparent line variant for GitHub's light/dark color scheme. All artwork is vector; no bitmap is embedded. The app SVG is parsed once and its physical-size textures are cached per UI context.
+- The logo uses tiny-skia edge antialiasing directly at the physical target size, without the extra supersampling/downsampling used for other UI artwork. Its texture is aligned to physical pixels and sampled without interpolation to avoid softening the mirrors again.
 
 - Inter: [SIL Open Font License](../assets/fonts/LICENSE.txt).
 - Syntax highlighting: syntect with bat/two-face grammars; [grammar licenses](../licenses/syntaxes.md), also in About and `--syntax-licenses`.

@@ -95,6 +95,14 @@ impl Disco {
             }
         }
         let (theme, mut layout, message) = settings::load();
+        if !demo && argument("--screenshot").is_none() {
+            if let Err(error) = crate::branding::sync_installed_icon(
+                &settings::config_dir(),
+                color(&theme.background),
+            ) {
+                eprintln!("disco desktop icon: {error}");
+            }
+        }
         layout.normalize_file_mode();
         i18n::set_current(layout.language);
         let root = argument("--folder")

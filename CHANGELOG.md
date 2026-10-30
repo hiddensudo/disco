@@ -4,6 +4,9 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- A minimal line disco-ball logo stays transparent throughout the app, with white or black lines selected for contrast against each surface. Window/taskbar icons keep a rounded dark/light background with transparent corners matching the theme; the installed launcher follows the saved theme. Both READMEs use the line logo and adapt to GitHub's light/dark color scheme.
+- Sharp in-app logo rendering at physical pixel size.
+
 - Ctrl+T opens an in-memory text tab. Its first Ctrl+S asks for a path relative to the folder selected at creation, or accepts a literal absolute path. Pasting, nested directories, conflict-safe first writes, tab switching and unsaved-close protection are supported. New tab is also available in the shortcut recorder.
 
 - Added a Shortcuts settings section with key recording, collision checks, reset and KDE conflict hints. Local defaults: Ctrl+Alt+T terminal, Ctrl+Alt+F Focus, Ctrl+Alt+V Overview.

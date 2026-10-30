@@ -249,27 +249,130 @@ fn rasterize(tree: &resvg::usvg::Tree, w: u32, h: u32) -> egui::ColorImage {
     egui::ColorImage::from_rgba_premultiplied([w as usize, h as usize], reduced.as_raw())
 }
 
-pub fn app_icon() -> egui::IconData {
-    let tree = resvg::usvg::Tree::from_data(
-        include_bytes!("../assets/disco.svg"),
-        &resvg::usvg::Options::default(),
-    )
-    .expect("application SVG");
-    let pixels = rasterize(&tree, 256, 256);
-    egui::IconData {
-        width: 256,
-        height: 256,
-        rgba: pixels
-            .pixels
-            .iter()
-            .flat_map(Color32::to_srgba_unmultiplied)
-            .collect(),
-    }
+fn logo_tree() -> &'static resvg::usvg::Tree {
+    static TREE: std::sync::OnceLock<resvg::usvg::Tree> = std::sync::OnceLock::new();
+    TREE.get_or_init(|| {
+        resvg::usvg::Tree::from_data(
+            include_bytes!("../assets/disco.svg"),
+            &resvg::usvg::Options::default(),
+        )
+        .expect("application SVG")
+    })
+}
+
+fn rasterize_logo(width: u32, height: u32) -> egui::ColorImage {
+    // Rasterize the logo once at its physical display size. tiny-skia already
+    // antialiases vector edges; a second reduction filter softens the mirrors.
+    rasterize_logo_tree(logo_tree(), width, height)
+}
+
+fn rasterize_logo_tree(tree: &resvg::usvg::Tree, width: u32, height: u32) -> egui::ColorImage {
+    let size = tree.size();
+    let mut pixels = resvg::tiny_skia::Pixmap::new(width, height).expect("logo size");
+    resvg::render(
+        tree,
+        resvg::tiny_skia::Transform::from_scale(
+            width as f32 / size.width(),
+            height as f32 / size.height(),
+        ),
+        &mut pixels.as_mut(),
+    );
+    egui::ColorImage::from_rgba_premultiplied([width as usize, height as usize], pixels.data())
+}
+
+pub fn paint_app_logo(ui: &egui::Ui, rect: egui::Rect, surface: Color32) {
+    let appearance = crate::branding::Appearance::for_surface(surface);
+    let ppp = ui.ctx().pixels_per_point();
+    let width = (rect.width() * ppp).round().clamp(1., 512.) as u32;
+    let height = (rect.height() * ppp).round().clamp(1., 512.) as u32;
+    let id = egui::Id::unique(("disco-vector-logo", width, height));
+    let cached = ui
+        .ctx()
+        .data(|data| data.get_temp::<egui::TextureHandle>(id));
+    let texture = cached.unwrap_or_else(|| {
+        let texture = ui.ctx().load_texture(
+            format!("disco-vector-logo-{width}x{height}"),
+            rasterize_logo(width, height),
+            egui::TextureOptions::NEAREST,
+        );
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(id, texture.clone()));
+        texture
+    });
+    let min = egui::pos2(
+        (rect.min.x * ppp).round() / ppp,
+        (rect.min.y * ppp).round() / ppp,
+    );
+    let rect = egui::Rect::from_min_size(min, egui::vec2(width as f32 / ppp, height as f32 / ppp));
+    ui.painter().image(
+        texture.id(),
+        rect,
+        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1., 1.)),
+        appearance.ink,
+    );
+}
+
+pub fn app_icon(theme_background: Color32) -> std::sync::Arc<egui::IconData> {
+    static DARK: std::sync::OnceLock<std::sync::Arc<egui::IconData>> = std::sync::OnceLock::new();
+    static LIGHT: std::sync::OnceLock<std::sync::Arc<egui::IconData>> = std::sync::OnceLock::new();
+    let appearance = crate::branding::Appearance::for_icon(theme_background);
+    let cache = if appearance.ink == Color32::WHITE {
+        &DARK
+    } else {
+        &LIGHT
+    };
+    cache
+        .get_or_init(|| {
+            let svg: &[u8] = if appearance.ink == Color32::WHITE {
+                include_bytes!("../assets/disco-dark.svg")
+            } else {
+                include_bytes!("../assets/disco-light.svg")
+            };
+            let tree = resvg::usvg::Tree::from_data(svg, &resvg::usvg::Options::default())
+                .expect("themed application SVG");
+            let image = rasterize_logo_tree(&tree, 256, 256);
+            std::sync::Arc::new(egui::IconData {
+                width: 256,
+                height: 256,
+                rgba: image
+                    .pixels
+                    .iter()
+                    .flat_map(Color32::to_srgba_unmultiplied)
+                    .collect(),
+            })
+        })
+        .clone()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn taskbar_icons_have_antialiased_rounded_corners_in_both_themes() {
+        for theme in [Color32::BLACK, Color32::WHITE] {
+            let icon = app_icon(theme);
+            for (x, y) in [(0, 0), (255, 0), (0, 255), (255, 255)] {
+                assert_eq!(icon.rgba[(y * 256 + x) * 4 + 3], 0);
+            }
+            assert_eq!(icon.rgba[(128 * 256 + 128) * 4 + 3], 255);
+            assert!(
+                icon.rgba
+                    .chunks_exact(4)
+                    .any(|pixel| pixel[3] > 0 && pixel[3] < 255)
+            );
+        }
+    }
+
+    #[test]
+    fn app_logo_renders_at_icon_sizes_with_transparent_corners() {
+        for size in [16, 25, 31, 32, 38, 48, 128, 256] {
+            let image = rasterize_logo(size, size);
+            assert_eq!(image.size, [size as usize; 2]);
+            assert!(image.pixels.iter().any(|pixel| pixel.a() > 128));
+            assert_eq!(image[(0, 0)].a(), 0);
+        }
+    }
+
     #[test]
     fn embedded_svg_renders_at_real_display_sizes() {
         let art = Art::load(&egui::Context::default());

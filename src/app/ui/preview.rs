@@ -18,7 +18,7 @@ pub(super) fn show(ui: &mut egui::Ui, art: &art::Art, theme: &Theme, layout: &La
     paint_logo(
         ui,
         Rect::from_min_size(rect.min + Vec2::new(8., 6.), Vec2::splat(13.)),
-        color(&theme.accent),
+        color(&theme.raised),
     );
     p.text(
         rect.min + Vec2::new(28., 12.),

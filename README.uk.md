@@ -1,4 +1,12 @@
-# disco
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/disco.svg">
+    <img src="assets/disco-black.svg" width="144" height="144" alt="Диско-куля з ліній — логотип disco">
+  </picture>
+</p>
+<h1 align="center">disco</h1>
+<p align="center"><strong>Диск, файли й термінал в одному нативному робочому просторі.</strong><br>Створено на Rust · Linux · Без браузерного рушія</p>
+<p align="center"><a href="#встановлення">Встановлення</a> · <a href="docs/guide.uk.md">Посібник</a> · <a href="CHANGELOG.md">Що нового</a> · <a href="README.md">English</a></p>
 
 **Розробка: 0.2.3-unstable.** Зміни готуються в `disco-0.2.3-unstable`; [main](https://github.com/hiddensudo/disco) залишається стабільним.
 
