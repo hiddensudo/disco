@@ -1,6 +1,7 @@
 //! View modules share only the application-owned state and small rendering helpers.
 mod address;
 mod breadcrumbs;
+mod browser_empty;
 mod chrome;
 mod collections;
 mod dialogs;

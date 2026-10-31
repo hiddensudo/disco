@@ -6,7 +6,7 @@ use crate::format::{display_size, group_digits, label};
 use crate::index::Category;
 use crate::motion;
 use crate::settings::{Layout, PreviewMode, color};
-use eframe::egui::{self, Align2, Color32 as C, FontId, Pos2, Rect, Sense, Stroke, Vec2};
+use eframe::egui::{self, Align2, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 use std::sync::Arc;
 
 impl Disco {
@@ -403,61 +403,14 @@ impl Disco {
             Stroke::new(1., color(&t.border)),
             egui::StrokeKind::Inside,
         );
-        if self.scan.report.is_none()
-            && self.paths.standalone.is_none()
+        let rows = self.visible_rows();
+        if self.paths.standalone.is_none()
             && self.paths.directory.is_none()
+            && (self.scan.report.is_none() || rows.is_empty() && self.browser.filter.is_empty())
         {
-            let center = outer.center();
-            self.art.paint(
-                ui,
-                0,
-                Rect::from_center_size(center - Vec2::new(0., 45.), Vec2::splat(42.)),
-                C::from_white_alpha(90),
-            );
-            ui.painter().text(
-                center + Vec2::new(0., 0.),
-                Align2::CENTER_CENTER,
-                if self.scan.restore_requested_root.is_some() {
-                    crate::tr!(
-                        "Відновлюємо останній знімок…",
-                        "Restoring the last snapshot…"
-                    )
-                } else if self.scan.busy {
-                    crate::tr!("Сканування папок…", "Scanning folders…")
-                } else {
-                    crate::tr!(
-                        "Обери папку та почни сканування",
-                        "Choose a folder and start scanning"
-                    )
-                },
-                FontId::proportional(17.),
-                color(&t.muted),
-            );
-            ui.painter().text(
-                center + Vec2::new(0., 28.),
-                Align2::CENTER_CENTER,
-                if self.scan.restore_requested_root.is_some() {
-                    crate::tr!(
-                        "Читаємо збережене дерево у фоні, без нового сканування.",
-                        "Loading the saved tree in the background, without a new scan."
-                    )
-                } else if self.scan.busy {
-                    crate::tr!(
-                        "Збираємо розміри. Прогрес і керування — вгорі.",
-                        "Collecting sizes. Progress and controls are above."
-                    )
-                } else {
-                    crate::tr!(
-                        "Назва диска зліва зверху відкриває вибір папки",
-                        "Click the drive name at the top left to choose a folder"
-                    )
-                },
-                FontId::proportional(12.),
-                color(&t.muted),
-            );
+            self.browser_empty_state(ui, outer);
             return;
         }
-        let rows = self.visible_rows();
         if rows.is_empty()
             && let Some(path) = &self.paths.directory
         {
@@ -466,6 +419,14 @@ impl Disco {
                 Some(listing) if listing.error.is_some() => listing.error.clone().unwrap(),
                 Some(_) => crate::tr!("Немає файлів для показу", "No files to show").to_string(),
             };
+            if self.files.get(path).is_none() {
+                let spinner =
+                    Rect::from_center_size(outer.center() - Vec2::new(0., 24.), Vec2::splat(14.));
+                ui.put(
+                    spinner,
+                    egui::Spinner::new().size(14.).color(color(&t.muted)),
+                );
+            }
             ui.painter().text(
                 outer.center(),
                 Align2::CENTER_CENTER,

@@ -9,6 +9,7 @@ use std::path::PathBuf;
 #[derive(Default)]
 pub(super) struct Paths {
     pub standalone: Option<PathBuf>,
+    pub snapshot: super::path_snapshot::Cache,
     /// Shallow directory browsing outside the available scan snapshot.
     pub directory: Option<PathBuf>,
     pub editing: bool,
@@ -22,6 +23,9 @@ pub(super) struct Paths {
 }
 impl Disco {
     pub(in crate::app) fn leave_path_browser(&mut self) {
+        if self.scan.report.is_none() && self.preferences.layout.save_scan && !self.demo {
+            self.paths.snapshot.needed = true;
+        }
         self.paths.standalone = None;
         self.paths.directory = None;
         self.browser.rows_cache = None;
@@ -83,6 +87,7 @@ impl Disco {
         ctx.request_repaint();
     }
     pub(in crate::app) fn poll_paths(&mut self, ctx: &egui::Context) {
+        self.poll_path_snapshot(ctx);
         self.paths.completion.poll(ctx);
         if let Some(path) = self.paths.directory.clone() {
             self.files.request(path.clone(), ctx);
@@ -116,6 +121,7 @@ impl Disco {
             .into();
             return;
         }
+        self.paths.snapshot.cancel();
         self.scoped.cancel();
         self.scoped = Default::default();
         self.scan.report_revision = self.scan.report_revision.wrapping_add(1);

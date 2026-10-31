@@ -154,7 +154,16 @@ impl Disco {
             );
         }
         let path = self.breadcrumb_directory();
-        let scan_width = if narrow { 34. } else { 145. };
+        let show_refresh = self.scan.report.is_some()
+            || self.paths.standalone.is_some()
+            || self.paths.directory.is_some();
+        let scan_width = if !show_refresh {
+            0.
+        } else if narrow {
+            34.
+        } else {
+            145.
+        };
         let scan = Rect::from_min_size(
             Pos2::new(
                 rect.right() - scan_width,
@@ -260,41 +269,46 @@ impl Disco {
         {
             self.request_new_file(ui.ctx());
         }
-        if visual_button(
-            ui,
-            &self.art,
-            scan,
-            11,
-            if narrow {
-                ""
-            } else if self.paths.directory.is_some() {
-                crate::tr!("Сканувати", "Scan")
-            } else if self.scan.report.is_some() || self.paths.standalone.is_some() {
-                crate::tr!("Оновити", "Refresh")
+        let loading = self.scan.busy
+            || self.scoped.busy()
+            || self.scan.restore_requested_root.is_some()
+            || self.paths.snapshot.loading();
+        if show_refresh
+            && visual_button(
+                ui,
+                &self.art,
+                scan,
+                if loading { usize::MAX } else { 11 },
+                if narrow {
+                    ""
+                } else if self.paths.directory.is_some() {
+                    crate::tr!("Сканувати", "Scan")
+                } else if self.scan.report.is_some() || self.paths.standalone.is_some() {
+                    crate::tr!("Оновити", "Refresh")
+                } else {
+                    crate::tr!("Сканувати", "Scan")
+                },
+                !self.scan.busy
+                    && !self.scoped.busy()
+                    && self.deletion.rx.is_none()
+                    && !self.recycle.busy
+                    && self.scan.restore_requested_root.is_none(),
+                &t,
+            )
+            .on_hover_text(if self.paths.directory.is_some() {
+                crate::tr!(
+                    "Порахувати розміри в цій папці",
+                    "Scan this folder to calculate sizes"
+                )
+            } else if self.paths.standalone.is_some() {
+                crate::tr!("Перечитати відкритий файл", "Reload the open file")
             } else {
-                crate::tr!("Сканувати", "Scan")
-            },
-            !self.scan.busy
-                && !self.scoped.busy()
-                && self.deletion.rx.is_none()
-                && !self.recycle.busy
-                && self.scan.restore_requested_root.is_none(),
-            &t,
-        )
-        .on_hover_text(if self.paths.directory.is_some() {
-            crate::tr!(
-                "Порахувати розміри в цій папці",
-                "Scan this folder to calculate sizes"
-            )
-        } else if self.paths.standalone.is_some() {
-            crate::tr!("Перечитати відкритий файл", "Reload the open file")
-        } else {
-            crate::tr!(
-                "Оновити лише поточну папку або корені категорії",
-                "Refresh only the current folder or category roots"
-            )
-        })
-        .clicked()
+                crate::tr!(
+                    "Оновити лише поточну папку або корені категорії",
+                    "Refresh only the current folder or category roots"
+                )
+            })
+            .clicked()
         {
             if self.scoped.busy() {
                 self.scoped.cancel();
@@ -303,6 +317,17 @@ impl Disco {
             } else {
                 self.refresh_scope(ui.ctx());
             }
+        }
+        if show_refresh && loading {
+            let center = if narrow {
+                scan.center()
+            } else {
+                Pos2::new(scan.left() + 18., scan.center().y)
+            };
+            ui.put(
+                Rect::from_center_size(center, Vec2::splat(14.)),
+                egui::Spinner::new().size(14.).color(color(&t.muted)),
+            );
         }
         if self.preferences.layout.preview_mode == crate::settings::PreviewMode::Focus {
             return;

@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- Choosing a category after opening a file from the CLI now restores the saved scan asynchronously, without rescanning or replacing the current draft. Later category choices reuse that snapshot. Empty file trees have a single scan action below wrapped explanatory text, and small loading indicators distinguish snapshot restoration, directory reads and scans. Late cache results cannot replace a newly opened path or an explicit scan.
+
 - Markdown reading has its own typography: real bold headings, comfortable line spacing, theme-aware links/tables and a true monospace code face at physical pixel-aligned sizes. Code blocks expand to their full height with wrapped long lines and a vector copy/check control. Details/summary sections use lazy native disclosures; missing local images show their alt text. Read/Edit retains the source buffer, cursor and undo state.
 
 - Document actions and the Markdown Read/Edit segment share a single toolbar, with compact controls in narrow inspectors. File zoom, Fit/reset and zoom buttons now sit in the bottom status bar beside truncated document metadata.

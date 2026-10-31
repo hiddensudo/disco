@@ -23,6 +23,7 @@ mod document_zoom;
 mod editor;
 mod jobs;
 mod new_file;
+mod path_snapshot;
 mod paths;
 mod scope;
 mod state;

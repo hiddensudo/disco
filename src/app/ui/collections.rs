@@ -535,24 +535,18 @@ impl Disco {
         }
     }
     pub(in crate::app) fn unindexed_collection_folders(&mut self, ui: &mut egui::Ui) {
-        if self.browser.view != View::Folders || self.browser.table_root.is_some() {
+        if self.browser.view != View::Folders
+            || self.browser.table_root.is_some()
+            || self.scan.report.is_none()
+            || self.paths.standalone.is_some()
+            || self.paths.directory.is_some()
+            || self.scan.index.roots(self.browser.category).is_empty()
+        {
             return;
         }
         let Some(collection) = self.collections.config.get(self.browser.category).cloned() else {
             return;
         };
-        if !collection.builtin() && collection.folders.is_empty() {
-            ui.label(crate::tr!(
-                "Ця категорія ще не має папок.",
-                "This category has no folders yet."
-            ));
-            if ui
-                .button(crate::tr!("Додати папки…", "Add folders…"))
-                .clicked()
-            {
-                self.open_collection_settings(Some(collection.category()));
-            }
-        }
         let missing = self
             .collections
             .missing
@@ -574,20 +568,17 @@ impl Disco {
                 .max_height(130.)
                 .show(ui, |ui| {
                     for path in missing {
-                        ui.horizontal(|ui| {
-                            let button = ui.add_enabled(
-                                !self.scan.busy,
-                                egui::Button::new(crate::tr!("Сканувати", "Scan")),
-                            );
-                            if button.clicked() {
-                                self.browser.root = path.to_string_lossy().into_owned();
-                                self.start_job(false, false, false);
-                            }
-                            ui.add(egui::Label::new(path.to_string_lossy()).truncate())
-                                .on_hover_text(path.to_string_lossy());
-                        });
+                        ui.add(egui::Label::new(path.to_string_lossy()).truncate())
+                            .on_hover_text(path.display().to_string());
                     }
                 });
+            ui.add_space(6.);
+            if ui
+                .button(crate::tr!("Сканувати папки", "Scan folders"))
+                .clicked()
+            {
+                self.refresh_scope(ui.ctx());
+            }
         });
     }
 }

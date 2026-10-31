@@ -2,7 +2,7 @@ use crate::app::Disco;
 use crate::app::state::View;
 use crate::deletion;
 use crate::filesystem::drive_info;
-use crate::index::{Category, Index, RefreshPaths};
+use crate::index::{Index, RefreshPaths};
 use crate::scan::{
     ChangeTracker, Control, Event, Folder, background_priority, duplicates, spawn_scan,
 };
@@ -26,6 +26,7 @@ impl Disco {
             return;
         }
         self.leave_path_browser();
+        self.paths.snapshot.cancel();
         self.scan.restore_requested_root = None;
         let path = PathBuf::from(&self.browser.root);
         if !path.is_absolute() {
@@ -175,7 +176,7 @@ impl Disco {
                             self.browser.history.clear();
                             self.browser.table_root = None;
                             self.browser.expanded = HashSet::from([0]);
-                            self.browser.category = Category::All;
+                            // Keep a category explicitly chosen while the cache was loading.
                             if self.browser.view != View::Trash {
                                 self.browser.view = View::Folders;
                             }
