@@ -4402,16 +4402,24 @@ fn typing_c_identifiers_and_cpp_scope_opens_completion_without_a_shortcut() {
         return;
     };
     let root = PathBuf::from(root);
-    for (filename, source, input) in [
+    for (filename, source, input, ime) in [
         (
             "main.c",
             "struct array { int count; };\nvoid array_init(struct array *array);\nvoid f(void) {\n    \n}\n",
             "array_",
+            false,
         ),
         (
             "main.cpp",
-            "#include <vector>\nvoid f() {\n    \n}\n",
+            "#include <iostream>\n#include <vector>\nvoid f() {\n    \n    std::cout << \"OK\";\n}\n",
             "std::",
+            false,
+        ),
+        (
+            "ime.cpp",
+            "#include <iostream>\n#include <vector>\nvoid f() {\n    \n    std::cout << \"OK\";\n}\n",
+            "std::",
+            true,
         ),
     ] {
         let path = root.join("project").join(filename);
@@ -4448,12 +4456,26 @@ fn typing_c_identifiers_and_cpp_scope_opens_completion_without_a_shortcut() {
                 egui::text::CCursor::new(index),
             )));
         state.store(&ctx, id);
-        frame(
-            &mut app,
-            &ctx,
-            &mut time,
-            vec![egui::Event::Text(input.into())],
-        );
+        for c in input.chars() {
+            frame(
+                &mut app,
+                &ctx,
+                &mut time,
+                vec![if ime {
+                    egui::Event::Ime(egui::ImeEvent::Commit(c.to_string()))
+                } else {
+                    egui::Event::Text(c.to_string())
+                }],
+            );
+            // Native event loops need not repaint between a key event and
+            // the debounce deadline: do not hide that ordering with extra UI frames.
+            std::thread::sleep(Duration::from_millis(240));
+            assert_eq!(
+                ctx.memory(|m| m.focused()),
+                Some(id),
+                "completion must keep editor focus after {c}"
+            );
+        }
         let until = Instant::now() + Duration::from_secs(5);
         while app.languages.completion_count() == 0 && Instant::now() < until {
             frame(&mut app, &ctx, &mut time, vec![]);
@@ -4462,6 +4484,16 @@ fn typing_c_identifiers_and_cpp_scope_opens_completion_without_a_shortcut() {
         assert!(
             app.languages.completion_count() > 0,
             "automatic completion for {filename}: {input}"
+        );
+        frame(&mut app, &ctx, &mut time, vec![]);
+        let popup = ctx
+            .read_response(Id::unique("lsp-completion-bounds"))
+            .expect("visible completion overlay");
+        assert!(popup.rect.is_positive());
+        assert!(
+            ctx.content_rect().intersects(popup.rect),
+            "popup must be onscreen: {:?}",
+            popup.rect
         );
         let draft = app.editor.document.as_ref().unwrap().text.clone();
         assert!(draft.contains(input));

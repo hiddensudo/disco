@@ -601,9 +601,13 @@ fn run(
     let mut sessions: HashMap<(String, PathBuf), Session> = HashMap::new();
     let mut suppressed = HashSet::new();
     let mut last_sync: Option<Sync> = None;
+    let mut deferred: Option<Control> = None;
     let mut last_status = Instant::now() - Duration::from_secs(2);
     loop {
-        if let Some(sync) = latest.lock().unwrap().take() {
+        // Drop the mailbox lock before resolving roots, spawning or stopping
+        // processes. UI sync only ever swaps a small snapshot under this lock.
+        let sync = latest.lock().unwrap().take();
+        if let Some(sync) = sync {
             let enabled: HashSet<_> = sync.launches.iter().map(|l| l.id.clone()).collect();
             suppressed.retain(|id| enabled.contains(id));
             sessions.retain(|_, s| {
@@ -670,7 +674,11 @@ fn run(
             last_sync = Some(sync);
             last_status = Instant::now() - Duration::from_secs(2);
         }
-        match control.recv_timeout(Duration::from_millis(20)) {
+        match deferred
+            .take()
+            .map(Ok)
+            .unwrap_or_else(|| control.recv_timeout(Duration::from_millis(20)))
+        {
             Ok(Control::Quit) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
             Ok(Control::Stop(id, ack)) => {
                 suppressed.insert(id.clone());
@@ -694,6 +702,19 @@ fn run(
                 kind,
                 request,
             }) => {
+                // A request can wake recv_timeout after the loop's mailbox
+                // check. Apply its preceding document sync before validating
+                // the request version, including on an otherwise idle UI.
+                if latest.lock().unwrap().is_some() {
+                    deferred = Some(Control::Request {
+                        path,
+                        version,
+                        index,
+                        kind,
+                        request,
+                    });
+                    continue;
+                }
                 for s in sessions.values_mut() {
                     if s.docs.contains_key(&path) {
                         if let Err(message) = s.request(path.clone(), version, index, kind, request)

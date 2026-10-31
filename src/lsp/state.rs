@@ -304,7 +304,7 @@ impl State {
         let typed = ui.input(|i| {
             i.events
                 .iter()
-                .any(|e| matches!(e, egui::Event::Text(s) if !s.is_empty()))
+                .any(|e| matches!(e, egui::Event::Text(s) | egui::Event::Ime(egui::ImeEvent::Commit(s)) if !s.is_empty()))
         });
         if out.response.changed() && out.response.has_focus() && !read_only && typed {
             let prefix: String = text.chars().take(index).collect();
@@ -438,7 +438,7 @@ impl State {
             .order(egui::Order::Foreground)
             .fixed_pos(at)
             .show(ctx, |ui| {
-                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                let popup = egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.set_width(380.);
                     egui::ScrollArea::vertical()
                         .max_height(220.)
@@ -465,6 +465,11 @@ impl State {
                             }
                         });
                 });
+                ui.interact(
+                    popup.response.rect,
+                    egui::Id::unique("lsp-completion-bounds"),
+                    egui::Sense::hover(),
+                );
             });
     }
     #[cfg(test)]
