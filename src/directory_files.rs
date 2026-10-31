@@ -119,6 +119,29 @@ impl Files {
         self.revision = self.revision.wrapping_add(1);
     }
 
+    /// A content edit changes one row, not the directory's identity. Preserve
+    /// the visible listing instead of replacing it with a loading frame.
+    pub fn update_file(&mut self, path: &Path, bytes: Option<u64>) {
+        let Some(parent) = path.parent() else { return };
+        let Some(cached) = self.cache.get_mut(parent) else {
+            return;
+        };
+        let current = cached.listing.files.iter().find(|entry| entry.path == path);
+        if current.map(|entry| entry.bytes) == bytes {
+            return;
+        }
+        let listing = Arc::make_mut(&mut cached.listing);
+        listing.files.retain(|entry| entry.path != path);
+        if let Some(bytes) = bytes {
+            listing.files.push(Arc::new(Entry {
+                path: path.into(),
+                bytes,
+            }));
+        }
+        self.epoch = self.epoch.wrapping_add(1);
+        self.revision = self.revision.wrapping_add(1);
+    }
+
     pub fn get(&self, path: &Path) -> Option<&Arc<Listing>> {
         self.cache.get(path).map(|c| &c.listing)
     }
@@ -204,6 +227,44 @@ mod tests {
         assert!(files.files[0].path.ends_with("notes.md"));
         assert!(read(&root.join("absent")).error.is_some());
         fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn content_edits_update_one_row_without_dropping_the_visible_listing() {
+        let mut files = Files::default();
+        let path = Path::new("/workspace/main.rs");
+        let other = Arc::new(Entry {
+            path: "/workspace/other.rs".into(),
+            bytes: 10,
+        });
+        files.cache.insert(
+            "/workspace".into(),
+            Cached {
+                listing: Arc::new(Listing {
+                    files: vec![
+                        Arc::new(Entry {
+                            path: path.into(),
+                            bytes: 1,
+                        }),
+                        other.clone(),
+                    ],
+                    ..Default::default()
+                }),
+                touched: 0,
+            },
+        );
+        files.update_file(path, Some(2));
+        let visible = files.get(path.parent().unwrap()).unwrap();
+        assert_eq!(visible.files.len(), 2);
+        assert!(visible.files.iter().any(|f| f.path == path && f.bytes == 2));
+        assert!(visible.files.iter().any(|f| Arc::ptr_eq(f, &other)));
+        files.update_file(path, None);
+        assert_eq!(files.get(path.parent().unwrap()).unwrap().files.len(), 1);
+        files.update_file(path, Some(3));
+        assert_eq!(files.get(path.parent().unwrap()).unwrap().files.len(), 2);
+        assert!(
+            files.pending.is_empty(),
+            "content edits do not rescan a directory"
+        );
     }
     #[test]
     fn outdated_listings_are_discarded_and_cache_is_bounded() {

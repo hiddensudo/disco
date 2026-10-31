@@ -88,6 +88,7 @@ pub(super) struct Editor {
     pub document: Option<Document>,
     pub focused: bool,
     external_changed: bool,
+    pub(super) refreshing: bool,
     pub focus_on_load: bool,
     pub(super) keep_cursor: bool,
     preview_disk: Option<Stamp>,
@@ -205,18 +206,16 @@ impl Disco {
             .filter(|p| p.is_absolute());
         self.document_watch.configure(path, ctx);
         // Keep a coalesced event pending while a save job accepts its own stamp.
-        if self.editor.saving.is_some() {
+        if self.editor.saving.is_some() || self.editor.refreshing {
             return;
         }
-        if (self.document_watch.changed() || self.editor.external_changed && !self.editor.dirty())
-            && self.reload_changed_document(ctx)
-            && let Some(parent) = self.editor.path.as_ref().and_then(|p| p.parent())
-        {
-            self.files.invalidate(parent);
+        if self.document_watch.changed() || self.editor.external_changed && !self.editor.dirty() {
+            self.reload_changed_document(ctx);
         }
     }
     pub(in crate::app) fn reload_changed_document(&mut self, ctx: &egui::Context) -> bool {
-        if self.editor.untitled.is_some() || self.editor.saving.is_some() {
+        if self.editor.untitled.is_some() || self.editor.saving.is_some() || self.editor.refreshing
+        {
             return false;
         }
         let Some(path) = self.editor.path.clone() else {
@@ -240,6 +239,13 @@ impl Disco {
             }
             return false;
         }
+        self.files.update_file(
+            &path,
+            metadata
+                .as_ref()
+                .filter(|m| m.is_file())
+                .map(crate::scan::allocated),
+        );
         if self.editor.dirty() {
             self.editor.external_changed = true;
             self.editor.error = conflict.into();
@@ -249,14 +255,8 @@ impl Disco {
             if had_external_change || self.editor.error == conflict {
                 self.editor.error.clear();
             }
-            self.editor.focus_on_load |= ctx.memory(|m| {
-                m.focused() == Some(egui::Id::unique(("file-editor", &self.editor.path)))
-            });
-            self.editor.document = None;
-            self.editor.keep_cursor = true;
-            self.editor.preview_disk = metadata.as_ref().map(Stamp::of);
-            self.editor.markdown.reload(ctx);
-            self.file_preview.reload();
+            self.editor.refreshing = true;
+            self.file_preview.refresh();
         }
         ctx.request_repaint();
         true
@@ -328,6 +328,7 @@ impl Disco {
             self.editor.error.clear();
             self.editor.bookmark = None;
             self.editor.external_changed = false;
+            self.editor.refreshing = false;
             self.editor.path = desired.clone();
             self.editor.origin = Some(self.browser.category);
             self.editor.preview_disk = desired
@@ -348,7 +349,44 @@ impl Disco {
             return;
         }
         self.file_preview.select(desired, self.scan.report_revision);
-        self.file_preview.poll(ctx);
+        let refreshed = self.file_preview.poll(ctx) && self.editor.refreshing;
+        if refreshed {
+            self.editor.refreshing = false;
+            if self.editor.dirty() || self.editor.saving.is_some() {
+                // Typing/save may start while the worker is reading. Recheck
+                // here, not only when the change was first noticed.
+                if let Some(crate::file_preview::Content::Text { document, .. }) =
+                    &mut self.file_preview.content
+                {
+                    *document = None;
+                }
+                self.editor.external_changed = true;
+                self.editor.error = crate::tr!(
+                    "Файл змінився на диску. Незбережений текст залишено; запис потребує перевірки конфлікту.",
+                    "The file changed on disk. Your unsaved text was kept; saving requires a conflict check."
+                ).into();
+            } else {
+                if let Some(crate::file_preview::Content::Text {
+                    document: Some(next),
+                    ..
+                }) = &self.file_preview.content
+                {
+                    if let Some(previous) = &self.editor.document {
+                        remap_selection(ctx, &self.editor.path, &previous.text, &next.text);
+                    }
+                }
+                self.editor.document = None;
+                self.editor.keep_cursor = true;
+                self.editor.preview_disk = self
+                    .editor
+                    .path
+                    .as_ref()
+                    .and_then(|p| std::fs::symlink_metadata(p).ok())
+                    .as_ref()
+                    .map(Stamp::of);
+                self.editor.markdown.reload(ctx);
+            }
+        }
         if self.editor.document.is_none() {
             if let Some(crate::file_preview::Content::Text { document, .. }) =
                 &mut self.file_preview.content
@@ -431,6 +469,7 @@ impl Disco {
                 self.start_job(dup, force, automatic);
             }
             Action::Reload => {
+                self.editor.refreshing = false;
                 self.editor.document = None;
                 self.file_preview.reload();
             }
@@ -541,4 +580,41 @@ impl Disco {
             self.request_close(ctx);
         }
     }
+}
+
+/// Keep the selection attached to unchanged text around a single replacement.
+fn remap_selection(ctx: &egui::Context, path: &Option<PathBuf>, before: &str, after: &str) {
+    let id = egui::Id::unique(("file-editor", path));
+    let Some(mut state) = egui::TextEdit::load_state(ctx, id) else {
+        return;
+    };
+    let Some(mut range) = state.cursor.char_range() else {
+        return;
+    };
+    let prefix = before
+        .chars()
+        .zip(after.chars())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let old_len = before.chars().count();
+    let new_len = after.chars().count();
+    let suffix = before
+        .chars()
+        .rev()
+        .zip(after.chars().rev())
+        .take(old_len.min(new_len) - prefix)
+        .take_while(|(a, b)| a == b)
+        .count();
+    for cursor in [&mut range.primary, &mut range.secondary] {
+        let index = cursor.index.0;
+        cursor.index.0 = if index <= prefix {
+            index
+        } else if index >= old_len - suffix {
+            new_len - (old_len - index.min(old_len))
+        } else {
+            index.min(new_len - suffix)
+        };
+    }
+    state.cursor.set_char_range(Some(range));
+    state.store(ctx, id);
 }

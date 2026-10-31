@@ -223,13 +223,22 @@ impl Preview {
         self.texture = None;
         self.waiting_since = self.path.as_ref().map(|_| Instant::now());
     }
+    /// Refresh the same path without removing the last complete frame.
+    pub fn refresh(&mut self) {
+        self.generation = self.generation.wrapping_add(1);
+        self.waiting_since = self
+            .path
+            .as_ref()
+            .map(|_| Instant::now() - Duration::from_millis(100));
+    }
     pub fn restore_text(&mut self, path: std::path::PathBuf, revision: u64, content: Content) {
         self.select(Some(path), revision);
         self.waiting_since = None;
         self.job = None;
         self.content = Some(content);
     }
-    pub fn poll(&mut self, ctx: &eframe::egui::Context) {
+    pub fn poll(&mut self, ctx: &eframe::egui::Context) -> bool {
+        let mut changed = false;
         if let Some(rx) = &self.job {
             match rx.try_recv() {
                 Ok((generation, mut content)) => {
@@ -247,11 +256,13 @@ impl Preview {
                             rgba.shrink_to_fit();
                         }
                         self.content = Some(content);
+                        changed = true;
                     }
                 }
                 Err(mpsc::TryRecvError::Disconnected) => {
                     self.job = None;
                     if self.waiting_since.is_none() && self.path.is_some() {
+                        changed = true;
                         self.content = Some(Content::Error(
                             crate::tr!("Не вдалося прочитати файл", "Could not read the file")
                                 .into(),
@@ -284,6 +295,7 @@ impl Preview {
             }
             ctx.request_repaint_after(Duration::from_millis(100));
         }
+        changed
     }
 }
 

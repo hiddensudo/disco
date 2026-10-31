@@ -3184,9 +3184,20 @@ fn terminal_and_external_writers_update_the_active_file_without_scope_refresh_or
     use egui::{Key, Modifiers};
     use egui_term::BackendCommand;
     fn wait_text(app: &mut Disco, ctx: &egui::Context, time: &mut f64, text: &str) {
+        let must_stay_visible = app.editor.document.is_some();
         let end = Instant::now() + Duration::from_secs(5);
         while app.editor.document.as_ref().is_none_or(|d| d.text != text) && Instant::now() < end {
             frame(app, ctx, time, vec![]);
+            if must_stay_visible {
+                assert!(
+                    app.editor.document.is_some(),
+                    "live update must never remove the editor for a frame"
+                );
+                assert!(
+                    app.file_preview.content.is_some(),
+                    "live update must never show an empty preview"
+                );
+            }
             std::thread::sleep(Duration::from_millis(10));
         }
         assert_eq!(
@@ -3270,6 +3281,53 @@ fn terminal_and_external_writers_update_the_active_file_without_scope_refresh_or
             .char_range(),
         cursor
     );
+    // Insert above the selection, then remove it: anchor to unchanged text.
+    let inserted = format!("// 🦀 added above\n{fourth}");
+    fs::write(&path, &inserted).unwrap();
+    wait_text(&mut app, &ctx, &mut time, &inserted);
+    assert_eq!(
+        egui::TextEdit::load_state(&ctx, editor_id)
+            .unwrap()
+            .cursor
+            .char_range()
+            .unwrap()
+            .primary
+            .index
+            .0,
+        5 + "// 🦀 added above\n".chars().count()
+    );
+    fs::write(&path, fourth).unwrap();
+    wait_text(&mut app, &ctx, &mut time, fourth);
+    assert_eq!(
+        egui::TextEdit::load_state(&ctx, editor_id)
+            .unwrap()
+            .cursor
+            .char_range(),
+        cursor
+    );
+    // Start a refresh, then type while its worker is pending. Adoption must
+    // recheck dirtiness rather than replacing a draft created during IO.
+    fs::write(&path, "int raced = 8;\n").unwrap();
+    assert!(app.reload_changed_document(&ctx));
+    assert!(app.editor.document.is_some() && app.file_preview.content.is_some());
+    app.editor
+        .document
+        .as_mut()
+        .unwrap()
+        .text
+        .push_str("// local race\n");
+    let race_draft = app.editor.document.as_ref().unwrap().text.clone();
+    let end = Instant::now() + Duration::from_secs(3);
+    while app.editor.error.is_empty() && Instant::now() < end {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        assert_eq!(app.editor.document.as_ref().unwrap().text, race_draft);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(app.editor.error.contains("changed on disk"));
+    app.editor.document.as_mut().unwrap().text = fourth.into();
+    wait_text(&mut app, &ctx, &mut time, "int raced = 8;\n");
+    fs::write(&path, fourth).unwrap();
+    wait_text(&mut app, &ctx, &mut time, fourth);
     time += 3.;
     frame(&mut app, &ctx, &mut time, vec![]);
     frame(
@@ -3375,6 +3433,8 @@ fn terminal_and_external_writers_update_the_active_file_without_scope_refresh_or
     wait_text(&mut app, &ctx, &mut time, "int changed_during_save = 7;\n");
     // Read-only Markdown follows changes too; writing the inactive C++ tab
     // cannot replace the newly active file or switch its Read/Edit mode.
+    fs::write(&path, "pending update before switching tabs\n").unwrap();
+    assert!(app.reload_changed_document(&ctx));
     let markdown = root.join("files/notes.md");
     fs::write(&markdown, "# Before\n").unwrap();
     app.select_file(markdown.clone(), 9);
@@ -3387,5 +3447,9 @@ fn terminal_and_external_writers_update_the_active_file_without_scope_refresh_or
     wait_text(&mut app, &ctx, &mut time, "# After\n");
     assert_eq!(app.editor.path.as_ref(), Some(&markdown));
     assert!(!app.editor.markdown.editing && app.editor_read_only());
+    app.activate_tab(&path, &ctx);
+    wait_text(&mut app, &ctx, &mut time, "old inactive file\n");
+    fs::write(&path, "active again\n").unwrap();
+    wait_text(&mut app, &ctx, &mut time, "active again\n");
     assert!(app.scan.report.is_none() && !crate::snapshot::file().exists());
 }

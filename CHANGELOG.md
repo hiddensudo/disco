@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- External file edits update the visible document without a blank/loading frame. The previous buffer stays on screen until the background read is ready, unchanged syntax colors remain stable while parsing catches up, and cursor selections track insertions/deletions above them. File sizes update in the existing tree instead of clearing its directory listing; edits made during loading remain protected.
+
 - Opening the terminal no longer makes editor text disappear. Syntax formatting stays cached, while glyph layouts follow egui’s current font atlas after terminal fonts load or the atlas resets; document contents, selection and undo remain intact.
 
 - The active file now follows external edits independently of category auto-refresh, scan snapshots or terminal focus. A bounded background metadata monitor catches normal writes, atomic replacements and file removal/recreation. Clean documents reload with cursor, focus and zoom preserved; local drafts remain intact with conflict protection, and changes arriving during Save are processed after completion.

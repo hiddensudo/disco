@@ -115,6 +115,48 @@ fn parse(
     }
     parsed
 }
+/// Retain colors on unchanged text until the background parser catches up.
+/// The replaced region uses normal text color; it never borrows stale syntax.
+fn rebase(parsed: &mut Parsed, source: Arc<str>, generation: u64) {
+    let prefix = parsed
+        .source
+        .chars()
+        .zip(source.chars())
+        .take_while(|(a, b)| a == b)
+        .map(|(a, _)| a.len_utf8())
+        .sum::<usize>();
+    let suffix = parsed.source[prefix..]
+        .chars()
+        .rev()
+        .zip(source[prefix..].chars().rev())
+        .take_while(|(a, b)| a == b)
+        .map(|(a, _)| a.len_utf8())
+        .sum::<usize>();
+    let old_end = parsed.source.len() - suffix;
+    let new_end = source.len() - suffix;
+    let mut spans = Vec::new();
+    for (range, color) in &parsed.spans {
+        let end = range.end.min(prefix);
+        if range.start < end {
+            spans.push((range.start..end, *color));
+        }
+    }
+    if prefix < new_end {
+        spans.push((prefix..new_end, BASE));
+    }
+    for (range, color) in &parsed.spans {
+        let start = range.start.max(old_end);
+        if start < range.end {
+            spans.push((
+                new_end + start - old_end..new_end + range.end - old_end,
+                *color,
+            ));
+        }
+    }
+    parsed.source = source;
+    parsed.generation = generation;
+    parsed.spans = spans;
+}
 impl Syntax {
     fn request(&mut self, source: &str, extension: &str, ctx: &egui::Context) {
         if source == self.source.as_ref() && extension == self.extension && self.tx.is_some() {
@@ -123,6 +165,11 @@ impl Syntax {
         self.source = Arc::from(source);
         self.extension = extension.into();
         self.generation = self.generation.wrapping_add(1);
+        if let Some(parsed) = &mut self.parsed {
+            if parsed.extension == extension && !parsed.spans.is_empty() {
+                rebase(parsed, self.source.clone(), self.generation);
+            }
+        }
         self.revision = self.revision.wrapping_add(1);
         self.layout_job = None;
         if self.tx.is_none() {
@@ -305,6 +352,41 @@ mod tests {
             before.as_ref().unwrap(),
             after.as_ref().unwrap()
         ));
+    }
+    #[test]
+    fn changed_text_keeps_unaffected_colors_until_the_parser_finishes() {
+        let ss = two_face::syntax::extra_newlines();
+        let mut parsed = parse(
+            &ss,
+            &theme(),
+            Arc::from("let café = 42;\nlet last = 9;\n"),
+            "rs",
+            1,
+        );
+        for source in [
+            "let café = 420;\nlet last = 9;\n",
+            "// 🦀\nlet café = 420;\nlet last = 9;\n",
+            "let last = 9;\n",
+            "",
+            "let café = 42;\n",
+        ] {
+            rebase(&mut parsed, Arc::from(source), 2);
+            let mut end = 0;
+            for (range, _) in &parsed.spans {
+                assert_eq!(range.start, end);
+                assert!(source.is_char_boundary(range.start) && source.is_char_boundary(range.end));
+                end = range.end;
+            }
+            assert_eq!(end, source.len());
+            if source.contains("last") {
+                assert!(
+                    parsed
+                        .spans
+                        .iter()
+                        .any(|(r, c)| &source[r.clone()] == "9" && *c != BASE)
+                );
+            }
+        }
     }
     #[test]
     fn syntect_handles_multiline_comments_unicode_and_supported_languages() {

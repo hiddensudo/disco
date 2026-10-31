@@ -131,6 +131,9 @@ impl Disco {
             return true;
         }
         self.editor.focus_on_load = false;
+        // Preview owns the active worker; an inactive tab must not retain its
+        // in-flight flag after that worker is superseded by another path.
+        self.editor.refreshing = false;
         if let Some(old_path) = self.editor.path.clone() {
             if !self.tabs.order.contains(&old_path) {
                 self.tabs.order.push(old_path.clone());
