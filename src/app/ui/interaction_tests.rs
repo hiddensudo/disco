@@ -875,6 +875,12 @@ fn category_drag_lock_blank_editor_and_ctrl_tab_use_real_window_input() {
     let b = files.join("b.txt");
     app.select_file(a.clone(), 4096);
     wait_document(&mut app, &ctx, &mut time);
+    // Ctrl+Tab now visits existing tabs, so open both documents explicitly.
+    app.keep_preview_tab(&a);
+    app.select_file(b.clone(), 4096);
+    wait_document(&mut app, &ctx, &mut time);
+    app.activate_tab(&a, &ctx);
+    wait_document(&mut app, &ctx, &mut time);
     // A click far below a short Unicode document lands at the final character.
     let id = Id::unique(("file-editor", Some(a.clone())));
     frame(&mut app, &ctx, &mut time, vec![]);
@@ -957,7 +963,7 @@ fn category_drag_lock_blank_editor_and_ctrl_tab_use_real_window_input() {
     );
     wait_document(&mut app, &ctx, &mut time);
     assert_eq!(app.editor.path.as_ref(), Some(&a));
-    // At the first file there is no wrap, and collapsed children are skipped.
+    // At the first tab, backwards wraps to the last open tab.
     press_key(
         &mut app,
         &ctx,
@@ -965,7 +971,7 @@ fn category_drag_lock_blank_editor_and_ctrl_tab_use_real_window_input() {
         egui::Key::Tab,
         egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
     );
-    assert_eq!(app.editor.path.as_ref(), Some(&a));
+    assert_eq!(app.editor.path.as_ref(), Some(&b));
     assert!(!app.editor.dirty());
     for (name, expected) in [("c.txt", ""), ("d.txt", "last\n")] {
         let p = files.join(name);
@@ -3646,4 +3652,96 @@ fn focus_ctrl_f_searches_live_text_without_editing_and_preserves_terminal_routin
     );
     assert!(!app.editor.find.open);
     assert!(app.editor.dirty());
+}
+
+#[test]
+fn ctrl_tab_cycles_only_open_tabs_in_visual_order_with_wraparound() {
+    let Ok(root) = std::env::var("DISCO_TAB_CYCLE_FIXTURE") else {
+        let root = std::env::temp_dir().join(format!("disco-tab-cycle-{}", std::process::id()));
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::create_dir_all(root.join("files")).unwrap();
+        for name in ["a.txt", "b.txt", "c.txt", "unopened.txt"] {
+            fs::write(root.join("files").join(name), name).unwrap();
+        }
+        fs::write(root.join("config/layout.toml"), "language='en'\ntext_scale_version=1\nsave_scan=false\nauto_refresh=false\nall_files_auto_refresh=false\nanimations=false\n").unwrap();
+        let out = Command::new(std::env::current_exe().unwrap()).args(["--exact", "app::ui::interaction_tests::ctrl_tab_cycles_only_open_tabs_in_visual_order_with_wraparound", "--nocapture"])
+            .env("DISCO_TAB_CYCLE_FIXTURE", &root).env("DISCO_CONFIG_DIR", root.join("config"))
+            .env("XDG_DATA_HOME", root.join("data")).env("SHELL", "/bin/sh").output().unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            out.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return;
+    };
+    use egui::{Key, Modifiers};
+    let root = PathBuf::from(root);
+    let paths: Vec<_> = ["c.txt", "a.txt", "b.txt"]
+        .iter()
+        .map(|name| root.join("files").join(name))
+        .collect();
+    let ctx = egui::Context::default();
+    let mut time = 0.;
+    let mut app = Disco::new_with_path(
+        &eframe::CreationContext::_new_kittest(ctx.clone()),
+        Some(paths[0].clone()),
+    );
+    wait_document(&mut app, &ctx, &mut time);
+    for path in &paths[1..] {
+        app.select_file(path.clone(), 5);
+        wait_document(&mut app, &ctx, &mut time);
+        app.keep_preview_tab(path);
+    }
+    assert_eq!(app.tabs.order, paths);
+    // Recent activation order differs from visual order; a draft must survive.
+    app.activate_tab(&paths[0], &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    app.activate_tab(&paths[2], &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    app.activate_tab(&paths[1], &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    app.editor
+        .document
+        .as_mut()
+        .unwrap()
+        .text
+        .push_str(" draft");
+    app.editor.zoom.factor = 1.3;
+    for expected in [2, 0, 1, 2] {
+        press_key(&mut app, &ctx, &mut time, Key::Tab, Modifiers::CTRL);
+        assert_eq!(app.editor.path.as_ref(), Some(&paths[expected]));
+        assert_eq!(app.tabs.order, paths);
+        assert!(app.editor.pending.is_none());
+        assert_eq!(
+            ctx.memory(|m| m.focused()),
+            Some(Id::unique(("file-editor", Some(paths[expected].clone()))))
+        );
+    }
+    for expected in [1, 0, 2, 1] {
+        press_key(
+            &mut app,
+            &ctx,
+            &mut time,
+            Key::Tab,
+            Modifiers::CTRL | Modifiers::SHIFT,
+        );
+        assert_eq!(app.editor.path.as_ref(), Some(&paths[expected]));
+        assert_eq!(app.tabs.order, paths);
+    }
+    assert_eq!(app.editor.document.as_ref().unwrap().text, "a.txt draft");
+    assert_eq!(app.editor.zoom.factor, 1.3);
+    assert_eq!(fs::read_to_string(&paths[1]).unwrap(), "a.txt");
+    // Plain Shift+Tab remains an editor command, not a tab switch.
+    press_key(&mut app, &ctx, &mut time, Key::Tab, Modifiers::SHIFT);
+    assert_eq!(app.editor.path.as_ref(), Some(&paths[1]));
+    app.toggle_terminal(&ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    press_key(&mut app, &ctx, &mut time, Key::Tab, Modifiers::CTRL);
+    assert!(app.terminal_focused(&ctx));
+    assert_eq!(app.editor.path.as_ref(), Some(&paths[1]));
+    app.terminal.shutdown();
+    assert!(!app.tabs.order.contains(&root.join("files/unopened.txt")));
+    assert!(app.scan.report.is_none() && !crate::snapshot::file().exists());
 }

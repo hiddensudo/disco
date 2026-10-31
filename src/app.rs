@@ -396,7 +396,7 @@ impl eframe::App for Disco {
         self.application_shortcuts(ui.ctx());
         self.workspace_shortcuts(ui.ctx());
         self.document_zoom_shortcuts(ui.ctx());
-        self.file_cycle_shortcuts(ui.ctx());
+        self.tab_cycle_shortcuts(ui.ctx());
         if self.recycle.poll(ui.ctx()).is_some() {
             // Bin refreshes its own listing after every completed operation.
             // Only statvfs/drive metadata needs updating here, never the scan.

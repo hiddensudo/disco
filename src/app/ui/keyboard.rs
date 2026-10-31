@@ -13,7 +13,7 @@ struct Item {
 }
 impl Disco {
     /// Run before TextEdit: its code-editor Tab handling also accepts Ctrl+Tab.
-    pub(in crate::app) fn file_cycle_shortcuts(&mut self, ctx: &egui::Context) {
+    pub(in crate::app) fn tab_cycle_shortcuts(&mut self, ctx: &egui::Context) {
         if self.terminal_focused(ctx) || self.paths.editing {
             return;
         }
@@ -35,47 +35,30 @@ impl Disco {
             } else {
                 return;
             };
-        // Consume even at the edge or while busy: never insert indentation.
-        if self.scan.busy
-            || self.deletion.rx.is_some()
-            || self.recycle.busy
-            || self.editor.saving.is_some()
+        // Only the visible tab strip defines this order. Never open a file
+        // from the tree or let TextEdit interpret the chord as indentation.
+        if self.preferences.layout.preview_mode != crate::settings::PreviewMode::Focus
             || self.browser.view == View::Trash
+            || self.tabs.order.len() < 2
         {
             return;
         }
-        let items = self.keyboard_items();
+        let count = self.tabs.order.len();
         let current = self
-            .browser
-            .properties
+            .editor
+            .path
             .as_ref()
-            .and_then(|p| items.iter().position(|i| i.path == p.path));
-        let next = if backwards {
-            let end = current.unwrap_or(items.len());
-            items[..end].iter().rev().find(|i| !i.is_dir)
-        } else {
-            let start = current.map_or(0, |i| i + 1);
-            items[start..].iter().find(|i| !i.is_dir)
+            .and_then(|path| self.tabs.order.iter().position(|p| p == path));
+        let next = match current {
+            Some(index) => (index + if backwards { count - 1 } else { 1 }) % count,
+            None if backwards => count - 1,
+            None => 0,
         };
-        if let Some(item) = next {
-            let focused = ctx.memory(|m| m.focused())
-                == Some(egui::Id::unique(("file-editor", &self.editor.path)));
-            self.editor_action(
-                crate::app::editor::Action::SelectFile {
-                    path: item.path.clone(),
-                    bytes: item.bytes,
-                    focus_editor: focused,
-                },
-                ctx,
-            );
-            // Guarded transitions and async loads retain the ordinary editor
-            // protection; the old widget must not receive this key event.
-            self.sync_file_preview(ctx);
-            if !focused {
-                self.focus_area(crate::app::workspace_keyboard::Area::Tree, ctx);
-            }
-        }
+        let path = self.tabs.order[next].clone();
+        self.activate_tab(&path, ctx);
+        self.sync_file_preview(ctx);
     }
+
     pub(in crate::app) fn keyboard_navigation(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx();
         if self.terminal_focused(ctx) || self.paths.editing {

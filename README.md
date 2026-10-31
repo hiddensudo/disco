@@ -82,7 +82,7 @@ The bottom-left **···** menu contains Large files, Cleanup and Duplicates. De
 | F5 | Refresh the current scope |
 | Ctrl+T | New in-memory text tab; Ctrl+S chooses its first save path |
 | Ctrl+S / Ctrl+N | Save / create a file, including `new_folder/file.txt` |
-| Ctrl+Tab / Ctrl+Shift+Tab | Preview the next / previous visible file |
+| Ctrl+Tab / Ctrl+Shift+Tab | Next / previous open tab, wrapping |
 | Ctrl+Alt+arrows | Move focus between panels |
 | Ctrl+Shift+C / V | Copy / paste in the terminal |
 

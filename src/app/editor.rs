@@ -62,11 +62,6 @@ pub(super) enum Action {
     OpenPath(crate::path_input::Resolved),
     NewFile(PathBuf),
     NewTextTab(PathBuf),
-    SelectFile {
-        path: PathBuf,
-        bytes: u64,
-        focus_editor: bool,
-    },
     Reload,
     Scan {
         root: String,
@@ -423,10 +418,7 @@ impl Disco {
             || (self.preferences.layout.preview_mode == PreviewMode::Focus
                 && matches!(
                     action,
-                    Action::SelectFile { .. }
-                        | Action::Navigate(_)
-                        | Action::NewFile(_)
-                        | Action::NewTextTab(_)
+                    Action::Navigate(_) | Action::NewFile(_) | Action::NewTextTab(_)
                 ));
         if !browsing && (self.editor.dirty() || self.editor.saving.is_some()) {
             self.editor.pending = Some(action);
@@ -450,15 +442,6 @@ impl Disco {
             Action::NewTextTab(directory) => self.open_empty_tab(directory, ctx),
             Action::NewFile(directory) => {
                 self.new_file = Some(super::new_file::Draft::new(directory));
-            }
-            Action::SelectFile {
-                path,
-                bytes,
-                focus_editor,
-            } => {
-                self.preview_keyboard_file(path.clone(), bytes);
-                self.browser.scroll_to = Some(path);
-                self.editor.focus_on_load = focus_editor;
             }
             Action::Scan {
                 root,

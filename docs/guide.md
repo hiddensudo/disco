@@ -191,7 +191,7 @@ Settings → Shortcuts records a combination when you click its field and press 
 | Delete | Move selection to Trash after confirmation |
 | Ctrl+N | Create a file; `new_folder/file.txt` also creates parents |
 | Ctrl+S | Save without leaving the editor |
-| Ctrl+Tab / Ctrl+Shift+Tab | Next / previous visible file, skipping folders |
+| Ctrl+Tab / Ctrl+Shift+Tab | Next / previous open tab, wrapping |
 | Ctrl+F | Focus: find in file; Overview: filename search |
 | F5 | Refresh the current scope |
 | Alt+Home | Open configured Home |
@@ -202,7 +202,7 @@ Settings → Shortcuts records a combination when you click its field and press 
 | Ctrl+Shift+↑ / ↓ in categories | Reorder the selected category, when unlocked |
 | Tab / Shift+Tab, Space / Enter, Escape | Operate controls and dialogs |
 
-File-list shortcuts do not run while typing in text fields. Ctrl+Tab follows visible file-list order, not tab order, and stops at the ends. System clipboard shortcuts work in editable fields. New-file input keeps focus after an invalid path and never overwrites an existing file; a leading `/` remains relative to the selected folder.
+File-list shortcuts do not run while typing in text fields. In Focus, Ctrl+Tab switches open tabs left to right, and Ctrl+Shift+Tab switches right to left, wrapping at either end. The visible tab strip determines the order, independently of activation history or the file tree; no new files are opened. Plain Shift+Tab retains its editor behavior. System clipboard shortcuts work in editable fields. New-file input keeps focus after an invalid path and never overwrites an existing file; a leading `/` remains relative to the selected folder.
 
 ## Current limitations
 
