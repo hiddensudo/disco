@@ -225,3 +225,11 @@ File zoom changes by 10 percentage points by default. Set a custom step under Se
 Direct-file windows respect Show categories. Home and breadcrumbs reuse an existing snapshot, or read only the selected directory if it is outside the snapshot. Unknown folder sizes show —. Scan calculates recursive sizes explicitly; navigation keeps open tabs and drafts.
 
 Document controls use one toolbar: Save/Copy on the left, Markdown Read/Edit on the right beside Reload. Narrow panels use icon actions and shorter mode labels. Zoom out, percentage reset (Fit for images) and zoom in are in the bottom status bar; full document status is available on hover.
+
+### Reading Markdown
+
+The reader uses a separate heading hierarchy, bundled Inter bold, a true monospace code face and physical pixel-aligned font sizes. The active theme controls surfaces and link colors. Tables have bold headers and subtle row rules.
+
+Code blocks grow to their full height and wrap long lines; scroll the document rather than an inner code pane. The vector Copy code button copies the selected code, or the entire block when nothing is selected. `<details>` / `<summary>` sections use native disclosures and render their body only when opened; `open` and nesting are supported up to eight levels. Other HTML remains literal text, without a browser or scripts. Missing local images show their alt text; remote images still require no automatic network requests.
+
+These are preview-only changes: Read/Edit keeps the original Markdown, draft and undo history. Use file zoom for a larger or smaller reading view.

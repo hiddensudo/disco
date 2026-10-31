@@ -1,5 +1,6 @@
 //! Native Markdown reader. Parsing is delegated to pulldown/CommonMark;
 //! document modes keep the existing editor, undo state and save path intact.
+mod details;
 use eframe::egui::{
     self,
     load::{ImageLoadResult, ImageLoader, ImagePoll, LoadError, SizeHint},
@@ -20,13 +21,15 @@ pub fn supported(path: &Path) -> bool {
 #[derive(Default)]
 pub struct Reader {
     pub editing: bool,
+    depth: u8,
+    details: Vec<details::Detail>,
     source: Option<String>,
     path: Option<PathBuf>,
     rendered: String,
     cache: Option<CommonMarkCache>,
     links: Vec<(String, Target)>,
     images: Vec<String>,
-    font_size: Option<u32>,
+    font_size: Option<(u32, u32)>,
     #[cfg(test)]
     rebuilds: usize,
 }
@@ -102,6 +105,9 @@ impl Reader {
         {
             self.rebuilds += 1;
         }
+        let (display, details) = details::extract(text, self.depth);
+        self.details = details;
+        let text = display.as_str();
         let base = path.parent().unwrap_or(Path::new("/"));
         let mut replacements = Vec::new();
         let mut heading: Option<(std::ops::Range<usize>, String, bool)> = None;
@@ -187,42 +193,165 @@ impl Reader {
         }
     }
     pub fn reload(&mut self, ctx: &egui::Context) {
+        for detail in &self.details {
+            detail.reader.borrow_mut().reload(ctx);
+        }
         for uri in &self.images {
             ctx.forget_image(uri);
         }
         self.source = None;
     }
     pub fn show(&mut self, ui: &mut egui::Ui, path: &Path, text: &str) -> Option<Target> {
+        self.show_document(ui, path, text, true)
+    }
+    fn show_document(
+        &mut self,
+        ui: &mut egui::Ui,
+        path: &Path,
+        text: &str,
+        scroll: bool,
+    ) -> Option<Target> {
         self.prepare(path, text);
         let loader = install_loader(ui.ctx());
-        let font_size = ui.style().text_styles[&egui::TextStyle::Body]
-            .size
-            .to_bits();
+        // Global UI 100% uses 16 * 0.85 points; retain UI/file zoom while giving
+        // the reader its own typography. Nested disclosures inherit these fonts.
+        let scale = ui.style().text_styles[&egui::TextStyle::Body].size / 13.6;
+        let px = ui.ctx().pixels_per_point();
+        let crisp = |size: f32| (size * scale * px).round().max(1.) / px;
+        if !ui
+            .style()
+            .text_styles
+            .contains_key(&egui::TextStyle::Name("Markdown Body".into()))
+        {
+            let style = ui.style_mut();
+            style.visuals.override_text_color = None;
+            style.visuals.extreme_bg_color = style.visuals.widgets.noninteractive.bg_fill;
+            style.visuals.code_bg_color = style.visuals.extreme_bg_color;
+            style.spacing.item_spacing = egui::vec2(4., 4. * scale);
+            style.spacing.button_padding = egui::vec2(6., 3.);
+            style.text_styles.insert(
+                egui::TextStyle::Body,
+                egui::FontId::proportional(crisp(14.)),
+            );
+            style.text_styles.insert(
+                egui::TextStyle::Monospace,
+                egui::FontId::monospace(crisp(13.)),
+            );
+            style.text_styles.insert(
+                egui::TextStyle::Name("Markdown Body".into()),
+                egui::FontId::proportional(crisp(14.)),
+            );
+            style.text_styles.insert(
+                egui::TextStyle::Name("Markdown Bold".into()),
+                crate::art::bold(crisp(14.)),
+            );
+            for (i, size) in [28., 22., 19., 17., 15., 14.].into_iter().enumerate() {
+                style.text_styles.insert(
+                    egui::TextStyle::Name(format!("Markdown H{}", i + 1).into()),
+                    crate::art::bold(crisp(size)),
+                );
+            }
+        }
+        ui.ctx().data_mut(|d| {
+            d.insert_temp(
+                egui::Id::unique("disco-markdown-image-label"),
+                crate::tr!("Зображення недоступне", "Image unavailable").to_string(),
+            );
+            d.insert_temp(
+                egui::Id::unique("disco-markdown-copy-label"),
+                crate::tr!("Копіювати код", "Copy code").to_string(),
+            )
+        });
+        let font_size = (
+            ui.style().text_styles[&egui::TextStyle::Body]
+                .size
+                .to_bits(),
+            px.to_bits(),
+        );
         if self.font_size != Some(font_size) {
             self.cache.as_mut().unwrap().clear_viewers();
             self.font_size = Some(font_size);
         }
         ui.style_mut().visuals.dark_mode = crate::branding::dark(ui.visuals().panel_fill);
-        CommonMarkViewer::new()
+        let nested_target = std::cell::RefCell::new(None);
+        let disclosure_changed = std::cell::Cell::new(false);
+        let details = &self.details;
+        let html = |ui: &mut egui::Ui, raw: &str| {
+            let index = raw
+                .trim()
+                .strip_prefix("<div data-disco-details=\"")
+                .and_then(|s| s.split('"').next())
+                .and_then(|s| s.parse::<usize>().ok());
+            if let Some(detail) = index.and_then(|i| details.get(i)) {
+                ui.end_row();
+                let response = ui
+                    .vertical(|ui| {
+                        egui::CollapsingHeader::new(&detail.title)
+                            .id_salt(("markdown-details", path, index))
+                            .open(Some(detail.expanded.get()))
+                            .show(ui, |ui| {
+                                if let Some(target) = detail.reader.borrow_mut().show_document(
+                                    ui,
+                                    path,
+                                    &detail.source,
+                                    false,
+                                ) {
+                                    *nested_target.borrow_mut() = Some(target);
+                                }
+                            })
+                    })
+                    .inner;
+                ui.end_row();
+                ui.interact(
+                    response.header_response.rect,
+                    egui::Id::unique(("markdown-details-toggle", path, index.unwrap())),
+                    egui::Sense::hover(),
+                );
+                if response.header_response.clicked() {
+                    detail.expanded.set(!detail.expanded.get());
+                    disclosure_changed.set(true);
+                }
+            } else {
+                ui.label(raw);
+            }
+        };
+        let viewer = CommonMarkViewer::new()
+            .render_html_fn(Some(&html))
+            .syntax_theme_light("InspiredGitHub")
             .enable_scroll_to_heading(true)
-            .max_image_width(Some(ui.available_width().max(1.) as usize))
-            .show_scrollable(
-                egui::Id::unique(("markdown-reader", path)),
+            .max_image_width(Some((ui.available_width() - 48. * scale).max(1.) as usize));
+        let id = egui::Id::unique(("markdown-reader", path));
+        if scroll {
+            viewer.show_scrollable(
+                id,
                 ui,
                 self.cache.as_mut().unwrap(),
                 &CommonMarkScrollOptions::default()
                     .viewport_cache(true)
-                    .horizontal_scrolling(true),
+                    .horizontal_scrolling(false)
+                    .content_margin(egui::Margin::symmetric(
+                        if ui.available_width() < 400. { 12 } else { 24 },
+                        18,
+                    )),
                 &self.rendered,
             );
+        } else {
+            viewer.show_with_id(id, ui, self.cache.as_mut().unwrap(), &self.rendered);
+        }
+        if disclosure_changed.get() {
+            self.cache.as_mut().unwrap().clear_viewers();
+            ui.ctx().request_repaint();
+        }
         let evicted = std::mem::take(&mut *loader.evicted.lock().unwrap());
         for uri in evicted {
             ui.ctx().forget_image(&uri);
         }
-        self.links
-            .iter()
-            .find(|(uri, _)| self.cache.as_ref().unwrap().get_link_hook(uri) == Some(true))
-            .map(|(_, target)| target.clone())
+        nested_target.into_inner().or_else(|| {
+            self.links
+                .iter()
+                .find(|(uri, _)| self.cache.as_ref().unwrap().get_link_hook(uri) == Some(true))
+                .map(|(_, target)| target.clone())
+        })
     }
 }
 
@@ -422,5 +551,94 @@ mod tests {
         assert_eq!(reader.rebuilds, 1);
         reader.prepare(path, "# Changed");
         assert_eq!(reader.rebuilds, 2);
+    }
+}
+
+#[cfg(test)]
+mod code_widget_tests {
+    use eframe::egui::{self, FontId, Pos2, Rect, Vec2};
+    #[test]
+    fn tall_code_uses_the_document_scroll_and_vector_copy_copies_all_lines() {
+        let source = (0..140)
+            .map(|i| format!("line {i}: hello world\n"))
+            .collect::<String>();
+        let ctx = egui::Context::default();
+        let run = |events| {
+            let out = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(640., 260.))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    let scroll = egui::ScrollArea::vertical().show(ui, |ui| {
+                        let mut layout =
+                            |ui: &egui::Ui, text: &dyn egui::TextBuffer, width: f32| {
+                                let mut job = egui::text::LayoutJob::simple(
+                                    text.as_str().into(),
+                                    FontId::monospace(13.),
+                                    egui::Color32::WHITE,
+                                    width,
+                                );
+                                for s in &mut job.sections {
+                                    s.format.line_height = Some(20.);
+                                }
+                                ui.fonts_mut(|f| f.layout_job(job))
+                            };
+                        let (_, galley) = egui_commonmark_backend::elements::code_block(
+                            ui,
+                            600.,
+                            &source,
+                            &mut layout,
+                            None,
+                        );
+                        assert_eq!(galley.rows.len(), 140);
+                        assert!(galley.size().y > 2700., "code must retain its full height");
+                    });
+                    assert!(scroll.content_size.y > 2700.);
+                },
+            );
+            out
+        };
+        let first = run(vec![]);
+        let mut text_shapes = Vec::new();
+        fn collect(shape: &egui::epaint::Shape, out: &mut Vec<String>) {
+            match shape {
+                egui::epaint::Shape::Text(t) => out.push(t.galley.text().into()),
+                egui::epaint::Shape::Vec(v) => {
+                    for s in v {
+                        collect(s, out)
+                    }
+                }
+                _ => {}
+            }
+        }
+        for s in &first.shapes {
+            collect(&s.shape, &mut text_shapes);
+        }
+        assert!(
+            !text_shapes
+                .iter()
+                .any(|s| s.contains('🗐') || s.contains('✔'))
+        );
+        first.drop_without_applying_deltas();
+        // The copy control stays at the code block's top-right, not at its far bottom.
+        let pos = Pos2::new(600. - 18., 17.);
+        run(vec![egui::Event::PointerMoved(pos)]).drop_without_applying_deltas();
+        run(vec![egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        }])
+        .drop_without_applying_deltas();
+        let out = run(vec![egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        }]);
+        assert!(out.platform_output.commands.iter().any(|cmd| matches!(cmd,egui::OutputCommand::CopyText(text) if text==source.trim_end_matches('\n'))));
+        out.drop_without_applying_deltas();
     }
 }

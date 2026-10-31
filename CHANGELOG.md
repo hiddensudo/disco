@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- Markdown reading has its own typography: real bold headings, comfortable line spacing, theme-aware links/tables and a true monospace code face at physical pixel-aligned sizes. Code blocks expand to their full height with wrapped long lines and a vector copy/check control. Details/summary sections use lazy native disclosures; missing local images show their alt text. Read/Edit retains the source buffer, cursor and undo state.
+
 - Document actions and the Markdown Read/Edit segment share a single toolbar, with compact controls in narrow inspectors. File zoom, Fit/reset and zoom buttons now sit in the bottom status bar beside truncated document metadata.
 
 - Direct-file windows retain the category rail and existing scan snapshot. Home and breadcrumbs reuse known folders or browse an asynchronous, bounded single-directory listing without recursively scanning. Unmeasured folder sizes show a dash; Scan explicitly calculates sizes. Open tabs and drafts remain intact.

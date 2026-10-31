@@ -224,7 +224,11 @@ impl Disco {
         let mut markdown_target = None;
         let viewport = egui::Frame::new()
             .fill(color(&t.background))
-            .stroke(Stroke::new(1., color(&t.border)))
+            .stroke(if markdown && !self.editor.markdown.editing {
+                Stroke::NONE
+            } else {
+                Stroke::new(1., color(&t.border))
+            })
             .corner_radius(t.radius)
             .inner_margin(8.)
             .show(ui, |ui| {
