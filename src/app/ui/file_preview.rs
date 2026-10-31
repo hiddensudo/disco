@@ -224,11 +224,11 @@ impl Disco {
                 .on_hover_text(help)
                 .clicked()
                 {
-                    self.file_preview.zoom = match action {
-                        0 => 1.,
-                        1 => (self.file_preview.zoom / 1.25).max(1.),
-                        _ => (self.file_preview.zoom * 1.25).min(8.),
-                    };
+                    match action {
+                        0 => self.editor.zoom.factor = 1.,
+                        1 => self.editor.zoom.change(-1., true),
+                        _ => self.editor.zoom.change(1., true),
+                    }
                 }
                 x += w + 6.;
             }
@@ -291,16 +291,21 @@ impl Disco {
         }
         let markdown = path.as_deref().is_some_and(crate::markdown::supported)
             && matches!(self.file_preview.content, Some(Content::Text { .. }));
-        if markdown {
+        if matches!(
+            self.file_preview.content,
+            Some(Content::Text { .. } | Content::Image { .. })
+        ) {
             ui.horizontal(|ui| {
-                for (editing, label, id) in [
-                    (false, crate::tr!("Читання", "Read"), "markdown-read"),
-                    (true, crate::tr!("Редагування", "Edit"), "markdown-edit"),
-                ] {
-                    let response =
-                        ui.selectable_value(&mut self.editor.markdown.editing, editing, label);
-                    ui.interact(response.rect, egui::Id::unique(id), Sense::hover());
+                if markdown {
+                    for (editing,label,id) in [(false,crate::tr!("Читання","Read"),"markdown-read"),(true,crate::tr!("Редагування","Edit"),"markdown-edit")] {
+                        let response=ui.selectable_value(&mut self.editor.markdown.editing,editing,label);
+                        ui.interact(response.rect,egui::Id::unique(id),Sense::hover());
+                    }
                 }
+                if ui.small_button(format!("{:.0}%",self.editor.zoom.factor*100.)).on_hover_text(crate::tr!(
+                    "Масштаб файла · Ctrl+Plus / Ctrl+Minus або Ctrl + коліщатко. Натисни для 100%.",
+                    "File zoom · Ctrl+Plus / Ctrl+Minus or Ctrl + mouse wheel. Click for 100%."
+                )).clicked() {self.editor.zoom.factor=1.;}
             });
         }
         ui.add_space(8.);
@@ -334,6 +339,14 @@ impl Disco {
         } else {
             room
         };
+        let content_rect = Rect::from_min_size(ui.cursor().min, Vec2::new(width, height));
+        self.document_zoom_wheel(ui, content_rect);
+        let zoom = self.editor.zoom;
+        let anchor = ui
+            .input(|i| i.pointer.hover_pos())
+            .filter(|p| content_rect.contains(*p))
+            .map(|p| p - content_rect.min)
+            .unwrap_or(Vec2::ZERO);
         let mut text_changed = false;
         let mut markdown_target = None;
         let viewport = egui::Frame::new()
@@ -359,6 +372,9 @@ impl Disco {
                         })
                         .unwrap_or_default();
                     ui.set_max_height(inner.y);
+                    for font in ui.style_mut().text_styles.values_mut() {
+                        font.size *= zoom.factor;
+                    }
                     markdown_target = self
                         .editor
                         .markdown
@@ -367,121 +383,134 @@ impl Disco {
                     // Saving snapshots the document; keep this widget enabled
                     // so focus, cursor, selection and further typing survive IO.
                     let busy = self.scan.busy;
-                    let font =
-                        FontId::monospace(13. * self.preferences.layout.effective_text_scale());
-                    egui::ScrollArea::both()
-                        .id_salt(("editable-content", &path))
-                        .auto_shrink([false, false])
-                        .max_height(inner.y)
-                        .show(ui, |ui| {
-                            ui.set_min_size(inner);
-                            ui.horizontal_top(|ui| {
-                                let gutter_left = ui.cursor().min.x;
-                                ui.allocate_space(Vec2::new(30., 0.));
-                                let mut buffer = doc.buffer_with_access(!read_only);
-                                let syntax = &mut self.syntax;
-                                let mut layouter =
-                                    |ui: &egui::Ui, buffer: &dyn egui::TextBuffer, _width: f32| {
-                                        syntax.layout(
-                                            ui,
-                                            buffer.as_str(),
-                                            font.clone(),
-                                            path.as_deref(),
-                                            color(&t.text),
-                                        )
-                                    };
-                                let mut output = ui
-                                    .add_enabled_ui(!busy, |ui| {
-                                        egui::TextEdit::multiline(&mut buffer)
-                                            .id(egui::Id::unique(("file-editor", &path)))
-                                            .code_editor()
-                                            .layouter(&mut layouter)
-                                            .font(font.clone())
-                                            .frame(egui::Frame::NONE)
-                                            .margin(Vec2::new(2., 0.))
-                                            .desired_width(f32::INFINITY)
-                                            .desired_rows(1)
-                                            // Keep hit testing below short documents inside
-                                            // TextEdit, so egui maps the click to EOF.
-                                            .min_size(Vec2::new(0., inner.y))
-                                            .char_limit(128 * 1024)
-                                            .show(ui)
-                                    })
-                                    .inner;
-                                text_changed = output.response.changed();
-                                let blank_gutter = Rect::from_min_max(
-                                    Pos2::new(
-                                        gutter_left,
-                                        output.galley_pos.y + output.galley.size().y,
-                                    ),
-                                    Pos2::new(
-                                        output.response.rect.left(),
-                                        output.response.rect.bottom(),
-                                    ),
-                                );
-                                if !busy
-                                    && blank_gutter.is_positive()
-                                    && ui
-                                        .interact(
-                                            blank_gutter,
-                                            output.response.id.with("blank-gutter"),
-                                            Sense::click(),
-                                        )
-                                        .on_hover_cursor(egui::CursorIcon::Text)
-                                        .clicked()
-                                {
-                                    output.response.request_focus();
-                                    output.state.cursor.set_char_range(Some(
-                                        egui::text::CCursorRange::one(egui::text::CCursor::new(
-                                            doc.text.chars().count(),
-                                        )),
-                                    ));
-                                    output.state.clone().store(ui.ctx(), output.response.id);
-                                }
-                                self.editor.focused |= output.response.has_focus();
-                                let clip = ui.clip_rect();
-                                for (n, row) in output.galley.rows.iter().enumerate() {
-                                    let y = output.galley_pos.y + row.pos.y;
-                                    if y + row.size.y < clip.top() {
-                                        continue;
-                                    }
-                                    if y > clip.bottom() {
-                                        break;
-                                    }
-                                    ui.painter().text(
-                                        Pos2::new(output.galley_pos.x - 12., y + row.size.y * 0.5),
-                                        Align2::RIGHT_CENTER,
-                                        (n + 1).to_string(),
+                    let font = FontId::monospace(
+                        13. * self.preferences.layout.effective_text_scale() * zoom.factor,
+                    );
+                    zoom.scroll(
+                        egui::ScrollArea::both().id_salt(("editable-content", &path)),
+                        ui,
+                        ("editable-content", &path),
+                        anchor,
+                    )
+                    .auto_shrink([false, false])
+                    .max_height(inner.y)
+                    .show(ui, |ui| {
+                        ui.set_min_size(inner);
+                        ui.horizontal_top(|ui| {
+                            let gutter_left = ui.cursor().min.x;
+                            ui.allocate_space(Vec2::new(30., 0.));
+                            let mut buffer = doc.buffer_with_access(!read_only);
+                            let syntax = &mut self.syntax;
+                            let mut layouter =
+                                |ui: &egui::Ui, buffer: &dyn egui::TextBuffer, _width: f32| {
+                                    syntax.layout(
+                                        ui,
+                                        buffer.as_str(),
                                         font.clone(),
-                                        color(&t.muted),
-                                    );
+                                        path.as_deref(),
+                                        color(&t.text),
+                                    )
+                                };
+                            let mut output = ui
+                                .add_enabled_ui(!busy, |ui| {
+                                    egui::TextEdit::multiline(&mut buffer)
+                                        .id(egui::Id::unique(("file-editor", &path)))
+                                        .code_editor()
+                                        .layouter(&mut layouter)
+                                        .font(font.clone())
+                                        .frame(egui::Frame::NONE)
+                                        .margin(Vec2::new(2., 0.))
+                                        .desired_width(f32::INFINITY)
+                                        .desired_rows(1)
+                                        // Keep hit testing below short documents inside
+                                        // TextEdit, so egui maps the click to EOF.
+                                        .min_size(Vec2::new(0., inner.y))
+                                        .char_limit(128 * 1024)
+                                        .show(ui)
+                                })
+                                .inner;
+                            text_changed = output.response.changed();
+                            let blank_gutter = Rect::from_min_max(
+                                Pos2::new(
+                                    gutter_left,
+                                    output.galley_pos.y + output.galley.size().y,
+                                ),
+                                Pos2::new(
+                                    output.response.rect.left(),
+                                    output.response.rect.bottom(),
+                                ),
+                            );
+                            if !busy
+                                && blank_gutter.is_positive()
+                                && ui
+                                    .interact(
+                                        blank_gutter,
+                                        output.response.id.with("blank-gutter"),
+                                        Sense::click(),
+                                    )
+                                    .on_hover_cursor(egui::CursorIcon::Text)
+                                    .clicked()
+                            {
+                                output.response.request_focus();
+                                output.state.cursor.set_char_range(Some(
+                                    egui::text::CCursorRange::one(egui::text::CCursor::new(
+                                        doc.text.chars().count(),
+                                    )),
+                                ));
+                                output.state.clone().store(ui.ctx(), output.response.id);
+                            }
+                            self.editor.focused |= output.response.has_focus();
+                            let clip = ui.clip_rect();
+                            for (n, row) in output.galley.rows.iter().enumerate() {
+                                let y = output.galley_pos.y + row.pos.y;
+                                if y + row.size.y < clip.top() {
+                                    continue;
                                 }
-                            });
+                                if y > clip.bottom() {
+                                    break;
+                                }
+                                ui.painter().text(
+                                    Pos2::new(output.galley_pos.x - 12., y + row.size.y * 0.5),
+                                    Align2::RIGHT_CENTER,
+                                    (n + 1).to_string(),
+                                    font.clone(),
+                                    color(&t.muted),
+                                );
+                            }
                         });
+                    });
                 } else {
                     match &self.file_preview.content {
                         Some(Content::Image { original, .. }) => {
                             if let Some(texture) = &self.file_preview.texture {
-                                let size = fitted_image(*original, inner) * self.file_preview.zoom;
-                                egui::ScrollArea::both()
-                                    .id_salt(("image-content", &path, compact))
-                                    .auto_shrink([false, false])
-                                    .max_height(inner.y)
-                                    .show(ui, |ui| {
-                                        let (rect, _) =
-                                            ui.allocate_exact_size(size.max(inner), Sense::hover());
-                                        ui.painter().image(
-                                            texture.id(),
-                                            Rect::from_center_size(rect.center(), size),
-                                            Rect::from_min_max(Pos2::ZERO, egui::pos2(1., 1.)),
-                                            egui::Color32::WHITE,
-                                        );
-                                    });
+                                let size = fitted_image(*original, inner) * zoom.factor;
+                                zoom.scroll(
+                                    egui::ScrollArea::both().id_salt((
+                                        "image-content",
+                                        &path,
+                                        compact,
+                                    )),
+                                    ui,
+                                    ("image-content", &path, compact),
+                                    anchor,
+                                )
+                                .auto_shrink([false, false])
+                                .max_height(inner.y)
+                                .show(ui, |ui| {
+                                    let (rect, _) =
+                                        ui.allocate_exact_size(size.max(inner), Sense::hover());
+                                    ui.painter().image(
+                                        texture.id(),
+                                        Rect::from_center_size(rect.center(), size),
+                                        Rect::from_min_max(Pos2::ZERO, egui::pos2(1., 1.)),
+                                        egui::Color32::WHITE,
+                                    );
+                                });
                             }
                         }
                         Some(Content::Text { display_source, .. }) => {
                             let font = FontId::monospace(
-                                13. * self.preferences.layout.effective_text_scale(),
+                                13. * self.preferences.layout.effective_text_scale() * zoom.factor,
                             );
                             let galley = self.syntax.layout(
                                 ui,
@@ -554,6 +583,7 @@ impl Disco {
         {
             self.keep_preview_tab(path);
         }
+        self.editor.zoom.drawn();
         if text_changed {
             self.note_editor_change(ui.ctx());
         }

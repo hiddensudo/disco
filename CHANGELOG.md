@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- File zoom through Ctrl+Plus/Minus and Ctrl+wheel, independent of UI/sidebar scale. Each Focus tab retains its session zoom; text/Markdown support 50–300%, images 25–800% of Fit, with a percentage reset.
+
 - Bundled category icons follow the theme text color in the sidebar and icon picker. Folders, images and documents use distinct open line symbols that stay legible on light, pink and dark surfaces; imported artwork keeps its original colors.
 
 - Soft Rose: a gentle pink preset with distinctly pink backgrounds and panels, a dusty rose accent and warm dark text. New bundled presets are added to existing catalogs without changing the current selection or replacing custom colors.

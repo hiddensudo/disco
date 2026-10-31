@@ -19,6 +19,7 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+mod document_zoom;
 mod editor;
 mod jobs;
 mod new_file;
@@ -69,6 +70,8 @@ pub(crate) struct Disco {
 impl Disco {
     pub(crate) fn new(cc: &eframe::CreationContext<'_>) -> Self {
         art::fonts(&cc.egui_ctx);
+        cc.egui_ctx
+            .options_mut(|options| options.zoom_with_keyboard = false);
         let args: Vec<_> = std::env::args().collect();
         let demo = args.iter().any(|x| x == "--demo");
         let argument = |key: &str| {
@@ -371,6 +374,7 @@ impl eframe::App for Disco {
         self.terminal.poll(&self.preferences.theme, shown);
         self.application_shortcuts(ui.ctx());
         self.workspace_shortcuts(ui.ctx());
+        self.document_zoom_shortcuts(ui.ctx());
         self.file_cycle_shortcuts(ui.ctx());
         if self.recycle.poll(ui.ctx()).is_some() {
             // Bin refreshes its own listing after every completed operation.

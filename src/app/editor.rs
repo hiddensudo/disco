@@ -80,6 +80,7 @@ pub(super) enum Action {
 #[derive(Default)]
 pub(super) struct Editor {
     pub markdown: crate::markdown::Reader,
+    pub zoom: super::document_zoom::Zoom,
     pub path: Option<PathBuf>,
     pub untitled: Option<super::untitled::Untitled>,
     pub origin: Option<Category>,
@@ -281,6 +282,9 @@ impl Disco {
             && (self.editor.path != desired
                 || (!focus_tabs && self.editor.revision != self.scan.report_revision))
         {
+            if self.editor.path != desired {
+                self.editor.zoom = Default::default();
+            }
             self.editor.auto_save_at = None;
             self.editor.last_saved_at = None;
             self.editor.document = None;

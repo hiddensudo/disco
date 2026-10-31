@@ -200,7 +200,6 @@ pub(crate) struct Preview {
     pub path: Option<PathBuf>,
     pub content: Option<Content>,
     pub texture: Option<eframe::egui::TextureHandle>,
-    pub zoom: f32,
     generation: u64,
     revision: u64,
     waiting_since: Option<Instant>,
@@ -222,7 +221,6 @@ impl Preview {
         self.generation = self.generation.wrapping_add(1);
         self.content = None;
         self.texture = None;
-        self.zoom = 1.;
         self.waiting_since = self.path.as_ref().map(|_| Instant::now());
     }
     pub fn restore_text(&mut self, path: std::path::PathBuf, revision: u64, content: Content) {

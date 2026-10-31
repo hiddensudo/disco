@@ -1818,6 +1818,31 @@ fn keyboard_preview_reuses_one_tab_and_enter_right_keep_before_opening_or_focusi
     frame(&mut app, &ctx, &mut time, vec![]);
     assert_eq!(app.tabs.order.iter().filter(|p| *p == &image).count(), 1);
     assert_eq!(app.tabs.preview.as_ref(), Some(&first));
+    let start = Instant::now();
+    while !matches!(
+        app.file_preview.content,
+        Some(crate::file_preview::Content::Image { .. })
+    ) && start.elapsed() < Duration::from_secs(3)
+    {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    app.focus_area(Area::Editor, &ctx);
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        Key::Plus,
+        Modifiers::CTRL | Modifiers::COMMAND,
+    );
+    assert!(app.editor.zoom.factor > 1.);
+    let image_zoom = app.editor.zoom.factor;
+    app.activate_tab(&first, &ctx);
+    wait_document(&mut app, &ctx, &mut time);
+    assert_eq!(app.editor.zoom.factor, 1.);
+    app.activate_tab(&image, &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert_eq!(app.editor.zoom.factor, image_zoom);
 }
 
 #[test]
@@ -2793,6 +2818,56 @@ fn markdown_modes_preserve_drafts_undo_and_tab_identity() {
         Modifiers::CTRL | Modifiers::COMMAND,
     );
     assert_eq!(app.editor.document.as_ref().unwrap().text, original);
+    // File zoom must never become global egui zoom or edit the document.
+    let ppp = ctx.pixels_per_point();
+    let global_scale = app.preferences.layout.text_scale;
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        Key::Equals,
+        Modifiers::CTRL | Modifiers::COMMAND,
+    );
+    assert!(app.editor.zoom.factor > 1.);
+    assert_eq!(ctx.pixels_per_point(), ppp);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, original);
+    let factor = app.editor.zoom.factor;
+    click(&mut app, &ctx, &mut time, Id::unique("markdown-read"));
+    let viewport = ctx
+        .read_response(Id::unique("preview-viewport"))
+        .unwrap()
+        .rect;
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![
+            egui::Event::PointerMoved(viewport.center()),
+            egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Line,
+                delta: Vec2::new(0., 1.),
+                source: egui::MouseWheelSource::Wheel,
+                phase: egui::TouchPhase::Move,
+                modifiers: Modifiers::CTRL,
+            },
+        ],
+    );
+    assert!(app.editor.zoom.factor > factor);
+    assert_eq!(ctx.pixels_per_point(), ppp);
+    assert_eq!(app.preferences.layout.text_scale, global_scale);
+    // Keyboard zoom is isolated from the search field.
+    ctx.memory_mut(|m| m.request_focus(Id::unique("folder-search")));
+    frame(&mut app, &ctx, &mut time, vec![]);
+    let before = app.editor.zoom.factor;
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        Key::Minus,
+        Modifiers::CTRL | Modifiers::COMMAND,
+    );
+    assert_eq!(app.editor.zoom.factor, before);
+    assert_eq!(ctx.pixels_per_point(), ppp);
     // Reader and editor remain available in Overview and read-only categories.
     app.preferences.layout.all_files_read_only = true;
     app.preferences.layout.preview_mode = PreviewMode::Overview;
