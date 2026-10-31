@@ -250,6 +250,31 @@ fn theme_picker_keeps_create_visible_with_twenty_themes_and_cancel_writes_nothin
         app.preferences.layout.effective_prompt_language(),
         crate::i18n::Language::En
     );
+    assert!(!app.preferences.layout.file_type_icons);
+    click(&mut app, &ctx, &mut time, Id::unique("file-type-icons"));
+    assert!(app.preferences.layout.file_type_icons);
+    click(
+        &mut app,
+        &ctx,
+        &mut time,
+        Id::unique("settings-cancel-bounds"),
+    );
+    assert!(!app.preferences.layout.file_type_icons);
+    click(&mut app, &ctx, &mut time, Id::unique("open-settings"));
+    app.preferences.page = 1;
+    frame(&mut app, &ctx, &mut time, vec![]);
+    click(&mut app, &ctx, &mut time, Id::unique("file-type-icons"));
+    click(
+        &mut app,
+        &ctx,
+        &mut time,
+        Id::unique("settings-save-bounds"),
+    );
+    assert!(
+        settings::read_layout(&root.join("config/layout.toml"))
+            .unwrap()
+            .file_type_icons
+    );
 }
 #[test]
 fn full_window_view_switches_properties_and_breadcrumbs_work_with_dirty_text() {

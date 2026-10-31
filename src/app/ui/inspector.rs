@@ -56,13 +56,14 @@ impl Disco {
                         Vec2::splat(if p.is_dir { 66. } else { 48. }),
                     );
                     ui.painter().rect_filled(tile, t.radius, color(&t.raised));
+                    let icon = if p.is_dir {
+                        0
+                    } else {
+                        crate::art::file_icon_for(&p.path, self.preferences.layout.file_type_icons)
+                    };
                     self.art.paint(
                         ui,
-                        if p.is_dir {
-                            0
-                        } else {
-                            crate::art::file_icon(&p.path)
-                        },
+                        icon,
                         Rect::from_center_size(
                             tile.center(),
                             Vec2::splat(
@@ -70,7 +71,7 @@ impl Disco {
                                     * self.preferences.layout.icon_scale,
                             ),
                         ),
-                        color(&t.text),
+                        crate::art::file_tint(icon, color(&t.text), color(&t.raised)),
                     );
                     let text_x = if p.is_dir { 84. } else { 62. };
                     let title_width = rect.width() - text_x;

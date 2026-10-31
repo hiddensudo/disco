@@ -85,6 +85,19 @@ pub(super) fn show(
         .color(color(&t.muted)),
     );
     cols[0].add_space(4.);
+    let icons = cols[0].checkbox(
+        &mut layout.file_type_icons,
+        crate::tr!("Іконки мов і форматів", "Language and file type icons"),
+    );
+    cols[0].interact(
+        icons.rect,
+        egui::Id::unique("file-type-icons"),
+        egui::Sense::hover(),
+    );
+    icons.on_hover_text(crate::tr!(
+        "Векторні іконки за розширенням; невідомі файли мають загальну іконку.",
+        "Vector icons by extension; unknown files keep the generic icon."
+    ));
     check_row(
         &mut cols[0],
         &mut layout.categories,

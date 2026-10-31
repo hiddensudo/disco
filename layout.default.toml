@@ -11,6 +11,7 @@ compact = false
 text_scale = 1.0
 text_scale_version = 1
 sidebar_text_scale = 1.0
+file_type_icons = false
 show_count = false
 drive_name = ""
 icon_scale = 1.0

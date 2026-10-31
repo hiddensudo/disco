@@ -1,7 +1,8 @@
 use eframe::egui::{self, Color32, Pos2, Rect, Stroke, TextureHandle, TextureOptions};
 use std::{cell::RefCell, collections::HashMap};
 
-const BUNDLED_ICONS: usize = 59;
+pub(crate) const UI_ICONS: usize = 59;
+const BUNDLED_ICONS: usize = UI_ICONS + crate::file_icons::SOURCES.len();
 
 // Parse the embedded vectors once. Raster textures are generated only for physical
 // sizes actually used by the UI, and retained in a bounded cache (never per frame).
@@ -13,7 +14,7 @@ pub struct Art {
 }
 impl Art {
     pub fn load(_ctx: &egui::Context) -> Self {
-        let sources: [&[u8]; BUNDLED_ICONS] = [
+        let sources: [&[u8]; UI_ICONS] = [
             include_bytes!("../assets/icons/folder.svg"),
             include_bytes!("../assets/icons/game.svg"),
             include_bytes!("../assets/icons/code.svg"),
@@ -77,6 +78,7 @@ impl Art {
         Self {
             icons: sources
                 .into_iter()
+                .chain(crate::file_icons::SOURCES.iter().map(|(_, bytes)| *bytes))
                 .map(|s| {
                     resvg::usvg::Tree::from_data(s, &resvg::usvg::Options::default())
                         .expect("bundled SVG")
@@ -376,7 +378,7 @@ mod tests {
     #[test]
     fn embedded_svg_renders_at_real_display_sizes() {
         let art = Art::load(&egui::Context::default());
-        for icon in &art.icons {
+        for (index, icon) in art.icons.iter().enumerate() {
             for size in [9, 15, 19, 24, 30, 38, 60, 112, 224] {
                 let image = rasterize(icon, size, size);
                 assert_eq!(image.size, [size as usize; 2]);
@@ -384,10 +386,12 @@ mod tests {
                     image.pixels.iter().any(|c| c.a() > 40),
                     "empty icon at {size}px"
                 );
-                assert!(
-                    image.pixels.iter().any(|c| c.a() > 0 && c.a() < 255),
-                    "missing antialiasing"
-                );
+                if index < UI_ICONS {
+                    assert!(
+                        image.pixels.iter().any(|c| c.a() > 0 && c.a() < 255),
+                        "missing antialiasing"
+                    );
+                }
                 assert!(
                     image
                         .pixels
@@ -476,10 +480,26 @@ pub(crate) fn file_icon(path: &std::path::Path) -> usize {
 
 /// Bundled symbols follow the theme ink. Imported artwork keeps its own colors.
 pub(crate) fn category_tint(index: usize, ink: Color32) -> Color32 {
-    if index < BUNDLED_ICONS {
+    if index < UI_ICONS {
         ink
     } else {
         Color32::WHITE
+    }
+}
+
+pub(crate) fn file_icon_for(path: &std::path::Path, enabled: bool) -> usize {
+    if enabled && let Some(icon) = crate::file_icons::icon(path) {
+        return icon;
+    }
+    file_icon(path)
+}
+pub(crate) fn file_tint(index: usize, ink: Color32, surface: Color32) -> Color32 {
+    if index < UI_ICONS {
+        ink
+    } else if crate::branding::dark(surface) {
+        Color32::WHITE
+    } else {
+        Color32::from_gray(180)
     }
 }
 

@@ -92,6 +92,7 @@ pub struct Layout {
     #[serde(default)]
     pub text_scale_version: u8,
     pub sidebar_text_scale: f32,
+    pub file_type_icons: bool,
     pub show_count: bool,
     pub drive_name: String,
     pub icon_scale: f32,
@@ -148,6 +149,7 @@ impl Default for Layout {
             text_scale: 1.,
             text_scale_version: 1,
             sidebar_text_scale: 1.,
+            file_type_icons: false,
             show_count: false,
             drive_name: String::new(),
             icon_scale: 1.,

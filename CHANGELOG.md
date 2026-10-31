@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- Optional SVG language/file-type icons for 59 families, including C/C++, Rust, JSON/YAML/TOML, JS/TS, Java and Python. The setting defaults off, supports Save/Cancel, and retains generic fallbacks. Material Icon Theme assets and the MIT notice ship locally.
+
 - Open a file or workspace from the command line. Ctrl+L edits the address with asynchronous file/folder suggestions; Ctrl+F focuses filename search. Direct files open without a category or disk scan, with unsaved-document protection.
 
 - File zoom through Ctrl+Plus/Minus and Ctrl+wheel, independent of UI/sidebar scale. Each Focus tab retains its session zoom; text/Markdown support 50–300%, images 25–800% of Fit, with a percentage reset.

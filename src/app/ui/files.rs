@@ -93,14 +93,15 @@ impl Disco {
         let focus = self.preferences.layout.preview_mode == PreviewMode::Focus;
         let x = rect.left() + 28. + Layout::tree_indent(depth, name_width);
         let icon_size = (if focus { 18. } else { 21. }) * self.preferences.layout.tree_icon_scale();
+        let icon = crate::art::file_icon_for(&file.path, self.preferences.layout.file_type_icons);
         self.art.paint(
             ui,
-            crate::art::file_icon(&file.path),
+            icon,
             Rect::from_center_size(
                 Pos2::new(x + icon_size * 0.5, rect.center().y),
                 Vec2::splat(icon_size),
             ),
-            color(&t.text),
+            crate::art::file_tint(icon, color(&t.text), color(&t.background)),
         );
         let text_x = x + icon_size + 6.;
         super::widgets::row_text(

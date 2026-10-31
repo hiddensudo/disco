@@ -35,6 +35,8 @@ class PackageTests(unittest.TestCase):
                 names = tar.getnames()
                 self.assertIn('disco/assets/disco-dark.svg', names)
                 self.assertIn('disco/licenses/egui_term-MIT.txt', names)
+                self.assertIn('disco/assets/file-icons/rust.svg', names)
+                self.assertIn('disco/licenses/material-icon-theme-MIT.txt', names)
                 self.assertFalse(any('/target/' in name or '/.git/' in name for name in names))
                 tar.extractall(relocated, filter='data')
             bundle = relocated / 'disco'

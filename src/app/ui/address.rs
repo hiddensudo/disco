@@ -117,15 +117,23 @@ impl Disco {
                                     let row = ui.horizontal(|ui| {
                                         let (icon, _) = ui
                                             .allocate_exact_size(Vec2::splat(18.), Sense::hover());
+                                        let index = if s.directory {
+                                            0
+                                        } else {
+                                            crate::art::file_icon_for(
+                                                &s.path,
+                                                self.preferences.layout.file_type_icons,
+                                            )
+                                        };
                                         self.art.paint(
                                             ui,
-                                            if s.directory {
-                                                0
-                                            } else {
-                                                crate::art::file_icon(&s.path)
-                                            },
+                                            index,
                                             icon,
-                                            color(&t.text),
+                                            crate::art::file_tint(
+                                                index,
+                                                color(&t.text),
+                                                color(&t.panel),
+                                            ),
                                         );
                                         let name = s
                                             .path

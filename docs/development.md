@@ -91,3 +91,5 @@ All builds install under the **disco** name; `install.py --config-dir ~/.config/
 Markdown uses egui_commonmark 0.26 with pulldown-cmark, under MIT/Apache-2.0. The reader uses viewport caching; the editor and undo state remain the existing disco document. Local raster images reuse the bounded asynchronous decoder; HTTP image fetching and HTML execution are disabled.
 
 Docker builds: `scripts/build-docker.sh` exports a runtime bundle through the scratch artifacts stage. See [build details](docker.md); CI uploads the archive/checksum/runtime report without publishing a release.
+
+File type icons: a selected, unmodified SVG subset of [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme/tree/23e86c06d09e92571ef027184c00cad78e8c827f/icons), [MIT notice](../licenses/material-icon-theme-MIT.txt). The pinned source manifest is `assets/file-icons/source.json`; both assets and license ship in the runtime bundle. The optional `file_type_icons` layout flag defaults to false. File lookup is an in-memory name/extension map; the vectors share the existing physical-size texture cache.

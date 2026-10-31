@@ -7,6 +7,7 @@ mod deletion;
 mod demo;
 mod directory_files;
 mod file_creation;
+mod file_icons;
 mod file_preview;
 mod file_search;
 mod filesystem;
