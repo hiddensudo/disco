@@ -1,6 +1,9 @@
 //! Literal search belongs to the visible document, including unsaved text.
 use super::{Disco, workspace_keyboard::Area};
-use crate::{file_preview::Content, settings::PreviewMode};
+use crate::{
+    file_preview::Content,
+    settings::{PreviewMode, color},
+};
 use eframe::egui::{self, Id, Key, Modifiers, Pos2, Rect, Stroke};
 use std::ops::Range;
 
@@ -16,6 +19,8 @@ pub(super) struct Find {
     case_searched: bool,
     focus: bool,
     reveal: bool,
+    overlay: Option<Rect>,
+    selected: Option<egui::text::CCursorRange>,
 }
 impl Find {
     pub fn update(&mut self, source: &str) {
@@ -97,7 +102,12 @@ impl Find {
                 let end = galley
                     .pos_from_cursor(egui::text::CCursor::new(range.end))
                     .translate(origin.to_vec2());
-                ui.scroll_to_rect(start.union(end), Some(egui::Align::Center));
+                let mut target = start.union(end);
+                // Reserve clearance above a revealed match for the floating bar.
+                if let Some(overlay) = self.overlay {
+                    target.min.y -= overlay.height() + 8.;
+                }
+                ui.scroll_to_rect(target, Some(egui::Align::Center));
                 egui::text::CCursorRange::two(
                     egui::text::CCursor::new(range.start),
                     egui::text::CCursor::new(range.end),
@@ -155,6 +165,9 @@ impl Find {
             index += row.char_count_including_newline().0;
         }
         self.reveal = false;
+        if selected.is_some() {
+            self.selected = selected;
+        }
         selected
     }
 }
@@ -163,6 +176,10 @@ impl Disco {
         if !matches!(self.file_preview.content, Some(Content::Text { .. })) {
             return;
         }
+        let reopening = !self.editor.find.open;
+        if reopening && !self.preferences.layout.remember_file_search {
+            self.editor.find.query.clear();
+        }
         let id = Id::unique(("file-editor", &self.editor.path));
         if let (Some(doc), Some(range)) = (
             &self.editor.document,
@@ -170,7 +187,10 @@ impl Disco {
         ) {
             let a = range.primary.index.0.min(range.secondary.index.0);
             let b = range.primary.index.0.max(range.secondary.index.0);
-            if a < b && b - a <= 512 {
+            let old_search_selection = reopening
+                && !self.preferences.layout.remember_file_search
+                && Some(range) == self.editor.find.selected;
+            if a < b && b - a <= 512 && !old_search_selection {
                 let query: String = doc.text.chars().skip(a).take(b - a).collect();
                 if !query.contains('\n') {
                     self.editor.find.query = query;
@@ -193,14 +213,40 @@ impl Disco {
         self.keyboard.area = Area::Editor;
         ctx.request_repaint();
     }
+    pub(in crate::app) fn close_document_find(&mut self, ctx: &egui::Context) {
+        let find = &mut self.editor.find;
+        find.open = false;
+        find.overlay = None;
+        find.reveal = false;
+        if !self.preferences.layout.remember_file_search {
+            // Do not accidentally seed the cleared query from our own search
+            // selection the next time Ctrl+F opens the bar.
+            let id = Id::unique(("file-editor", &self.editor.path));
+            if let Some(mut state) = egui::TextEdit::load_state(ctx, id) {
+                if state.cursor.char_range().is_some() && state.cursor.char_range() == find.selected
+                {
+                    let cursor = state.cursor.char_range().unwrap().primary;
+                    state
+                        .cursor
+                        .set_char_range(Some(egui::text::CCursorRange::one(cursor)));
+                    state.store(ctx, id);
+                }
+            }
+            find.query.clear();
+            find.searched.clear();
+            find.matches.clear();
+            find.current = 0;
+            find.selected = None;
+        }
+        self.focus_area(Area::Editor, ctx);
+    }
     pub(in crate::app) fn document_find_shortcuts(&mut self, ctx: &egui::Context) {
         if self.preferences.layout.preview_mode != PreviewMode::Focus || !self.editor.find.open {
             return;
         }
         let focus = ctx.memory(|m| m.focused()) == Some(Id::unique("document-find"));
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
-            self.editor.find.open = false;
-            self.focus_area(Area::Editor, ctx);
+            self.close_document_find(ctx);
         } else {
             let previous = ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F3))
                 || focus && ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::Enter));
@@ -211,88 +257,128 @@ impl Disco {
             }
         }
     }
-    pub(in crate::app) fn document_find_ui(&mut self, ui: &mut egui::Ui) {
+    pub(in crate::app) fn document_find_ui(&mut self, ui: &mut egui::Ui, viewport: Rect) {
+        // Reproducible native visual QA, isolated to screenshot runs.
+        if self.screenshot.is_some()
+            && !self.editor.find.open
+            && matches!(self.file_preview.content, Some(Content::Text { .. }))
+            && let Ok(query) = std::env::var("DISCO_QA_FIND")
+        {
+            self.open_document_find(ui.ctx());
+            self.editor.find.query = query;
+        }
         if !self.editor.find.open || self.preferences.layout.preview_mode != PreviewMode::Focus {
             return;
         }
         let mut close = false;
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.;
-            ui.spacing_mut().button_padding = egui::vec2(7., 4.);
-            let find = &mut self.editor.find;
-            let response = ui.add_sized(
-                [(ui.available_width() - 205.).max(60.), 26.],
-                egui::TextEdit::singleline(&mut find.query)
-                    .id(Id::unique("document-find"))
-                    .hint_text(crate::tr!("Знайти у файлі…", "Find in file…")),
-            );
-            if find.focus {
-                response.request_focus();
-                if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), response.id) {
-                    state
-                        .cursor
-                        .set_char_range(Some(egui::text::CCursorRange::two(
-                            egui::text::CCursor::new(0),
-                            egui::text::CCursor::new(find.query.chars().count()),
-                        )));
-                    state.store(ui.ctx(), response.id);
-                }
-                find.focus = false;
-            }
-            let source = self
-                .editor
-                .document
-                .as_ref()
-                .map(|d| d.text.as_str())
-                .or_else(|| match &self.file_preview.content {
-                    Some(Content::Text { display_source, .. }) => Some(display_source.as_str()),
-                    _ => None,
-                })
-                .unwrap_or("");
-            find.update(source);
-            let count = if find.matches.is_empty() {
-                "0 / 0".into()
-            } else {
-                format!("{} / {}", find.current + 1, find.matches.len())
-            };
-            ui.label(count).on_hover_text(crate::tr!(
-                "Збіги у відкритому тексті",
-                "Matches in the open text"
-            ));
-            if ui
-                .selectable_label(find.case_sensitive, "Aa")
-                .on_hover_text(crate::tr!("Враховувати регістр", "Match case"))
-                .clicked()
-            {
-                find.case_sensitive = !find.case_sensitive;
-                find.update(source);
-            }
-            if ui
-                .add_enabled(!find.matches.is_empty(), egui::Button::new("↑"))
-                .on_hover_text(crate::tr!(
-                    "Попередній · Shift+Enter / Shift+F3",
-                    "Previous · Shift+Enter / Shift+F3"
-                ))
-                .clicked()
-            {
-                find.advance(true);
-            }
-            if ui
-                .add_enabled(!find.matches.is_empty(), egui::Button::new("↓"))
-                .on_hover_text(crate::tr!("Наступний · Enter / F3", "Next · Enter / F3"))
-                .clicked()
-            {
-                find.advance(false);
-            }
-            close = ui
-                .button("×")
-                .on_hover_text(crate::tr!("Закрити пошук · Esc", "Close find · Esc"))
-                .clicked();
-        });
-        ui.add_space(6.);
+        let t = self.preferences.theme.clone();
+        let width = (viewport.width() - 32.).clamp(220., 440.);
+        let response = egui::Area::new(Id::unique("document-find-overlay"))
+            .order(egui::Order::Foreground)
+            .movable(false)
+            .pivot(egui::Align2::RIGHT_TOP)
+            .fixed_pos(viewport.right_top() + egui::vec2(-8., 8.))
+            .constrain_to(viewport.shrink(4.))
+            .default_size(egui::vec2(width + 16., 44.))
+            .show(ui.ctx(), |ui| {
+                egui::Frame::new()
+                    .fill(color(&t.raised))
+                    .stroke(Stroke::new(1., color(&t.border)))
+                    .corner_radius(t.radius)
+                    .inner_margin(8.)
+                    .show(ui, |ui| {
+                        ui.set_width(width);
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 4.;
+                            ui.spacing_mut().button_padding = egui::vec2(7., 4.);
+                            let find = &mut self.editor.find;
+                            let response = ui.add_sized(
+                                [(ui.available_width() - 205.).max(60.), 26.],
+                                egui::TextEdit::singleline(&mut find.query)
+                                    .id(Id::unique("document-find"))
+                                    .hint_text(crate::tr!("Знайти у файлі…", "Find in file…")),
+                            );
+                            if find.focus {
+                                response.request_focus();
+                                if let Some(mut state) =
+                                    egui::TextEdit::load_state(ui.ctx(), response.id)
+                                {
+                                    state.cursor.set_char_range(Some(
+                                        egui::text::CCursorRange::two(
+                                            egui::text::CCursor::new(0),
+                                            egui::text::CCursor::new(find.query.chars().count()),
+                                        ),
+                                    ));
+                                    state.store(ui.ctx(), response.id);
+                                }
+                                find.focus = false;
+                            }
+                            let source = self
+                                .editor
+                                .document
+                                .as_ref()
+                                .map(|d| d.text.as_str())
+                                .or_else(|| match &self.file_preview.content {
+                                    Some(Content::Text { display_source, .. }) => {
+                                        Some(display_source.as_str())
+                                    }
+                                    _ => None,
+                                })
+                                .unwrap_or("");
+                            find.update(source);
+                            let count = if find.matches.is_empty() {
+                                "0 / 0".into()
+                            } else {
+                                format!("{} / {}", find.current + 1, find.matches.len())
+                            };
+                            ui.label(count).on_hover_text(crate::tr!(
+                                "Збіги у відкритому тексті",
+                                "Matches in the open text"
+                            ));
+                            if ui
+                                .selectable_label(find.case_sensitive, "Aa")
+                                .on_hover_text(crate::tr!("Враховувати регістр", "Match case"))
+                                .clicked()
+                            {
+                                find.case_sensitive = !find.case_sensitive;
+                                find.update(source);
+                            }
+                            if ui
+                                .add_enabled(!find.matches.is_empty(), egui::Button::new("↑"))
+                                .on_hover_text(crate::tr!(
+                                    "Попередній · Shift+Enter / Shift+F3",
+                                    "Previous · Shift+Enter / Shift+F3"
+                                ))
+                                .clicked()
+                            {
+                                find.advance(true);
+                            }
+                            if ui
+                                .add_enabled(!find.matches.is_empty(), egui::Button::new("↓"))
+                                .on_hover_text(crate::tr!(
+                                    "Наступний · Enter / F3",
+                                    "Next · Enter / F3"
+                                ))
+                                .clicked()
+                            {
+                                find.advance(false);
+                            }
+                            let close_button = ui.button("×").on_hover_text(crate::tr!(
+                                "Закрити пошук · Esc",
+                                "Close find · Esc"
+                            ));
+                            ui.interact(
+                                close_button.rect,
+                                Id::unique("document-find-close"),
+                                egui::Sense::hover(),
+                            );
+                            close = close_button.clicked();
+                        });
+                    });
+            });
+        self.editor.find.overlay = Some(response.response.rect);
         if close {
-            self.editor.find.open = false;
-            self.focus_area(Area::Editor, ui.ctx());
+            self.close_document_find(ui.ctx());
         }
     }
 }
@@ -301,6 +387,12 @@ mod tests {
     use super::*;
     #[test]
     fn literal_unicode_case_navigation_and_live_edits() {
+        let mut layout: crate::settings::Layout = toml::from_str("").unwrap();
+        assert!(!layout.remember_file_search);
+        layout.remember_file_search = true;
+        let restored: crate::settings::Layout =
+            toml::from_str(&toml::to_string(&layout).unwrap()).unwrap();
+        assert!(restored.remember_file_search);
         let mut find = Find {
             query: "\u{43a}\u{456}\u{442}".into(),
             ..Default::default()

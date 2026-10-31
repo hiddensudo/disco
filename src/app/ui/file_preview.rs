@@ -47,8 +47,8 @@ impl Disco {
         let entering_focus =
             mode == PreviewMode::Focus && self.preferences.layout.preview_mode != mode;
         self.preferences.layout.preview_mode = mode;
-        if mode != PreviewMode::Focus {
-            self.editor.find.open = false;
+        if mode != PreviewMode::Focus && self.editor.find.open {
+            self.close_document_find(ctx);
         }
         match mode {
             PreviewMode::Overview => self.preferences.layout.properties = true,
@@ -193,7 +193,6 @@ impl Disco {
             && matches!(self.file_preview.content, Some(Content::Text { .. }));
         let refresh = self.document_toolbar(ui, width, markdown, read_only);
         ui.add_space(8.);
-        self.document_find_ui(ui);
         let error_height = if self.editor.error.is_empty() {
             0.
         } else {
@@ -217,6 +216,7 @@ impl Disco {
             room
         };
         let content_rect = Rect::from_min_size(ui.cursor().min, Vec2::new(width, height));
+        self.document_find_ui(ui, content_rect);
         self.document_zoom_wheel(ui, content_rect);
         let zoom = self.editor.zoom;
         let anchor = ui

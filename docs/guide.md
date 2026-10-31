@@ -242,3 +242,5 @@ The active document automatically follows changes made by Codex, terminal tools 
 ### Find in file
 
 In Focus, Ctrl+F searches the active tab’s current text, including unsaved edits. A single-line selection seeds the query. Matches are highlighted with a current/total counter; Aa toggles case sensitivity. Enter / F3 moves forward, Shift+Enter / Shift+F3 moves backward, wrapping at the ends; Enter works while the find field has focus. Escape closes the bar and returns to the editor. Matching is literal, Unicode-aware and does not modify text. Markdown switches to its source so code and collapsed details are searchable too. For truncated large-file previews, only the loaded excerpt is searched. A focused terminal retains Ctrl+F for its running program.
+
+The find bar floats at the editor’s top right; opening, closing or leaving it for the text does not resize the document. Escape or × clears the query by default. Settings → Interface → Remember query after closing file search retains the last query for each open tab during the current session; query text is never written to disk.

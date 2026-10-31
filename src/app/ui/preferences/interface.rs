@@ -113,6 +113,13 @@ pub(super) fn show(
         "Векторні іконки за розширенням; невідомі файли мають загальну іконку.",
         "Vector icons by extension; unknown files keep the generic icon."
     ));
+    cols[0].checkbox(
+        &mut layout.remember_file_search,
+        crate::tr!("Пам’ятати запит після закриття пошуку", "Remember query after closing file search"),
+    ).on_hover_text(crate::tr!(
+        "Зберігати останній запит для відкритої вкладки. За замовчуванням закриття пошуку очищає його.",
+        "Keep the last query for the open tab. By default, closing find clears it."
+    ));
     check_row(
         &mut cols[0],
         &mut layout.categories,

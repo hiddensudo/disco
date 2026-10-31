@@ -3489,6 +3489,14 @@ fn focus_ctrl_f_searches_live_text_without_editing_and_preserves_terminal_routin
         Some(path.clone()),
     );
     wait_document(&mut app, &ctx, &mut time);
+    for _ in 0..3 {
+        frame(&mut app, &ctx, &mut time, vec![]);
+    }
+    let viewport_before = ctx
+        .read_response(Id::unique("preview-viewport"))
+        .unwrap()
+        .rect;
+    assert!(!app.preferences.layout.remember_file_search);
     let original = app.editor.document.as_ref().unwrap().text.clone();
     press_key(&mut app, &ctx, &mut time, Key::F, Modifiers::CTRL);
     assert!(app.editor.find.open);
@@ -3502,6 +3510,15 @@ fn focus_ctrl_f_searches_live_text_without_editing_and_preserves_terminal_routin
         &mut time,
         vec![egui::Event::Text("fn".into())],
     );
+    assert_eq!(
+        ctx.read_response(Id::unique("preview-viewport"))
+            .unwrap()
+            .rect,
+        viewport_before,
+        "opening floating find must not move or resize the text viewport"
+    );
+    let overlay = ctx.read_response(Id::unique("document-find")).unwrap().rect;
+    assert!(viewport_before.contains_rect(overlay));
     assert_eq!(app.editor.find.matches.len(), 2);
     assert_eq!(app.editor.find.current, 0);
     press_key(&mut app, &ctx, &mut time, Key::Enter, Modifiers::NONE);
@@ -3517,6 +3534,42 @@ fn focus_ctrl_f_searches_live_text_without_editing_and_preserves_terminal_routin
     assert!(!app.editor.find.open);
     let editor_id = Id::unique(("file-editor", &app.editor.path));
     assert_eq!(ctx.memory(|m| m.focused()), Some(editor_id));
+    assert!(app.editor.find.query.is_empty());
+    press_key(&mut app, &ctx, &mut time, Key::F, Modifiers::CTRL);
+    assert!(
+        app.editor.find.query.is_empty(),
+        "previous match selection must not restore a cleared query"
+    );
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Text("first".into())],
+    );
+    app.focus_area(crate::app::workspace_keyboard::Area::Editor, &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert!(app.editor.find.open && app.editor.find.query == "first");
+    assert_eq!(ctx.memory(|m| m.focused()), Some(editor_id));
+    assert_eq!(
+        ctx.read_response(Id::unique("preview-viewport"))
+            .unwrap()
+            .rect,
+        viewport_before
+    );
+    app.preferences.layout.remember_file_search = true;
+    press_key(&mut app, &ctx, &mut time, Key::Escape, Modifiers::NONE);
+    press_key(&mut app, &ctx, &mut time, Key::F, Modifiers::CTRL);
+    assert_eq!(app.editor.find.query, "first");
+    click(&mut app, &ctx, &mut time, Id::unique("document-find-close"));
+    assert!(!app.editor.find.open && app.editor.find.query == "first");
+    app.preferences.layout.remember_file_search = false;
+    press_key(&mut app, &ctx, &mut time, Key::F, Modifiers::CTRL);
+    assert!(
+        app.editor.find.query.is_empty(),
+        "disabling retention must clear a retained query on reopen"
+    );
+    click(&mut app, &ctx, &mut time, Id::unique("document-find-close"));
+    assert!(!app.editor.find.open && app.editor.find.query.is_empty());
     // Search the actual draft, without writing it to disk or inserting query text.
     app.editor
         .document
@@ -3524,12 +3577,17 @@ fn focus_ctrl_f_searches_live_text_without_editing_and_preserves_terminal_routin
         .unwrap()
         .text
         .push_str("fn draft() {}\n");
-    app.editor.find.query = "fn".into();
-    // Clear the previous search selection so Ctrl+F retains our last query.
+    // Clear selection and enter a fresh query into the floating search field.
     let mut state = egui::TextEdit::load_state(&ctx, editor_id).unwrap();
     state.cursor.set_char_range(None);
     state.store(&ctx, editor_id);
     press_key(&mut app, &ctx, &mut time, Key::F, Modifiers::CTRL);
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Text("fn".into())],
+    );
     assert_eq!(app.editor.find.matches.len(), 3);
     let field = ctx.read_response(Id::unique("document-find")).unwrap().rect;
     assert!(field.is_positive());
