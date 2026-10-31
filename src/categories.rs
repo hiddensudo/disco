@@ -132,7 +132,6 @@ impl Config {
         }
         Ok(())
     }
-    #[cfg(test)]
     pub fn read(path: &Path) -> Result<Self, String> {
         store::read(path).map(|s| s.config)
     }

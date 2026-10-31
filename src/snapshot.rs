@@ -321,6 +321,29 @@ mod tests {
     use crate::scan::{Control, scan};
     use std::os::unix::ffi::OsStringExt;
     #[test]
+    fn last_snapshot_is_one_root_not_a_union_or_archive() {
+        let root =
+            std::env::temp_dir().join(format!("disco-snapshot-scope-{}", std::process::id()));
+        fs::create_dir_all(root.join("tree/practice/sub")).unwrap();
+        fs::create_dir_all(root.join("tree/other")).unwrap();
+        let broad = scan(&root.join("tree"), &Control::default(), |_| {}).unwrap();
+        let narrow = scan(&root.join("tree/practice"), &Control::default(), |_| {}).unwrap();
+        let path = root.join("cache/last-scan.bin.gz");
+        save_to(&path, &broad).unwrap();
+        let prior = fs::read(&path).unwrap();
+        // Independent windows share this atomic destination. The last completed
+        // writer wins; atomicity prevents corruption, not a narrower scope.
+        let target = path.clone();
+        std::thread::spawn(move || save_to(&target, &narrow).unwrap())
+            .join()
+            .unwrap();
+        let saved = load_from(&path).unwrap().unwrap();
+        assert_eq!(saved.report.folders[0].path, root.join("tree/practice"));
+        assert!(saved.report.folders.len() < broad.folders.len());
+        assert_ne!(fs::read(&path).unwrap(), prior);
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
     fn snapshot_survives_restart_and_preserves_non_utf8_paths() {
         let dir = std::env::temp_dir().join(format!("disco-snapshot-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);

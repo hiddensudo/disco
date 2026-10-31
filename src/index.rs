@@ -133,7 +133,18 @@ impl Index {
             let mut roots: Vec<_> = collection
                 .folders
                 .iter()
-                .filter_map(|p| paths.get(p.as_path()).copied())
+                .filter_map(|p| {
+                    paths.get(p.as_path()).copied().or_else(|| {
+                        // A narrow snapshot may start below a configured category
+                        // root. Show that known subtree, retaining the missing-root
+                        // marker for the rest instead of hiding all cached folders.
+                        report
+                            .folders
+                            .first()
+                            .filter(|root| root.path.starts_with(p))
+                            .map(|_| 0)
+                    })
+                })
                 .collect();
             roots.sort_by_key(|i| report.folders[*i].path.components().count());
             let mut unique = Vec::new();
@@ -407,6 +418,26 @@ mod tests {
 #[cfg(test)]
 mod collection_tests {
     use super::*;
+    #[test]
+    fn category_parent_of_snapshot_keeps_known_descendants_and_missing_coverage() {
+        let mut report = crate::demo::report();
+        let old = report.folders[0].path.clone();
+        for f in &mut report.folders {
+            f.path = Path::new("/workspace/practice").join(f.path.strip_prefix(&old).unwrap());
+        }
+        let mut config = crate::categories::Config::default();
+        config.items[1].folders = vec!["/workspace".into()];
+        let category = config.items[1].category();
+        let mut index = Index::new(&report);
+        let missing = index.apply_collections(&report, &config);
+        assert_eq!(index.roots(category), &[0]);
+        assert_eq!(index.total(category), report.folders[0].bytes);
+        assert!(index.matches_category(1, category));
+        assert_eq!(missing[&category], vec![PathBuf::from("/workspace")]);
+        config.items[1].folders = vec!["/unrelated".into()];
+        index.apply_collections(&report, &config);
+        assert!(index.roots(category).is_empty());
+    }
     #[test]
     fn collections_are_overlays_and_nested_roots_are_counted_once() {
         let report = crate::demo::report();

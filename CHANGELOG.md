@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- A category configured above the root of a narrow saved snapshot now shows its known descendants instead of an empty tree, while retaining the missing-coverage marker. Snapshot diagnostics report the actual cache/root and indexed versus missing category roots. The cache/profile investigation documents narrow last-scan replacement and profile separation without modifying live caches.
+
 - Shortcut recording waits through left/right Ctrl, Alt, Shift and Super key events, displays held modifiers, and commits only a main key. Repeats/releases cannot trigger actions while recording; focus loss cancels safely. Legacy modifier-only bindings are repaired individually without discarding the rest of the layout.
 
 - Ctrl+Tab / Ctrl+Shift+Tab now switch existing Focus tabs in their visible left-to-right / right-to-left order, wrapping at either end. They no longer browse the file tree or use activation history; drafts, tab order and per-tab state remain intact. Plain Shift+Tab keeps its editor behavior and focused terminals retain their shortcuts.

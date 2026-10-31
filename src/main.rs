@@ -58,7 +58,7 @@ fn main() -> eframe::Result {
         match snapshot::load() {
             Ok(Some(saved)) => {
                 let loaded = started.elapsed();
-                let index = index::Index::new(&saved.report);
+                let mut index = index::Index::new(&saved.report);
                 println!(
                     "folders={} saved_at={} disk_baseline={} load_ms={:.1} ready_ms={:.1} indexed={}",
                     saved.report.folders.len(),
@@ -68,6 +68,27 @@ fn main() -> eframe::Result {
                     started.elapsed().as_secs_f64() * 1000.,
                     index.folder_count()
                 );
+                let root = &saved.report.folders[0];
+                println!(
+                    "cache={} root={} complete={} files={} bytes={}",
+                    snapshot::file().display(),
+                    root.path.display(),
+                    saved.report.complete,
+                    root.files,
+                    root.bytes
+                );
+                if let Ok(config) = categories::Config::read(&categories::path()) {
+                    let missing = index.apply_collections(&saved.report, &config);
+                    for c in &config.items {
+                        println!(
+                            "category={} configured={} roots={} missing={}",
+                            c.id,
+                            c.folders.len(),
+                            index.roots(c.category()).len(),
+                            missing.get(&c.category()).map_or(0, Vec::len)
+                        );
+                    }
+                }
             }
             Ok(None) => println!("No saved snapshot"),
             Err(e) => {

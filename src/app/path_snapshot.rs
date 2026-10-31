@@ -198,6 +198,73 @@ mod tests {
         key
     }
     #[test]
+    #[ignore = "Requires an explicitly marked isolated profile copy"]
+    fn replay_copied_profile_normal_and_cli_category_restore_without_writes() {
+        let profile = crate::settings::config_dir();
+        assert!(
+            profile.join(".diagnostic-copy").is_file(),
+            "never replay a live user profile"
+        );
+        let before = fs::read(crate::snapshot::file()).unwrap();
+        let source = profile.join("diagnostic-source.txt");
+        fs::write(&source, "diagnostic copy only\n").unwrap();
+        for cli in [false, true] {
+            let ctx = egui::Context::default();
+            let mut time = 0.;
+            let mut app = Disco::new_with_path(
+                &eframe::CreationContext::_new_kittest(ctx.clone()),
+                cli.then(|| source.clone()),
+            );
+            for c in &mut app.collections.config.items {
+                c.auto_refresh = false;
+            }
+            app.preferences.layout.auto_refresh = false;
+            if cli {
+                wait(&mut app, &ctx, &mut time, |a| a.editor.document.is_some());
+            } else {
+                wait(&mut app, &ctx, &mut time, |a| a.scan.report.is_some());
+            }
+            let ids: Vec<_> = app
+                .collections
+                .config
+                .items
+                .iter()
+                .map(|c| c.id.clone())
+                .collect();
+            for id in ids {
+                app.select_collection_keyboard(&id);
+                wait(&mut app, &ctx, &mut time, |a| a.scan.report.is_some());
+                frame(&mut app, &ctx, &mut time, vec![]);
+                let report = app.scan.report.as_ref().unwrap();
+                let c = app
+                    .collections
+                    .config
+                    .items
+                    .iter()
+                    .find(|c| c.id == id)
+                    .unwrap();
+                if c.folders
+                    .iter()
+                    .any(|p| report.folders[0].path.starts_with(p))
+                {
+                    assert!(!app.scan.index.roots(c.category()).is_empty());
+                }
+                eprintln!(
+                    "mode={} category={} root={} indexed_roots={}",
+                    if cli { "CLI" } else { "normal" },
+                    id,
+                    report.folders[0].path.display(),
+                    app.scan.index.roots(c.category()).len()
+                );
+                assert!(!app.scan.busy && !app.scoped.busy());
+                if cli {
+                    assert_eq!(app.editor.path.as_ref(), Some(&source));
+                }
+            }
+        }
+        assert_eq!(fs::read(crate::snapshot::file()).unwrap(), before);
+    }
+    #[test]
     fn cli_categories_restore_saved_sizes_keep_drafts_and_offer_a_scoped_empty_action() {
         let Ok(root) = std::env::var("DISCO_LAZY_SNAPSHOT_FIXTURE") else {
             let root =
