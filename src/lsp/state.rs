@@ -140,6 +140,9 @@ impl State {
                         && version == self.version
                         && request == self.completion =>
                     {
+                        if items.is_empty() {
+                            self.completion = 0;
+                        }
                         self.items = items;
                         self.selected = 0;
                     }
@@ -298,9 +301,23 @@ impl State {
             self.items.clear();
             self.cursor = index;
         }
-        if out.response.changed() && !read_only {
+        let typed = ui.input(|i| {
+            i.events
+                .iter()
+                .any(|e| matches!(e, egui::Event::Text(s) if !s.is_empty()))
+        });
+        if out.response.changed() && out.response.has_focus() && !read_only && typed {
             let prefix: String = text.chars().take(index).collect();
-            if prefix.ends_with('.') || prefix.ends_with("::") || prefix.ends_with("->") {
+            let identifier = prefix
+                .chars()
+                .rev()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .count();
+            if identifier >= 2
+                || prefix.ends_with('.')
+                || prefix.ends_with("::")
+                || prefix.ends_with("->")
+            {
                 self.due = Some(Instant::now() + Duration::from_millis(180));
                 ui.ctx().request_repaint_after(Duration::from_millis(180));
             }
@@ -385,6 +402,28 @@ impl State {
         }
     }
     pub fn overlay(&mut self, ctx: &egui::Context) {
+        // egui handles Escape focus navigation before the next UI pass.
+        // Reserve it while completion is visible/pending so it dismisses the
+        // popup before any panel navigation can surrender editor focus.
+        if (!self.items.is_empty() || self.completion != 0 || self.due.is_some())
+            && let Some(path) = &self.path
+        {
+            let id = egui::Id::unique(("file-editor", &Some(path.clone())));
+            if ctx.memory(|m| m.has_focus(id)) {
+                ctx.memory_mut(|m| {
+                    m.set_focus_lock_filter(
+                        id,
+                        egui::EventFilter {
+                            horizontal_arrows: true,
+                            vertical_arrows: true,
+                            tab: true,
+                            escape: true,
+                            ..Default::default()
+                        },
+                    )
+                });
+            }
+        }
         if self.items.is_empty() {
             return;
         }

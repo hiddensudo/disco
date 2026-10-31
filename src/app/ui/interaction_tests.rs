@@ -4366,3 +4366,120 @@ fn lsp_real_editor_completion_is_one_undo_and_settings_are_opt_in() {
     );
     app.languages.shutdown();
 }
+
+#[test]
+fn typing_c_identifiers_and_cpp_scope_opens_completion_without_a_shortcut() {
+    if crate::lsp::catalog::executable(Path::new("clangd")).is_none() {
+        return;
+    }
+    let name = "app::ui::interaction_tests::typing_c_identifiers_and_cpp_scope_opens_completion_without_a_shortcut";
+    let Ok(root) = std::env::var("DISCO_LSP_AUTO_FIXTURE") else {
+        let root = std::env::temp_dir().join(format!("disco-lsp-auto-{}", std::process::id()));
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::create_dir_all(root.join("project")).unwrap();
+        fs::write(root.join("config/layout.toml"),"language='en'\ntext_scale_version=1\nsave_scan=false\nauto_refresh=false\nanimations=false\n").unwrap();
+        let mut catalog = crate::lsp::catalog::Catalog::builtin();
+        catalog.servers.get_mut("clangd").unwrap().enabled = true;
+        fs::write(
+            root.join("config/lsp.toml"),
+            toml::to_string(&catalog).unwrap(),
+        )
+        .unwrap();
+        let out = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", name, "--nocapture"])
+            .env("DISCO_LSP_AUTO_FIXTURE", &root)
+            .env("DISCO_CONFIG_DIR", root.join("config"))
+            .env("XDG_DATA_HOME", root.join("data"))
+            .output()
+            .unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            out.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return;
+    };
+    let root = PathBuf::from(root);
+    for (filename, source, input) in [
+        (
+            "main.c",
+            "struct array { int count; };\nvoid array_init(struct array *array);\nvoid f(void) {\n    \n}\n",
+            "array_",
+        ),
+        (
+            "main.cpp",
+            "#include <vector>\nvoid f() {\n    \n}\n",
+            "std::",
+        ),
+    ] {
+        let path = root.join("project").join(filename);
+        fs::write(&path, source).unwrap();
+        fs::write(root.join("project/compile_commands.json"),serde_json::to_vec(&serde_json::json!([{"directory":root.join("project"),"file":path,"arguments":[if filename.ends_with("cpp"){"clang++"}else{"clang"},if filename.ends_with("cpp"){"-std=c++20"}else{"-std=c11"},"-c",path]}])).unwrap()).unwrap();
+        let ctx = egui::Context::default();
+        let mut time = 0.;
+        let mut app = Disco::new_with_path(
+            &eframe::CreationContext::_new_kittest(ctx.clone()),
+            Some(path.clone()),
+        );
+        wait_document(&mut app, &ctx, &mut time);
+        app.focus_area(crate::app::workspace_keyboard::Area::Editor, &ctx);
+        let until = Instant::now() + Duration::from_secs(12);
+        while Instant::now() < until
+            && (app.languages.sessions.is_empty() || !app.languages.sessions[0].ready)
+        {
+            frame(&mut app, &ctx, &mut time, vec![]);
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(app.languages.sessions.first().is_some_and(|s| s.ready));
+        // Let clangd build the first AST before testing the automatic trigger.
+        let warm = Instant::now();
+        while warm.elapsed() < Duration::from_millis(1000) {
+            frame(&mut app, &ctx, &mut time, vec![]);
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let id = Id::unique(("file-editor", &app.editor.path));
+        let index = source[..source.find("    \n").unwrap() + 4].chars().count();
+        let mut state = egui::TextEdit::load_state(&ctx, id).unwrap();
+        state
+            .cursor
+            .set_char_range(Some(egui::text::CCursorRange::one(
+                egui::text::CCursor::new(index),
+            )));
+        state.store(&ctx, id);
+        frame(
+            &mut app,
+            &ctx,
+            &mut time,
+            vec![egui::Event::Text(input.into())],
+        );
+        let until = Instant::now() + Duration::from_secs(5);
+        while app.languages.completion_count() == 0 && Instant::now() < until {
+            frame(&mut app, &ctx, &mut time, vec![]);
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            app.languages.completion_count() > 0,
+            "automatic completion for {filename}: {input}"
+        );
+        let draft = app.editor.document.as_ref().unwrap().text.clone();
+        assert!(draft.contains(input));
+        assert_eq!(fs::read_to_string(&path).unwrap(), source);
+        press_key(
+            &mut app,
+            &ctx,
+            &mut time,
+            egui::Key::Escape,
+            egui::Modifiers::NONE,
+        );
+        assert_eq!(app.languages.completion_count(), 0);
+        frame(&mut app, &ctx, &mut time, vec![]);
+        assert_eq!(
+            app.languages.completion_count(),
+            0,
+            "dismissed requests must not reopen the popup"
+        );
+        app.languages.shutdown();
+    }
+}
