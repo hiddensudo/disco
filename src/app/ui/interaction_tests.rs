@@ -3745,3 +3745,224 @@ fn ctrl_tab_cycles_only_open_tabs_in_visual_order_with_wraparound() {
     assert!(!app.tabs.order.contains(&root.join("files/unopened.txt")));
     assert!(app.scan.report.is_none() && !crate::snapshot::file().exists());
 }
+
+#[test]
+fn file_editor_undo_groups_paste_enter_redo_and_preserves_history_across_tabs_save() {
+    let Ok(root) = std::env::var("DISCO_ACTION_UNDO_FIXTURE") else {
+        let root = std::env::temp_dir().join(format!("disco-action-undo-{}", std::process::id()));
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::write(root.join("source.txt"), "seed").unwrap();
+        fs::write(root.join("other.txt"), "other").unwrap();
+        fs::write(root.join("config/layout.toml"), "language='en'\ntext_scale_version=1\nsave_scan=false\nauto_refresh=false\nall_files_auto_refresh=false\nanimations=false\n").unwrap();
+        let out = Command::new(std::env::current_exe().unwrap()).args(["--exact", "app::ui::interaction_tests::file_editor_undo_groups_paste_enter_redo_and_preserves_history_across_tabs_save", "--nocapture"])
+            .env("DISCO_ACTION_UNDO_FIXTURE", &root).env("DISCO_CONFIG_DIR", root.join("config"))
+            .env("XDG_DATA_HOME", root.join("data")).output().unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            out.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return;
+    };
+    use egui::{Key, Modifiers};
+    let root = PathBuf::from(root);
+    let source = root.join("source.txt");
+    let ctx = egui::Context::default();
+    let mut time = 0.;
+    let mut app = Disco::new_with_path(
+        &eframe::CreationContext::_new_kittest(ctx.clone()),
+        Some(source.clone()),
+    );
+    wait_document(&mut app, &ctx, &mut time);
+    app.focus_area(crate::app::workspace_keyboard::Area::Editor, &ctx);
+    let id = Id::unique(("file-editor", &app.editor.path));
+    let mut state = egui::TextEdit::load_state(&ctx, id).unwrap();
+    state
+        .cursor
+        .set_char_range(Some(egui::text::CCursorRange::one(
+            egui::text::CCursor::new(4),
+        )));
+    state.store(&ctx, id);
+    let chord = Modifiers::CTRL | Modifiers::COMMAND;
+    // Three actions in one UI frame: no time gap can create these boundaries.
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![
+            egui::Event::Paste(" α\r\nβ".into()),
+            egui::Event::Key {
+                key: Key::Enter,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Modifiers::NONE,
+            },
+            egui::Event::Paste("終".into()),
+        ],
+    );
+    assert_eq!(app.editor.document.as_ref().unwrap().text, "seed α\nβ\n終");
+    for expected in ["seed α\nβ\n", "seed α\nβ", "seed"] {
+        press_key(&mut app, &ctx, &mut time, Key::Z, chord);
+        assert_eq!(app.editor.document.as_ref().unwrap().text, expected);
+    }
+    press_key(&mut app, &ctx, &mut time, Key::ArrowLeft, Modifiers::NONE);
+    let cursor_without_edit = egui::TextEdit::load_state(&ctx, id)
+        .unwrap()
+        .cursor
+        .char_range();
+    press_key(&mut app, &ctx, &mut time, Key::Z, chord);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, "seed");
+    assert_eq!(
+        egui::TextEdit::load_state(&ctx, id)
+            .unwrap()
+            .cursor
+            .char_range(),
+        cursor_without_edit,
+        "cursor-only movement must not become an undo transaction"
+    );
+    for expected in ["seed α\nβ", "seed α\nβ\n", "seed α\nβ\n終"] {
+        press_key(&mut app, &ctx, &mut time, Key::Z, chord | Modifiers::SHIFT);
+        assert_eq!(app.editor.document.as_ref().unwrap().text, expected);
+    }
+    press_key(&mut app, &ctx, &mut time, Key::Z, chord);
+    press_key(&mut app, &ctx, &mut time, Key::ArrowLeft, Modifiers::NONE);
+    press_key(&mut app, &ctx, &mut time, Key::Y, chord);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, "seed α\nβ\n終");
+    app.save_editor(&ctx);
+    wait_document(&mut app, &ctx, &mut time);
+    let saved = app.editor.document.as_ref().unwrap().text.clone();
+    app.select_file(root.join("other.txt"), 5);
+    wait_document(&mut app, &ctx, &mut time);
+    app.activate_tab(&source, &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    press_key(&mut app, &ctx, &mut time, Key::Z, chord);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, "seed α\nβ\n");
+    assert_eq!(fs::read_to_string(&source).unwrap(), saved);
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Text("x".into())],
+    );
+    let branch = app.editor.document.as_ref().unwrap().text.clone();
+    press_key(&mut app, &ctx, &mut time, Key::Y, chord);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, branch);
+    app.preferences.layout.all_files_read_only = true;
+    press_key(&mut app, &ctx, &mut time, Key::Z, chord);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, branch);
+    app.preferences.layout.all_files_read_only = false;
+    press_key(&mut app, &ctx, &mut time, Key::Z, chord);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, "seed α\nβ\n");
+    let baseline = app.editor.document.as_ref().unwrap().text.clone();
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![
+            egui::Event::Paste("one".into()),
+            egui::Event::Paste("two".into()),
+        ],
+    );
+    press_key(&mut app, &ctx, &mut time, Key::Z, chord);
+    assert_eq!(
+        app.editor.document.as_ref().unwrap().text,
+        format!("{baseline}one")
+    );
+    press_key(&mut app, &ctx, &mut time, Key::Z, chord);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, baseline);
+    for text in ["に", "日本"] {
+        frame(
+            &mut app,
+            &ctx,
+            &mut time,
+            vec![egui::Event::Ime(egui::ImeEvent::Preedit {
+                text: text.into(),
+                active_range_chars: None,
+            })],
+        );
+    }
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Ime(egui::ImeEvent::Commit("日本語".into()))],
+    );
+    let composed = app.editor.document.as_ref().unwrap().text.clone();
+    assert!(composed.ends_with("日本語"));
+    press_key(&mut app, &ctx, &mut time, Key::Z, chord);
+    assert_eq!(
+        app.editor.document.as_ref().unwrap().text,
+        baseline,
+        "IME is one transaction, not transient preedit states"
+    );
+    press_key(&mut app, &ctx, &mut time, Key::Y, chord);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, composed);
+    let mut state = egui::TextEdit::load_state(&ctx, id).unwrap();
+    let len = composed.chars().count();
+    let range = egui::text::CCursorRange::two(
+        egui::text::CCursor::new(len - 3),
+        egui::text::CCursor::new(len),
+    );
+    state.cursor.set_char_range(Some(range));
+    state.store(&ctx, id);
+    frame(&mut app, &ctx, &mut time, vec![egui::Event::Cut]);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, baseline);
+    press_key(&mut app, &ctx, &mut time, Key::Z, chord);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, composed);
+    assert_eq!(
+        egui::TextEdit::load_state(&ctx, id)
+            .unwrap()
+            .cursor
+            .char_range(),
+        Some(range)
+    );
+    let md = root.join("note.md");
+    fs::write(&md, "# title\n").unwrap();
+    app.select_file(md.clone(), 8);
+    wait_document(&mut app, &ctx, &mut time);
+    let original_md = app.editor.document.as_ref().unwrap().text.clone();
+    app.editor.markdown.editing = true;
+    app.focus_area(crate::app::workspace_keyboard::Area::Editor, &ctx);
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Paste("delta".into())],
+    );
+    let changed_md = app.editor.document.as_ref().unwrap().text.clone();
+    app.editor.markdown.editing = false;
+    frame(&mut app, &ctx, &mut time, vec![]);
+    app.editor.markdown.editing = true;
+    app.editor.zoom.factor = 1.4;
+    app.focus_area(crate::app::workspace_keyboard::Area::Editor, &ctx);
+    app.save_editor(&ctx);
+    wait_document(&mut app, &ctx, &mut time);
+    press_key(&mut app, &ctx, &mut time, Key::Z, chord);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, original_md);
+    assert_eq!(fs::read_to_string(&md).unwrap(), changed_md);
+    press_key(&mut app, &ctx, &mut time, Key::Y, chord);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, changed_md);
+    let empty = root.join("typing.txt");
+    fs::write(&empty, "").unwrap();
+    app.select_file(empty, 0);
+    wait_document(&mut app, &ctx, &mut time);
+    app.focus_area(crate::app::workspace_keyboard::Area::Editor, &ctx);
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Text("a".into()), egui::Event::Text("b".into())],
+    );
+    press_key(&mut app, &ctx, &mut time, Key::Z, chord);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, "");
+    press_key(&mut app, &ctx, &mut time, Key::Y, chord);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, "ab");
+    press_key(&mut app, &ctx, &mut time, Key::Backspace, Modifiers::NONE);
+    press_key(&mut app, &ctx, &mut time, Key::Backspace, Modifiers::NONE);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, "");
+    press_key(&mut app, &ctx, &mut time, Key::Z, chord);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, "ab");
+}

@@ -297,6 +297,7 @@ impl Disco {
                                     egui::TextEdit::multiline(&mut buffer)
                                         .id(egui::Id::unique(("file-editor", &path)))
                                         .code_editor()
+                                        .action_undo(true)
                                         .layouter(&mut layouter)
                                         .font(font.clone())
                                         .frame(egui::Frame::NONE)

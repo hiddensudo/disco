@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- File-editor Undo/Redo follows edit actions instead of timer-only snapshots: individual pastes, Enter, cut and selection replacements have distinct boundaries even in one input frame. Continuous typing/deletion groups by cursor/type/pause, IME composition remains one step, redo survives cursor movement and new edits clear its branch. Save, tab and Markdown mode changes preserve history; read-only mode cannot consume it.
+
 - A category configured above the root of a narrow saved snapshot now shows its known descendants instead of an empty tree, while retaining the missing-coverage marker. Snapshot diagnostics report the actual cache/root and indexed versus missing category roots. The cache/profile investigation documents narrow last-scan replacement and profile separation without modifying live caches.
 
 - Shortcut recording waits through left/right Ctrl, Alt, Shift and Super key events, displays held modifiers, and commits only a main key. Repeats/releases cannot trigger actions while recording; focus loss cancels safely. Legacy modifier-only bindings are repaired individually without discarding the rest of the layout.
