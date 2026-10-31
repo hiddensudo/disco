@@ -35,6 +35,19 @@ pub struct Binding {
     pub alt: bool,
     pub shift: bool,
 }
+pub(crate) fn modifier_key(key: Key) -> bool {
+    matches!(
+        key,
+        Key::ControlLeft
+            | Key::ControlRight
+            | Key::AltLeft
+            | Key::AltRight
+            | Key::ShiftLeft
+            | Key::ShiftRight
+            | Key::SuperLeft
+            | Key::SuperRight
+    )
+}
 impl Binding {
     pub fn new(key: Key, modifiers: Modifiers) -> Self {
         Self {
@@ -79,6 +92,13 @@ impl Binding {
     fn validate(&self) -> Result<(), String> {
         let key = Key::from_name(&self.key)
             .ok_or_else(|| crate::tr!("Невідома клавіша", "Unknown key").to_string())?;
+        if modifier_key(key) {
+            return Err(crate::tr!(
+                "Додай основну клавішу до модифікаторів",
+                "Add a main key after the modifiers"
+            )
+            .into());
+        }
         let function = self
             .key
             .strip_prefix('F')
@@ -160,13 +180,29 @@ impl<'de> Deserialize<'de> for Shortcuts {
             .find(|b| ![&s.new_tab, &s.terminal, &s.focus, &s.overview].contains(&b))
             .unwrap()
         });
-        Ok(Self {
+        let mut result = Self {
             new_tab: s.new_tab,
             terminal: s.terminal,
             focus: s.focus,
             overview: s.overview,
             reset_zoom: reset,
-        })
+        };
+        // Earlier recorders could persist a bare modifier. Repair only that
+        // binding rather than rejecting the user's entire layout on startup.
+        for command in Command::ALL {
+            if Key::from_name(&result.get(command).key).is_some_and(modifier_key) {
+                let defaults = Self::default();
+                let replacement = std::iter::once(defaults.get(command).clone())
+                    .chain(
+                        [Key::F24, Key::F23, Key::F22, Key::F21, Key::F20]
+                            .into_iter()
+                            .map(|key| Binding::new(key, Modifiers::CTRL | Modifiers::ALT)),
+                    )
+                    .find(|binding| result.assign(command, binding.clone()).is_ok());
+                debug_assert!(replacement.is_some());
+            }
+        }
+        Ok(result)
     }
 }
 impl Default for Shortcuts {

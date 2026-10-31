@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- Shortcut recording waits through left/right Ctrl, Alt, Shift and Super key events, displays held modifiers, and commits only a main key. Repeats/releases cannot trigger actions while recording; focus loss cancels safely. Legacy modifier-only bindings are repaired individually without discarding the rest of the layout.
+
 - Ctrl+Tab / Ctrl+Shift+Tab now switch existing Focus tabs in their visible left-to-right / right-to-left order, wrapping at either end. They no longer browse the file tree or use activation history; drafts, tab order and per-tab state remain intact. Plain Shift+Tab keeps its editor behavior and focused terminals retain their shortcuts.
 
 - File search now floats over the editor instead of pushing its text downward. It stays open while editing without changing the document viewport. Closing clears the query by default; Interface settings can retain the last query for each open tab. Search-generated selections do not accidentally restore a cleared query.

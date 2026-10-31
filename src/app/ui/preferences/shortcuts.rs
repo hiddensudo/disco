@@ -2,22 +2,29 @@ use crate::{
     settings::Layout,
     shortcuts::{Binding, Command},
 };
-use eframe::egui::{self, Key};
+use eframe::egui::{self, Key, Modifiers};
 #[derive(Default)]
 pub(in crate::app) struct Recorder {
     pub command: Option<Command>,
     error: String,
     kde: Option<String>,
+    held: Modifiers,
 }
 impl Recorder {
     pub fn cancel(&mut self) {
         self.command = None;
         self.error.clear();
+        self.held = Modifiers::NONE;
     }
     pub fn capture(&mut self, ctx: &egui::Context, layout: &mut Layout) {
         let Some(command) = self.command else {
             return;
         };
+        if !ctx.input(|i| i.focused) {
+            self.cancel();
+            return;
+        }
+        self.held = ctx.input(|i| i.modifiers);
         let key = ctx.input(|i| {
             i.events.iter().find_map(|event| match event {
                 egui::Event::Key {
@@ -26,23 +33,25 @@ impl Recorder {
                     pressed: true,
                     repeat: false,
                     ..
-                } => Some((*key, *modifiers)),
+                } if !crate::shortcuts::modifier_key(*key) => Some((*key, *modifiers)),
                 _ => None,
             })
         });
+        // Suppress releases/repeats and text/clipboard events too, even while
+        // only modifiers are held. Recording must never execute a UI command.
+        ctx.input_mut(|i| {
+            i.events.retain(|event| {
+                !matches!(
+                    event,
+                    egui::Event::Key { .. }
+                        | egui::Event::Text(_)
+                        | egui::Event::Paste(_)
+                        | egui::Event::Copy
+                        | egui::Event::Cut
+                )
+            })
+        });
         if let Some((key, mods)) = key {
-            ctx.input_mut(|i| {
-                i.events.retain(|event| {
-                    !matches!(
-                        event,
-                        egui::Event::Key { .. }
-                            | egui::Event::Text(_)
-                            | egui::Event::Paste(_)
-                            | egui::Event::Copy
-                            | egui::Event::Cut
-                    )
-                })
-            });
             if key == Key::Escape {
                 self.command = None;
                 self.error.clear();
@@ -76,10 +85,17 @@ impl Recorder {
         for command in Command::ALL {
             let binding = layout.shortcuts.get(command);
             let label = binding.label();
+            let waiting = format!(
+                "{}{}{}{}",
+                if self.held.ctrl { "Ctrl+" } else { "" },
+                if self.held.alt { "Alt+" } else { "" },
+                if self.held.shift { "Shift+" } else { "" },
+                crate::tr!("Натисни клавішу…", "Press a key…")
+            );
             ui.horizontal(|ui| {
                 ui.add_sized([180., 30.], egui::Label::new(command.label()));
                 let text = if self.command == Some(command) {
-                    crate::tr!("Натисни комбінацію…", "Press a shortcut…")
+                    &waiting
                 } else {
                     &label
                 };
@@ -173,5 +189,112 @@ mod tests {
             layout.shortcuts.terminal,
             crate::shortcuts::Shortcuts::default().terminal
         );
+    }
+}
+
+#[cfg(test)]
+mod modifier_tests {
+    use super::*;
+    #[test]
+    fn modifier_sequences_wait_for_a_main_key_and_focus_loss_cancels() {
+        let ctx = egui::Context::default();
+        let mut layout = Layout::default();
+        let mut recorder = Recorder::default();
+        let frame = |mut events: Vec<egui::Event>,
+                     mods,
+                     focused,
+                     recorder: &mut Recorder,
+                     layout: &mut Layout| {
+            events.insert(0, egui::Event::ModifiersChanged(mods));
+            ctx.run_ui(
+                egui::RawInput {
+                    events,
+                    focused,
+                    ..Default::default()
+                },
+                |ui| {
+                    recorder.capture(ui.ctx(), layout);
+                    assert!(!ui.input(|i| {
+                        i.events
+                            .iter()
+                            .any(|e| matches!(e, egui::Event::Key { .. } | egui::Event::Text(_)))
+                    }));
+                },
+            )
+            .drop_without_applying_deltas();
+        };
+        let event = |key, mods, pressed| egui::Event::Key {
+            key,
+            physical_key: Some(key),
+            pressed,
+            repeat: false,
+            modifiers: mods,
+        };
+        for mods in [
+            Modifiers::CTRL | Modifiers::SHIFT,
+            Modifiers::ALT | Modifiers::SHIFT,
+            Modifiers::CTRL | Modifiers::ALT,
+            Modifiers::CTRL | Modifiers::ALT | Modifiers::SHIFT,
+        ] {
+            for keys in [
+                [Key::ControlLeft, Key::AltLeft, Key::ShiftLeft],
+                [Key::ShiftRight, Key::AltRight, Key::ControlRight],
+            ] {
+                recorder.command = Some(Command::Focus);
+                let before = layout.shortcuts.clone();
+                for key in keys {
+                    frame(
+                        vec![event(key, mods, true)],
+                        mods,
+                        true,
+                        &mut recorder,
+                        &mut layout,
+                    );
+                    assert_eq!(recorder.command, Some(Command::Focus));
+                    assert_eq!(layout.shortcuts, before);
+                }
+                frame(
+                    vec![event(Key::H, mods, true)],
+                    mods,
+                    true,
+                    &mut recorder,
+                    &mut layout,
+                );
+                assert_eq!(recorder.command, None);
+                assert_eq!(layout.shortcuts.focus, Binding::new(Key::H, mods));
+                recorder.command = Some(Command::Focus);
+                frame(
+                    vec![
+                        event(Key::H, mods, false),
+                        event(Key::ControlRight, mods, false),
+                    ],
+                    mods,
+                    true,
+                    &mut recorder,
+                    &mut layout,
+                );
+                assert!(recorder.command.is_some());
+                frame(vec![], Modifiers::NONE, false, &mut recorder, &mut layout);
+                assert!(recorder.command.is_none());
+            }
+        }
+        recorder.command = Some(Command::Focus);
+        frame(
+            vec![event(Key::Num1, Modifiers::CTRL, true)],
+            Modifiers::CTRL,
+            true,
+            &mut recorder,
+            &mut layout,
+        );
+        assert_eq!(
+            layout.shortcuts.focus,
+            Binding::new(Key::Num1, Modifiers::CTRL)
+        );
+        let legacy: Layout = toml::from_str("compact=true\n[shortcuts.focus]\nkey='ControlLeft'\nctrl=true\nalt=true\nshift=false\n").unwrap();
+        assert!(legacy.compact);
+        legacy.validate().unwrap();
+        assert!(!crate::shortcuts::modifier_key(
+            Key::from_name(&legacy.shortcuts.focus.key).unwrap()
+        ));
     }
 }
