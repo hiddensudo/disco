@@ -267,6 +267,8 @@ impl Disco {
             11,
             if narrow {
                 ""
+            } else if self.paths.directory.is_some() {
+                crate::tr!("Сканувати", "Scan")
             } else if self.scan.report.is_some() || self.paths.standalone.is_some() {
                 crate::tr!("Оновити", "Refresh")
             } else {
@@ -279,7 +281,12 @@ impl Disco {
                 && self.scan.restore_requested_root.is_none(),
             &t,
         )
-        .on_hover_text(if self.paths.standalone.is_some() {
+        .on_hover_text(if self.paths.directory.is_some() {
+            crate::tr!(
+                "Порахувати розміри в цій папці",
+                "Scan this folder to calculate sizes"
+            )
+        } else if self.paths.standalone.is_some() {
             crate::tr!("Перечитати відкритий файл", "Reload the open file")
         } else {
             crate::tr!(

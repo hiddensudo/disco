@@ -25,7 +25,7 @@ impl Disco {
         if self.guard_editor_scan(dup, force, automatic) {
             return;
         }
-        self.paths.standalone = None;
+        self.leave_path_browser();
         self.scan.restore_requested_root = None;
         let path = PathBuf::from(&self.browser.root);
         if !path.is_absolute() {

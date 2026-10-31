@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- Direct-file windows retain the category rail and existing scan snapshot. Home and breadcrumbs reuse known folders or browse an asynchronous, bounded single-directory listing without recursively scanning. Unmeasured folder sizes show a dash; Scan explicitly calculates sizes. Open tabs and drafts remain intact.
+
 - File zoom uses additive 10 percentage-point steps, configurable in Interface settings. Ctrl+0 resets the active document to 100%; Reset file zoom is remappable in Shortcuts. Existing shortcut bindings survive migration, including an occupied Ctrl+0.
 
 - Optional SVG language/file-type icons for 59 families, including C/C++, Rust, JSON/YAML/TOML, JS/TS, Java and Python. The setting defaults off, supports Save/Cancel, and retains generic fallbacks. Material Icon Theme assets and the MIT notice ship locally.

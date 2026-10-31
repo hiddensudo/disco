@@ -424,6 +424,9 @@ impl Disco {
         roots
     }
     fn build_scope_roots(&self) -> Vec<PathBuf> {
+        if let Some(path) = &self.paths.directory {
+            return vec![path.clone()];
+        }
         if self.paths.standalone.is_some() {
             return vec![];
         }
@@ -465,6 +468,10 @@ impl Disco {
         }
     }
     pub(in crate::app) fn refresh_scope(&mut self, ctx: &egui::Context) {
+        if self.paths.directory.is_some() {
+            self.start_job(false, true, false);
+            return;
+        }
         if self.paths.standalone.is_some() {
             self.editor_action(super::editor::Action::Reload, ctx);
             return;
@@ -652,7 +659,10 @@ impl Disco {
             }
         }
         let roots = self.scope_roots();
-        let enabled = !self.demo && self.category_live() && self.browser.view != View::Trash;
+        let enabled = !self.demo
+            && self.paths.directory.is_none()
+            && self.category_live()
+            && self.browser.view != View::Trash;
         let scope_changed = self.live.configure_scope(
             if enabled {
                 roots.clone()

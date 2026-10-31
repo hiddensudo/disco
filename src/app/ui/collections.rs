@@ -265,7 +265,9 @@ impl Disco {
                 }
                 for collection in self.collections.config.items.clone() {
                     let cat = collection.category();
-                    let active = self.browser.view == View::Folders && self.browser.category == cat;
+                    let active = self.paths.standalone.is_none()
+                        && self.browser.view == View::Folders
+                        && self.browser.category == cat;
                     let (rect, _) = ui.allocate_exact_size(
                         Vec2::new(
                             ui.available_width(),
@@ -479,6 +481,7 @@ impl Disco {
                         }
                     });
                     if response.clicked() {
+                        self.leave_path_browser();
                         self.browser.category = cat;
                         self.browser.view = View::Folders;
                         self.browser.filter.clear();

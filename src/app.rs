@@ -485,7 +485,7 @@ impl eframe::App for Disco {
             self.show_inspector_panel(ui);
             self.terminal_panel(ui);
         }
-        if self.preferences.layout.categories && self.paths.standalone.is_none() {
+        if self.preferences.layout.categories {
             let categories = egui::Panel::left("categories")
                 .exact_size(if self.preferences.layout.category_labels {
                     self.preferences.layout.category_width
@@ -519,7 +519,7 @@ impl eframe::App for Disco {
                     self.recycle_content(ui);
                     return;
                 }
-                if !self.preferences.layout.categories && self.paths.standalone.is_none() {
+                if !self.preferences.layout.categories {
                     ui.horizontal(|ui| {
                         for cat in [
                             Category::All,

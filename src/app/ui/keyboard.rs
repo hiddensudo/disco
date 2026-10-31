@@ -252,13 +252,10 @@ impl Disco {
         match self.browser.view {
             View::Folders => {
                 let rows = self.visible_rows();
-                let Some(r) = &self.scan.report else {
-                    return vec![];
-                };
                 rows.iter()
                     .filter_map(|row| match row {
                         TreeRow::Folder(id, _) => {
-                            let f = &r.folders[*id];
+                            let f = self.scan.report.as_ref()?.folders.get(*id)?;
                             Some(Item {
                                 path: f.path.clone(),
                                 bytes: f.bytes,

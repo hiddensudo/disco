@@ -19,6 +19,7 @@ pub(crate) struct Entry {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Listing {
     pub files: Vec<Arc<Entry>>,
+    pub directories: Vec<Arc<Entry>>,
     pub limited: bool,
     pub error: Option<String>,
 }
@@ -33,7 +34,7 @@ fn read(path: &Path) -> Listing {
     };
     // Cap visited entries too: a huge directory must not monopolize a worker.
     for (visited, result) in entries.enumerate() {
-        if visited >= 100_000 || listing.files.len() >= FILE_LIMIT {
+        if visited >= 100_000 || listing.files.len() + listing.directories.len() >= FILE_LIMIT {
             listing.limited = true;
             break;
         }
@@ -47,6 +48,13 @@ fn read(path: &Path) -> Listing {
         let Ok(kind) = entry.file_type() else {
             continue;
         };
+        if kind.is_dir() {
+            listing.directories.push(Arc::new(Entry {
+                path: entry.path(),
+                bytes: 0,
+            }));
+            continue;
+        }
         if !kind.is_file() {
             continue;
         }
@@ -163,7 +171,7 @@ impl Files {
                 || self
                     .cache
                     .values()
-                    .map(|c| c.listing.files.len())
+                    .map(|c| c.listing.files.len() + c.listing.directories.len())
                     .sum::<usize>()
                     > CACHE_FILES
             {

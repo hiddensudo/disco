@@ -52,7 +52,7 @@ impl Disco {
     }
     fn available_areas(&self) -> Vec<Area> {
         let mut areas = vec![];
-        if self.preferences.layout.categories && self.paths.standalone.is_none() {
+        if self.preferences.layout.categories {
             areas.push(Area::Categories);
         }
         areas.push(Area::Tree);
@@ -244,6 +244,7 @@ impl Disco {
         else {
             return;
         };
+        self.leave_path_browser();
         self.browser.category = category;
         self.browser.view = View::Folders;
         self.browser.filter.clear();

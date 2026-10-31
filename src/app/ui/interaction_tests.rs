@@ -3039,5 +3039,63 @@ fn direct_file_and_address_completion_open_paths_without_losing_drafts() {
         std::thread::sleep(Duration::from_millis(5));
     }
     assert!(app.scope_roots().is_empty());
+    let snapshot = app
+        .scan
+        .report
+        .clone()
+        .expect("preserve prior workspace snapshot");
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert!(
+        ctx.read_response(Id::unique("category-panel-bounds"))
+            .is_some()
+    );
+    app.preferences.layout.home_path = root.join("files").display().to_string();
+    app.focus_area(Area::Editor, &ctx);
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Text("unsaved".into())],
+    );
+    let draft = app.editor.document.as_ref().unwrap().text.clone();
+    let tabs = app.tabs.order.clone();
+    click(&mut app, &ctx, &mut time, Id::unique("folder-root"));
+    let start = Instant::now();
+    while app.files.get(&root.join("files")).is_none() && start.elapsed() < Duration::from_secs(3) {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(app.paths.directory.as_ref(), Some(&root.join("files")));
+    assert!(!app.scan.busy);
+    assert!(!app.scoped.busy());
+    assert!(std::sync::Arc::ptr_eq(
+        &snapshot,
+        app.scan.report.as_ref().unwrap()
+    ));
+    assert!(
+        app.build_visible_rows()
+            .iter()
+            .any(|r| matches!(r, crate::app::state::TreeRow::PathFolder(_, _)))
+    );
+    assert_eq!(app.editor.document.as_ref().unwrap().text, draft);
+    assert_eq!(app.tabs.order, tabs);
+    // A cached target reuses its existing sizes; no scan and no shallow replacement.
+    app.navigate_path(root.join("files/A folder"));
+    assert!(app.paths.directory.is_none());
+    assert!(app.browser.table_root.is_some());
+    assert!(!app.scan.busy);
+    assert!(std::sync::Arc::ptr_eq(
+        &snapshot,
+        app.scan.report.as_ref().unwrap()
+    ));
+    // The same Home transition works with no snapshot at all.
+    app.scan.report = None;
+    app.scan.index = Default::default();
+    app.scan.report_revision += 1;
+    app.navigate_path(root.join("files"));
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert!(app.paths.directory.is_some());
+    assert!(!app.scan.busy);
     assert!(app.scan.report.is_none());
+    assert_eq!(app.editor.document.as_ref().unwrap().text, draft);
 }

@@ -45,6 +45,15 @@ impl Disco {
             FontId::proportional((14. * self.preferences.layout.tree_text_scale()).max(10.5)),
             color(&t.text),
         );
+        if self.paths.directory.is_some() {
+            ui.painter().text(
+                Pos2::new(rect.right() - 8., rect.center().y),
+                Align2::RIGHT_CENTER,
+                "—",
+                FontId::proportional(11.),
+                color(&t.muted),
+            );
+        }
         if response.clicked() {
             self.editor_action(
                 crate::app::editor::Action::Navigate(file.path.clone()),
@@ -105,6 +114,52 @@ impl Disco {
                 }),
                 0,
             )];
+        }
+        if let Some(directory) = &self.paths.directory {
+            let Some(listing) = self.files.get(directory) else {
+                return vec![];
+            };
+            let mut rows: Vec<_> = listing
+                .directories
+                .iter()
+                .cloned()
+                .map(|f| TreeRow::PathFolder(f, 0))
+                .chain(listing.files.iter().cloned().map(|f| TreeRow::File(f, 0)))
+                .filter(|row| {
+                    let path = match row {
+                        TreeRow::File(f, _) | TreeRow::PathFolder(f, _) => &f.path,
+                        _ => unreachable!(),
+                    };
+                    label(path)
+                        .to_lowercase()
+                        .contains(&self.browser.filter.to_lowercase())
+                })
+                .collect();
+            rows.sort_by(|a, b| {
+                let (ad, af) = match a {
+                    TreeRow::File(f, _) => (false, f),
+                    TreeRow::PathFolder(f, _) => (true, f),
+                    _ => unreachable!(),
+                };
+                let (bd, bf) = match b {
+                    TreeRow::File(f, _) => (false, f),
+                    TreeRow::PathFolder(f, _) => (true, f),
+                    _ => unreachable!(),
+                };
+                bd.cmp(&ad).then_with(|| {
+                    let cmp = if self.browser.sort_size {
+                        af.bytes.cmp(&bf.bytes)
+                    } else {
+                        af.path.file_name().cmp(&bf.path.file_name())
+                    };
+                    if self.browser.descending {
+                        cmp.reverse()
+                    } else {
+                        cmp
+                    }
+                })
+            });
+            return rows;
         }
         let Some(r) = &self.scan.report else {
             return vec![];
@@ -348,7 +403,10 @@ impl Disco {
             Stroke::new(1., color(&t.border)),
             egui::StrokeKind::Inside,
         );
-        if self.scan.report.is_none() && self.paths.standalone.is_none() {
+        if self.scan.report.is_none()
+            && self.paths.standalone.is_none()
+            && self.paths.directory.is_none()
+        {
             let center = outer.center();
             self.art.paint(
                 ui,
@@ -400,6 +458,22 @@ impl Disco {
             return;
         }
         let rows = self.visible_rows();
+        if rows.is_empty()
+            && let Some(path) = &self.paths.directory
+        {
+            let text = match self.files.get(path) {
+                None => crate::tr!("Читаємо папку…", "Reading directory…").to_string(),
+                Some(listing) if listing.error.is_some() => listing.error.clone().unwrap(),
+                Some(_) => crate::tr!("Немає файлів для показу", "No files to show").to_string(),
+            };
+            ui.painter().text(
+                outer.center(),
+                Align2::CENTER_CENTER,
+                text,
+                FontId::proportional(13.),
+                color(&t.muted),
+            );
+        }
         let height = self.preferences.layout.tree_row_height();
 
         let mut area = egui::ScrollArea::vertical()

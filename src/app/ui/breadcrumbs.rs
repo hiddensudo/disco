@@ -134,7 +134,12 @@ impl Disco {
             .report
             .as_ref()
             .and_then(|r| r.folders.iter().position(|f| f.path == path));
-        self.paths.standalone = None;
+        self.scoped.cancel();
+        self.scoped = Default::default();
+        self.leave_path_browser();
+        self.browser.properties = None;
+        self.browser.table_root = None;
+        self.browser.selected.clear();
         self.browser.category = Category::All;
         self.browser.view = View::Folders;
         self.browser.filter.clear();
@@ -142,7 +147,8 @@ impl Disco {
             self.enter_folder(id);
         } else {
             self.browser.root = path.to_string_lossy().into_owned();
-            self.start_job(false, false, false);
+            self.paths.directory = Some(path);
+            self.browser.rows_cache = None;
         }
     }
 }

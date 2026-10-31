@@ -9,6 +9,8 @@ use std::path::PathBuf;
 #[derive(Default)]
 pub(super) struct Paths {
     pub standalone: Option<PathBuf>,
+    /// Shallow directory browsing outside the available scan snapshot.
+    pub directory: Option<PathBuf>,
     pub editing: bool,
     pub input: String,
     pub focus: bool,
@@ -19,6 +21,13 @@ pub(super) struct Paths {
     pub error: String,
 }
 impl Disco {
+    pub(in crate::app) fn leave_path_browser(&mut self) {
+        self.paths.standalone = None;
+        self.paths.directory = None;
+        self.browser.rows_cache = None;
+        self.browser.tree_revision = self.browser.tree_revision.wrapping_add(1);
+    }
+
     pub(in crate::app) fn begin_path_edit(&mut self, ctx: &egui::Context) {
         self.paths.input = self
             .paths
@@ -75,6 +84,17 @@ impl Disco {
     }
     pub(in crate::app) fn poll_paths(&mut self, ctx: &egui::Context) {
         self.paths.completion.poll(ctx);
+        if let Some(path) = self.paths.directory.clone() {
+            self.files.request(path.clone(), ctx);
+            if let Some(listing) = self.files.get(&path) {
+                if let Some(error) = &listing.error {
+                    self.message = error.clone();
+                } else if listing.limited {
+                    self.message =
+                        crate::tr!("Показано частину папки", "Showing a partial directory").into();
+                }
+            }
+        }
         if let Some(result) = self.paths.resolver.poll(ctx) {
             match result {
                 Ok(path) => self.editor_action(Action::OpenPath(path), ctx),
@@ -110,6 +130,7 @@ impl Disco {
         self.paths.editing = false;
         self.paths.error.clear();
         self.demo = false;
+        self.paths.directory = None;
         if resolved.directory {
             self.paths.standalone = None;
             self.browser.root = resolved.path.display().to_string();
@@ -124,8 +145,7 @@ impl Disco {
                 .to_string();
             self.preferences.layout.preview_mode = PreviewMode::Focus;
             self.preferences.layout.properties = false;
-            self.scan.report = None;
-            self.scan.index = Default::default();
+            // Keep the snapshot available for Home/category navigation.
             self.scan.tracker = None;
             self.browser.properties = Some(crate::filesystem::Properties::load(
                 resolved.path.clone(),
