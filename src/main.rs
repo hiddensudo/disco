@@ -6,6 +6,7 @@ mod categories;
 mod deletion;
 mod demo;
 mod directory_files;
+mod document_watch;
 mod file_creation;
 mod file_icons;
 mod file_preview;

@@ -50,6 +50,7 @@ pub(crate) struct Disco {
     recycle: recycle::Bin,
     files: crate::directory_files::Files,
     file_preview: crate::file_preview::Preview,
+    document_watch: crate::document_watch::Monitor,
     editor: editor::Editor,
     tabs: tabs::Tabs,
     terminal: crate::terminal::Terminal,
@@ -242,6 +243,7 @@ impl Disco {
             recycle: recycle::Bin::default(),
             files: crate::directory_files::Files::default(),
             file_preview: crate::file_preview::Preview::default(),
+            document_watch: Default::default(),
             new_file: None,
             save_as: None,
             scoped: scope::Scope::default(),
@@ -386,6 +388,7 @@ impl eframe::App for Disco {
         self.poll_save_as(ui.ctx());
         self.poll_paths(ui.ctx());
         self.sync_file_preview(ui.ctx());
+        self.poll_document_changes(ui.ctx());
         let shown = self.terminal_shown();
         self.terminal.poll(&self.preferences.theme, shown);
         self.path_shortcuts(ui.ctx());

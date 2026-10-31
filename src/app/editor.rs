@@ -87,6 +87,7 @@ pub(super) struct Editor {
     pub origin: Option<Category>,
     pub document: Option<Document>,
     pub focused: bool,
+    external_changed: bool,
     pub focus_on_load: bool,
     pub(super) keep_cursor: bool,
     preview_disk: Option<Stamp>,
@@ -197,12 +198,29 @@ impl Disco {
         }
         self.reload_changed_document(ctx);
     }
-    pub(in crate::app) fn reload_changed_document(&mut self, ctx: &egui::Context) {
-        if self.editor.untitled.is_some() || self.editor.saving.is_some() {
+    pub(in crate::app) fn poll_document_changes(&mut self, ctx: &egui::Context) {
+        let path = (!self.demo && self.editor.untitled.is_none())
+            .then(|| self.editor.path.clone())
+            .flatten()
+            .filter(|p| p.is_absolute());
+        self.document_watch.configure(path, ctx);
+        // Keep a coalesced event pending while a save job accepts its own stamp.
+        if self.editor.saving.is_some() {
             return;
         }
+        if (self.document_watch.changed() || self.editor.external_changed && !self.editor.dirty())
+            && self.reload_changed_document(ctx)
+            && let Some(parent) = self.editor.path.as_ref().and_then(|p| p.parent())
+        {
+            self.files.invalidate(parent);
+        }
+    }
+    pub(in crate::app) fn reload_changed_document(&mut self, ctx: &egui::Context) -> bool {
+        if self.editor.untitled.is_some() || self.editor.saving.is_some() {
+            return false;
+        }
         let Some(path) = self.editor.path.clone() else {
-            return;
+            return false;
         };
         let metadata = std::fs::symlink_metadata(&path).ok();
         let same = self
@@ -211,19 +229,37 @@ impl Disco {
             .as_ref()
             .map(|d| metadata.as_ref().is_some_and(|m| d.matches_disk(m)))
             .unwrap_or_else(|| metadata.as_ref().map(Stamp::of) == self.editor.preview_disk);
+        let conflict = crate::tr!(
+            "Файл змінився на диску. Незбережений текст залишено; запис потребує перевірки конфлікту.",
+            "The file changed on disk. Your unsaved text was kept; saving requires a conflict check."
+        );
         if same {
-            return;
+            self.editor.external_changed = false;
+            if self.editor.error == conflict {
+                self.editor.error.clear();
+            }
+            return false;
         }
         if self.editor.dirty() {
-            self.editor.error = crate::tr!("Файл змінився на диску. Незбережений текст залишено; запис потребує перевірки конфлікту.",
-                "The file changed on disk. Your unsaved text was kept; saving requires a conflict check.").into();
+            self.editor.external_changed = true;
+            self.editor.error = conflict.into();
         } else {
+            let had_external_change = self.editor.external_changed;
+            self.editor.external_changed = false;
+            if had_external_change || self.editor.error == conflict {
+                self.editor.error.clear();
+            }
+            self.editor.focus_on_load |= ctx.memory(|m| {
+                m.focused() == Some(egui::Id::unique(("file-editor", &self.editor.path)))
+            });
             self.editor.document = None;
             self.editor.keep_cursor = true;
             self.editor.preview_disk = metadata.as_ref().map(Stamp::of);
+            self.editor.markdown.reload(ctx);
             self.file_preview.reload();
         }
         ctx.request_repaint();
+        true
     }
     pub(in crate::app) fn sync_file_preview(&mut self, ctx: &egui::Context) {
         self.poll_tabs(ctx);
@@ -291,6 +327,7 @@ impl Disco {
             self.editor.document = None;
             self.editor.error.clear();
             self.editor.bookmark = None;
+            self.editor.external_changed = false;
             self.editor.path = desired.clone();
             self.editor.origin = Some(self.browser.category);
             self.editor.preview_disk = desired

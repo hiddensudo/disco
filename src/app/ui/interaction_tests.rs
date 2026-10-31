@@ -3158,3 +3158,234 @@ fn direct_file_and_address_completion_open_paths_without_losing_drafts() {
     assert!(app.scan.report.is_none());
     assert_eq!(app.editor.document.as_ref().unwrap().text, draft);
 }
+
+#[test]
+fn terminal_and_external_writers_update_the_active_file_without_scope_refresh_or_tab_switches() {
+    let Ok(root) = std::env::var("DISCO_DOCUMENT_MONITOR_FIXTURE") else {
+        let root =
+            std::env::temp_dir().join(format!("disco-document-monitor-ui-{}", std::process::id()));
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::create_dir_all(root.join("files")).unwrap();
+        fs::create_dir_all(root.join("home")).unwrap();
+        fs::write(root.join("files/ex2.cpp"), "int value() { return 1; }\n").unwrap();
+        fs::write(root.join("config/layout.toml"),"language='en'\ntext_scale_version=1\nsave_scan=false\nauto_refresh=false\nall_files_auto_refresh=false\nanimations=false\n").unwrap();
+        let out=Command::new(std::env::current_exe().unwrap()).args(["--exact","app::ui::interaction_tests::terminal_and_external_writers_update_the_active_file_without_scope_refresh_or_tab_switches","--nocapture"])
+            .env("DISCO_DOCUMENT_MONITOR_FIXTURE",&root).env("DISCO_CONFIG_DIR",root.join("config")).env("XDG_DATA_HOME",root.join("data")).env("HOME",root.join("home")).env("SHELL","/bin/sh").output().unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            out.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return;
+    };
+    use crate::app::workspace_keyboard::Area;
+    use egui::{Key, Modifiers};
+    use egui_term::BackendCommand;
+    fn wait_text(app: &mut Disco, ctx: &egui::Context, time: &mut f64, text: &str) {
+        let end = Instant::now() + Duration::from_secs(5);
+        while app.editor.document.as_ref().is_none_or(|d| d.text != text) && Instant::now() < end {
+            frame(app, ctx, time, vec![]);
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(
+            app.editor.document.as_ref().map(|d| d.text.as_str()),
+            Some(text),
+            "error={}",
+            app.editor.error
+        );
+    }
+    fn pty_write(app: &mut Disco, text: &str, atomic: bool) {
+        let text = format!("'{}'", text.trim_end_matches('\n').replace('\'', "'\\''"));
+        let command = if atomic {
+            format!("printf '%s\\n' {text} > .ex2.tmp && mv .ex2.tmp ex2.cpp\r")
+        } else {
+            format!("printf '%s\\n' {text} > ex2.cpp\r")
+        };
+        app.terminal
+            .backend()
+            .unwrap()
+            .process_command(BackendCommand::Write(command.into_bytes()));
+    }
+    let root = PathBuf::from(root);
+    let path = root.join("files/ex2.cpp");
+    let ctx = egui::Context::default();
+    let mut time = 0.;
+    let mut app = Disco::new_with_path(
+        &eframe::CreationContext::_new_kittest(ctx.clone()),
+        Some(path.clone()),
+    );
+    wait_document(&mut app, &ctx, &mut time);
+    app.toggle_terminal(&ctx);
+    for _ in 0..3 {
+        frame(&mut app, &ctx, &mut time, vec![]);
+    }
+    let pid = app.terminal.pid();
+    assert_eq!(app.terminal.cwd, root.join("files"));
+    let end = Instant::now() + Duration::from_secs(3);
+    while !app.document_watch.ready() && Instant::now() < end {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(app.document_watch.ready());
+    let editor_id = Id::unique(("file-editor", &app.editor.path));
+    let mut state = egui::TextEdit::load_state(&ctx, editor_id).unwrap();
+    let cursor = Some(egui::text::CCursorRange::one(egui::text::CCursor::new(5)));
+    state.cursor.set_char_range(cursor);
+    state.store(&ctx, editor_id);
+    app.editor.zoom.factor = 1.3;
+    app.focus_area(Area::Terminal, &ctx);
+    let updated = "int value() { return 2; }\n";
+    pty_write(&mut app, updated, false);
+    wait_text(&mut app, &ctx, &mut time, updated);
+    assert!(app.keyboard.area == Area::Terminal);
+    assert!(app.terminal_focused(&ctx));
+    assert_eq!(app.terminal.pid(), pid);
+    assert_eq!(app.editor.zoom.factor, 1.3);
+    assert_eq!(app.tabs.order, vec![path.clone()]);
+    assert_eq!(
+        egui::TextEdit::load_state(&ctx, editor_id)
+            .unwrap()
+            .cursor
+            .char_range(),
+        cursor
+    );
+    assert!(app.scan.report.is_none() && !app.scan.busy && !app.scoped.busy());
+    assert!(!crate::snapshot::file().exists());
+    let renamed = "int value() { return 3; }\n";
+    pty_write(&mut app, renamed, true);
+    wait_text(&mut app, &ctx, &mut time, renamed);
+    // A same-length write from a different process and a save while focused
+    // on the editor both reload automatically, preserving the cursor/focus.
+    app.focus_area(Area::Editor, &ctx);
+    let fourth = "int value() { return 4; }\n";
+    fs::write(&path, fourth).unwrap();
+    wait_text(&mut app, &ctx, &mut time, fourth);
+    assert_eq!(ctx.memory(|m| m.focused()), Some(editor_id));
+    assert_eq!(
+        egui::TextEdit::load_state(&ctx, editor_id)
+            .unwrap()
+            .cursor
+            .char_range(),
+        cursor
+    );
+    time += 3.;
+    frame(&mut app, &ctx, &mut time, vec![]);
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Text("local draft".into())],
+    );
+    let draft = app.editor.document.as_ref().unwrap().text.clone();
+    assert!(app.editor.dirty());
+    app.focus_area(Area::Terminal, &ctx);
+    let fifth = "int value() { return 5; }\n";
+    pty_write(&mut app, fifth, true);
+    let end = Instant::now() + Duration::from_secs(5);
+    while app.editor.error.is_empty() && Instant::now() < end {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(app.editor.error.contains("changed on disk"));
+    assert_eq!(app.editor.document.as_ref().unwrap().text, draft);
+    assert_eq!(fs::read_to_string(&path).unwrap(), fifth);
+    app.save_editor(&ctx);
+    let end = Instant::now() + Duration::from_secs(3);
+    while app.editor.saving.is_some() && Instant::now() < end {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(!app.editor.error.is_empty());
+    assert_eq!(fs::read_to_string(&path).unwrap(), fifth);
+    app.focus_area(Area::Editor, &ctx);
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        Key::Z,
+        Modifiers::CTRL | Modifiers::COMMAND,
+    );
+    wait_text(&mut app, &ctx, &mut time, fifth);
+    assert!(!app.editor.dirty());
+    assert!(app.editor.error.is_empty());
+    // The same monitor keeps working while the terminal is hidden or closed.
+    app.terminal.shutdown();
+    fs::remove_file(&path).unwrap();
+    let end = Instant::now() + Duration::from_secs(4);
+    while !matches!(
+        app.file_preview.content,
+        Some(crate::file_preview::Content::Error(_))
+    ) && Instant::now() < end
+    {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(matches!(
+        app.file_preview.content,
+        Some(crate::file_preview::Content::Error(_))
+    ));
+    fs::write(&path, "int recreated = 6;\n").unwrap();
+    wait_text(&mut app, &ctx, &mut time, "int recreated = 6;\n");
+    assert_eq!(app.tabs.order, vec![path.clone()]);
+    // A successful disco save must not be mistaken for an external overwrite.
+    app.focus_area(Area::Editor, &ctx);
+    time += 3.;
+    frame(&mut app, &ctx, &mut time, vec![]);
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Text("saved locally ".into())],
+    );
+    let own_text = app.editor.document.as_ref().unwrap().text.clone();
+    app.save_editor(&ctx);
+    let end = Instant::now() + Duration::from_secs(3);
+    while app.editor.saving.is_some() && Instant::now() < end {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(!app.editor.dirty());
+    assert_eq!(fs::read_to_string(&path).unwrap(), own_text);
+    let end = Instant::now() + Duration::from_millis(650);
+    while Instant::now() < end {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        assert!(
+            app.file_preview.content.is_some(),
+            "own save must not blank the preview"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(app.editor.error.is_empty());
+    // Hold completion of a save while an external change arrives. The monitor
+    // must retain that event until the save accepts its own older disk stamp.
+    let saved = app.editor.document.as_ref().unwrap().clone();
+    let stamp = crate::text_editor::Stamp::of(&fs::symlink_metadata(&path).unwrap());
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.editor.saving = Some(rx);
+    fs::write(&path, "int changed_during_save = 7;\n").unwrap();
+    let end = Instant::now() + Duration::from_millis(650);
+    while Instant::now() < end {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(app.editor.document.as_ref().unwrap().text, own_text);
+    tx.send(Ok((stamp, saved))).unwrap();
+    wait_text(&mut app, &ctx, &mut time, "int changed_during_save = 7;\n");
+    // Read-only Markdown follows changes too; writing the inactive C++ tab
+    // cannot replace the newly active file or switch its Read/Edit mode.
+    let markdown = root.join("files/notes.md");
+    fs::write(&markdown, "# Before\n").unwrap();
+    app.select_file(markdown.clone(), 9);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    wait_text(&mut app, &ctx, &mut time, "# Before\n");
+    assert!(!app.editor.markdown.editing);
+    app.preferences.layout.all_files_read_only = true;
+    fs::write(&markdown, "# After\n").unwrap();
+    fs::write(&path, "old inactive file\n").unwrap();
+    wait_text(&mut app, &ctx, &mut time, "# After\n");
+    assert_eq!(app.editor.path.as_ref(), Some(&markdown));
+    assert!(!app.editor.markdown.editing && app.editor_read_only());
+    assert!(app.scan.report.is_none() && !crate::snapshot::file().exists());
+}

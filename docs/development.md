@@ -49,7 +49,7 @@ For isolated QA, `DISCO_CONFIG_DIR=/tmp/disco-qa` stores settings and its scan c
 | Panels and controls | `src/app/ui/` |
 | Navigation and file tabs | `src/app/{navigation,tabs,workspace_keyboard}.rs` |
 | Scan and persistence | `src/{scan,snapshot,index,refresh}.rs` |
-| Live updates and search | `src/{live_files,file_search}.rs`, `src/app/scope.rs` |
+| Live updates and search | `src/{document_watch,live_files,file_search}.rs`, `src/app/{editor,scope}.rs` |
 | Preview and editing | `src/{file_preview,text_editor,syntax,directory_files,associations}.rs` |
 | Categories | `src/categories.rs`, `src/categories/store.rs` |
 | Trash and removal | `src/{recycle,deletion}.rs` |
@@ -95,3 +95,5 @@ Docker builds: `scripts/build-docker.sh` exports a runtime bundle through the sc
 File type icons: a selected, unmodified SVG subset of [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme/tree/23e86c06d09e92571ef027184c00cad78e8c827f/icons), [MIT notice](../licenses/material-icon-theme-MIT.txt). The pinned source manifest is `assets/file-icons/source.json`; both assets and license ship in the runtime bundle. The optional `file_type_icons` layout flag defaults to false. File lookup is an in-memory name/extension map; the vectors share the existing physical-size texture cache.
 
 Markdown presentation patches are pinned locally in `vendor/egui_commonmark` and `vendor/egui_commonmark_backend` (0.26.0). Their `DISCO-PATCH.md` files record the upstream commit and patch scope; both licenses ship in bundles. The patches retain the parser/cache and customize typography, ruled tables/headings, code layout/copy geometry, missing-image labels and the HTML callback lifetime. Native details/summary extraction lives in `src/markdown/details.rs`; it ignores fenced/inline code, bounds nesting, preserves the original source and renders disclosures lazily. Reader layout caches invalidate on font size or DPI changes; reloading also forgets images in nested disclosures.
+
+Active-document updates are separate from scope refresh. `document_watch.rs` owns one reusable worker and a single-slot target/event channel; it samples only the active file’s metadata every 200 ms off the UI thread. Stable samples debounce truncate/write gaps, with a one-second bound during continuous writes. Atomic inode replacements, parent-directory replacement and removal/recreation need no watcher re-registration. Target generations reject stale events; no active file leaves the worker asleep. The GUI defers events while saving, compares the real current stamp, protects dirty buffers and restores editor focus only when it previously belonged to the document. This monitor never reads/writes scan snapshots.

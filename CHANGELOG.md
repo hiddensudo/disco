@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- The active file now follows external edits independently of category auto-refresh, scan snapshots or terminal focus. A bounded background metadata monitor catches normal writes, atomic replacements and file removal/recreation. Clean documents reload with cursor, focus and zoom preserved; local drafts remain intact with conflict protection, and changes arriving during Save are processed after completion.
+
 - Choosing a category after opening a file from the CLI now restores the saved scan asynchronously, without rescanning or replacing the current draft. Later category choices reuse that snapshot. Empty file trees have a single scan action below wrapped explanatory text, and small loading indicators distinguish snapshot restoration, directory reads and scans. Late cache results cannot replace a newly opened path or an explicit scan.
 
 - Markdown reading has its own typography: real bold headings, comfortable line spacing, theme-aware links/tables and a true monospace code face at physical pixel-aligned sizes. Code blocks expand to their full height with wrapped long lines and a vector copy/check control. Details/summary sections use lazy native disclosures; missing local images show their alt text. Read/Edit retains the source buffer, cursor and undo state.
