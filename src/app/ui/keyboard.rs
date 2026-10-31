@@ -360,11 +360,35 @@ impl Disco {
         };
         let path = p.path.clone();
         let folder = if p.is_dir {
-            Some(path.as_path())
+            Some(path.clone())
         } else {
-            path.parent()
+            path.parent().map(PathBuf::from)
         };
-        let mut current = folder.and_then(|path| {
+        let from_home = self
+            .search
+            .result
+            .as_ref()
+            .is_some_and(|r| r.place == crate::file_search::Place::Home);
+        if self.search.result.is_some()
+            && let Some(folder) = folder.as_deref()
+        {
+            let known = self
+                .scan
+                .report
+                .as_ref()
+                .and_then(|r| r.folders.iter().position(|f| f.path == folder));
+            let outside_table = self
+                .browser
+                .table_root
+                .and_then(|id| self.scan.report.as_ref().and_then(|r| r.folders.get(id)))
+                .is_some_and(|root| !folder.starts_with(&root.path));
+            if from_home || known.is_none() || outside_table {
+                let properties = self.browser.properties.clone();
+                self.navigate_path(folder.to_path_buf());
+                self.browser.properties = properties;
+            }
+        }
+        let mut current = folder.as_deref().and_then(|path| {
             self.scan
                 .report
                 .as_ref()

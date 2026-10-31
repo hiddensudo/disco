@@ -3966,3 +3966,166 @@ fn file_editor_undo_groups_paste_enter_redo_and_preserves_history_across_tabs_sa
     press_key(&mut app, &ctx, &mut time, Key::Z, chord);
     assert_eq!(app.editor.document.as_ref().unwrap().text, "ab");
 }
+
+#[test]
+fn filename_search_prioritizes_selection_keeps_origin_and_reveals_home_results_without_scan() {
+    let Ok(root) = std::env::var("DISCO_SEARCH_PRIORITY_FIXTURE") else {
+        let root =
+            std::env::temp_dir().join(format!("disco-search-priority-ui-{}", std::process::id()));
+        for path in [
+            "config",
+            "a/selected/deep",
+            "b/second-folder",
+            "configured-home",
+        ] {
+            fs::create_dir_all(root.join(path)).unwrap();
+        }
+        for path in [
+            "a/selected/deep/local-needle.txt",
+            "a/outside-needle.txt",
+            "configured-home/home-needle.txt",
+        ] {
+            fs::write(root.join(path), "fixture").unwrap();
+        }
+        fs::write(root.join("config/layout.toml"), "language='en'\ntext_scale_version=1\npreview_mode='focus'\nsave_scan=false\nauto_refresh=false\nall_files_auto_refresh=false\nanimations=false\n").unwrap();
+        let out = Command::new(std::env::current_exe().unwrap()).args(["--exact", "app::ui::interaction_tests::filename_search_prioritizes_selection_keeps_origin_and_reveals_home_results_without_scan", "--nocapture"])
+            .env("DISCO_SEARCH_PRIORITY_FIXTURE", &root).env("DISCO_CONFIG_DIR", root.join("config"))
+            .env("XDG_DATA_HOME", root.join("data")).output().unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            out.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return;
+    };
+    use crate::file_search::Place;
+    let root = PathBuf::from(root);
+    let ctx = egui::Context::default();
+    let mut time = 0.;
+    let mut app = Disco::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+    let report = std::sync::Arc::new(
+        crate::scan::scan(&root.join("a"), &Default::default(), |_| {}).unwrap(),
+    );
+    let selected = report
+        .folders
+        .iter()
+        .position(|f| f.path == root.join("a/selected"))
+        .unwrap();
+    app.scan.index = crate::index::Index::new(&report);
+    app.scan.report = Some(report.clone());
+    app.browser.root = root.join("a").display().to_string();
+    app.collections
+        .config
+        .items
+        .iter_mut()
+        .find(|c| c.id == "documents")
+        .unwrap()
+        .folders = vec![root.join("a"), root.join("b")];
+    app.collections.revision += 1;
+    app.update_collections();
+    app.browser.category = crate::index::Category::Documents;
+    app.select_folder(selected);
+    app.preferences.layout.home_path = root.join("configured-home").display().to_string();
+    app.browser.filter = "needle".into();
+    wait_search(&mut app, &ctx, &mut time, "needle");
+    assert_eq!(
+        app.search.for_query("needle").unwrap().place,
+        Place::Selected
+    );
+    assert_eq!(app.search.for_query("needle").unwrap().hits.len(), 1);
+    // Merely selecting a result must not move the origin of an ongoing query.
+    app.select_file(root.join("a/outside-needle.txt"), 1);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert_eq!(
+        app.search.for_query("needle").unwrap().place,
+        Place::Selected
+    );
+    app.browser.filter = "outside".into();
+    wait_search(&mut app, &ctx, &mut time, "outside");
+    assert_eq!(app.search.for_query("outside").unwrap().place, Place::Scope);
+    app.browser.filter = "second".into();
+    wait_search(&mut app, &ctx, &mut time, "second");
+    assert!(app.search.for_query("second").unwrap().hits[0].directory);
+    assert!(matches!(
+        app.build_visible_rows()[0],
+        crate::app::state::TreeRow::PathFolder(_, _)
+    ));
+    app.browser.filter = "home".into();
+    wait_search(&mut app, &ctx, &mut time, "home");
+    assert_eq!(app.search.for_query("home").unwrap().place, Place::Home);
+    assert!(
+        app.scope_status_text()
+            .unwrap()
+            .contains(&root.join("configured-home").display().to_string())
+    );
+    app.preferences.layout.search_home_fallback = false;
+    frame(&mut app, &ctx, &mut time, vec![]);
+    wait_search(&mut app, &ctx, &mut time, "home");
+    assert!(app.search.for_query("home").unwrap().hits.is_empty());
+    app.preferences.layout.search_home_fallback = true;
+    frame(&mut app, &ctx, &mut time, vec![]);
+    wait_search(&mut app, &ctx, &mut time, "home");
+    let result = root.join("configured-home/home-needle.txt");
+    app.select_file(result.clone(), 1);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    app.browser.filter.clear();
+    app.reveal_browser_selection();
+    frame(&mut app, &ctx, &mut time, vec![]);
+    let end = Instant::now() + Duration::from_secs(3);
+    while app.files.get(&root.join("configured-home")).is_none() && Instant::now() < end {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(app.browser.properties.as_ref().unwrap().path, result);
+    assert_eq!(app.paths.directory, Some(root.join("configured-home")));
+    assert!(
+        app.build_visible_rows()
+            .iter()
+            .any(|r| matches!(r, crate::app::state::TreeRow::File(f, _) if f.path == result))
+    );
+    assert!(std::sync::Arc::ptr_eq(
+        &report,
+        app.scan.report.as_ref().unwrap()
+    ));
+    assert!(!app.scan.busy && !app.scoped.busy() && !crate::snapshot::file().exists());
+    // Fresh categories and standalone CLI files can search without any snapshot.
+    let fresh_ctx = egui::Context::default();
+    let mut fresh_time = 0.;
+    let mut fresh = Disco::new(&eframe::CreationContext::_new_kittest(fresh_ctx.clone()));
+    fresh
+        .collections
+        .config
+        .items
+        .iter_mut()
+        .find(|c| c.id == "documents")
+        .unwrap()
+        .folders = vec![root.join("a"), root.join("b")];
+    fresh.collections.revision += 1;
+    fresh.browser.category = crate::index::Category::Documents;
+    fresh.browser.filter = "second".into();
+    wait_search(&mut fresh, &fresh_ctx, &mut fresh_time, "second");
+    assert!(fresh.scan.report.is_none());
+    assert!(!fresh.build_visible_rows().is_empty());
+    assert!(
+        fresh_ctx
+            .read_response(Id::unique("folder-empty-description"))
+            .is_none()
+    );
+    let cli_ctx = egui::Context::default();
+    let mut cli_time = 0.;
+    let mut cli = Disco::new_with_path(
+        &eframe::CreationContext::_new_kittest(cli_ctx.clone()),
+        Some(root.join("a/selected/deep/local-needle.txt")),
+    );
+    wait_document(&mut cli, &cli_ctx, &mut cli_time);
+    cli.browser.filter = "local".into();
+    wait_search(&mut cli, &cli_ctx, &mut cli_time, "local");
+    assert_eq!(
+        cli.search.for_query("local").unwrap().place,
+        Place::Selected
+    );
+    assert_eq!(cli.build_visible_rows().len(), 1);
+    assert!(cli.scan.report.is_none() && !cli.scan.busy);
+}

@@ -106,6 +106,56 @@ impl Disco {
         rows
     }
     pub(in crate::app) fn build_visible_rows(&self) -> Vec<TreeRow> {
+        if !self.browser.filter.is_empty() {
+            if let Some(results) = self.search.for_query(&self.browser.filter) {
+                let mut hits: Vec<_> = results.hits.iter().collect();
+                hits.sort_by(|a, b| {
+                    let cmp = if self.browser.sort_size {
+                        a.bytes.cmp(&b.bytes)
+                    } else {
+                        a.path.file_name().cmp(&b.path.file_name())
+                    };
+                    if self.browser.descending {
+                        cmp.reverse()
+                    } else {
+                        cmp
+                    }
+                });
+                return hits
+                    .into_iter()
+                    .map(|hit| {
+                        if hit.directory {
+                            if let Some(id) = hit.folder_id.filter(|id| {
+                                self.scan
+                                    .report
+                                    .as_ref()
+                                    .and_then(|r| r.folders.get(*id))
+                                    .is_some_and(|f| f.path == hit.path)
+                            }) {
+                                return TreeRow::Folder(id, 0);
+                            }
+                            TreeRow::PathFolder(
+                                Arc::new(crate::directory_files::Entry {
+                                    path: hit.path.clone(),
+                                    bytes: hit.bytes,
+                                }),
+                                0,
+                            )
+                        } else {
+                            TreeRow::File(
+                                Arc::new(crate::directory_files::Entry {
+                                    path: hit.path.clone(),
+                                    bytes: hit.bytes,
+                                }),
+                                0,
+                            )
+                        }
+                    })
+                    .collect();
+            }
+            return vec![];
+        }
+
         if let Some(path) = &self.paths.standalone {
             return vec![TreeRow::File(
                 Arc::new(crate::directory_files::Entry {
@@ -164,52 +214,6 @@ impl Disco {
         let Some(r) = &self.scan.report else {
             return vec![];
         };
-        if !self.browser.filter.is_empty() {
-            if let Some(results) = self.search.for_query(&self.browser.filter) {
-                let mut hits: Vec<_> = results.hits.iter().collect();
-                hits.sort_by(|a, b| {
-                    let cmp = if self.browser.sort_size {
-                        a.bytes.cmp(&b.bytes)
-                    } else {
-                        a.path.file_name().cmp(&b.path.file_name())
-                    };
-                    if self.browser.descending {
-                        cmp.reverse()
-                    } else {
-                        cmp
-                    }
-                });
-                return hits
-                    .into_iter()
-                    .map(|hit| {
-                        if hit.directory {
-                            if let Some(id) = hit
-                                .folder_id
-                                .filter(|id| r.folders.get(*id).is_some_and(|f| f.path == hit.path))
-                            {
-                                return TreeRow::Folder(id, 0);
-                            }
-                            TreeRow::PathFolder(
-                                Arc::new(crate::directory_files::Entry {
-                                    path: hit.path.clone(),
-                                    bytes: hit.bytes,
-                                }),
-                                0,
-                            )
-                        } else {
-                            TreeRow::File(
-                                Arc::new(crate::directory_files::Entry {
-                                    path: hit.path.clone(),
-                                    bytes: hit.bytes,
-                                }),
-                                0,
-                            )
-                        }
-                    })
-                    .collect();
-            }
-            return vec![];
-        }
         let roots = if let Some(id) = self.browser.table_root {
             vec![id]
         } else {
@@ -404,9 +408,14 @@ impl Disco {
             egui::StrokeKind::Inside,
         );
         let rows = self.visible_rows();
+        if !self.browser.filter.is_empty() && rows.is_empty() {
+            self.browser_empty_state(ui, outer);
+            return;
+        }
         if self.paths.standalone.is_none()
             && self.paths.directory.is_none()
-            && (self.scan.report.is_none() || rows.is_empty() && self.browser.filter.is_empty())
+            && self.browser.filter.is_empty()
+            && (self.scan.report.is_none() || rows.is_empty())
         {
             self.browser_empty_state(ui, outer);
             return;

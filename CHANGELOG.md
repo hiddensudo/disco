@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- Filename search prioritizes the selected folder (or file parent), then the category/current directory, then the configured Home only when allowed and earlier levels have no matches. The origin stays fixed while typing or selecting results; UI progress names the actual search area. Unscanned categories and CLI files show recursive file/folder results without a snapshot. Clearing a Home result reveals its directory without scanning.
+
 - File-editor Undo/Redo follows edit actions instead of timer-only snapshots: individual pastes, Enter, cut and selection replacements have distinct boundaries even in one input frame. Continuous typing/deletion groups by cursor/type/pause, IME composition remains one step, redo survives cursor movement and new edits clear its branch. Save, tab and Markdown mode changes preserve history; read-only mode cannot consume it.
 
 - A category configured above the root of a narrow saved snapshot now shows its known descendants instead of an empty tree, while retaining the missing-coverage marker. Snapshot diagnostics report the actual cache/root and indexed versus missing category roots. The cache/profile investigation documents narrow last-scan replacement and profile separation without modifying live caches.

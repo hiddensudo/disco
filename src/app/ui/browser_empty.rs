@@ -4,6 +4,36 @@ use eframe::egui::{self, Align, FontId, Rect, RichText, Sense, Vec2};
 impl Disco {
     pub(in crate::app) fn browser_empty_state(&mut self, ui: &mut egui::Ui, outer: Rect) {
         let t = self.preferences.theme.clone();
+        if !self.browser.filter.is_empty() {
+            ui.scope_builder(
+                egui::UiBuilder::new()
+                    .max_rect(outer.shrink(16.))
+                    .layout(egui::Layout::top_down(Align::Center)),
+                |ui| {
+                    ui.add_space((outer.height() * 0.35).max(20.));
+                    if self.search.busy() {
+                        ui.add(egui::Spinner::new().size(14.));
+                    }
+                    ui.label(
+                        RichText::new(if self.search.busy() {
+                            crate::tr!("Шукаємо папки й файли…", "Searching folders and files…")
+                        } else {
+                            crate::tr!("Збігів не знайдено", "No matches found")
+                        })
+                        .color(color(&t.text)),
+                    );
+                    if let Some(status) = self.scope_status_text() {
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(status).size(12.).color(color(&t.muted)),
+                            )
+                            .wrap(),
+                        );
+                    }
+                },
+            );
+            return;
+        }
         let restoring = self.scan.restore_requested_root.is_some() || self.paths.snapshot.loading();
         let scanning = self.scan.busy || self.scoped.busy();
         let collection = self.collections.config.get(self.browser.category).cloned();

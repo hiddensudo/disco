@@ -773,10 +773,37 @@ impl Disco {
         } else {
             None
         };
+        let selected = self
+            .browser
+            .properties
+            .as_ref()
+            .and_then(|p| {
+                if p.is_dir {
+                    Some(p.path.clone())
+                } else {
+                    p.path.parent().map(Path::to_path_buf)
+                }
+            })
+            .or_else(|| self.paths.directory.clone());
+        let selected = self.search.origin(
+            &self.browser.filter,
+            self.browser.category,
+            self.collections.revision,
+            selected,
+        );
+        let search_roots = self
+            .collections
+            .config
+            .get(self.browser.category)
+            .filter(|c| !c.folders.is_empty())
+            .map(|c| Arc::new(scoped_refresh::normalize_roots(c.folders.clone())))
+            .unwrap_or(roots);
         self.search.configure(
             crate::file_search::Spec {
                 query: self.browser.filter.clone(),
-                roots,
+                context: self.browser.category,
+                roots: search_roots,
+                selected,
                 home,
                 category: self.scope_filter(),
                 report_revision: self.scan.report_revision,
@@ -796,16 +823,18 @@ impl Disco {
         }
         if !self.browser.filter.is_empty() {
             if self.search.busy() {
-                return Some(
-                    crate::tr!("Пошук папок і файлів…", "Searching folders and files…").into(),
-                );
+                return Some(if let Some((place, roots)) = &self.search.activity {
+                    crate::tr!(
+                        "Пошук: {scope}…",
+                        "Searching: {scope}…",
+                        scope = search_place(*place, roots)
+                    )
+                } else {
+                    crate::tr!("Пошук папок і файлів…", "Searching folders and files…").into()
+                });
             }
             if let Some(result) = self.search.for_query(&self.browser.filter) {
-                let place = if result.home {
-                    crate::tr!("Результати з Home", "Results from Home")
-                } else {
-                    crate::tr!("Результати в scope", "Scope results")
-                };
+                let place = search_place(result.place, &result.roots);
                 let suffix = if result.truncated {
                     crate::tr!(" · уточни запит", " · refine the query")
                 } else {
@@ -832,5 +861,32 @@ impl Disco {
             return Some(crate::tr!("Категорія: лише читання", "Category: read only").into());
         }
         None
+    }
+}
+
+fn search_place(place: crate::file_search::Place, roots: &[PathBuf]) -> String {
+    let paths = roots
+        .iter()
+        .take(2)
+        .map(|p| p.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let paths = if roots.len() > 2 {
+        format!("{paths} … (+{})", roots.len() - 2)
+    } else {
+        paths
+    };
+    match place {
+        crate::file_search::Place::Selected => crate::tr!(
+            "Вибрана папка: {path}",
+            "Selected folder: {path}",
+            path = paths
+        ),
+        crate::file_search::Place::Scope => crate::tr!(
+            "Категорія / каталог: {path}",
+            "Category / directory: {path}",
+            path = paths
+        ),
+        crate::file_search::Place::Home => crate::tr!("Home: {path}", "Home: {path}", path = paths),
     }
 }
