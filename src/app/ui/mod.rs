@@ -4,6 +4,7 @@ mod breadcrumbs;
 mod chrome;
 mod collections;
 mod dialogs;
+mod document_bar;
 mod editor_dialogs;
 mod file_modes;
 mod file_preview;

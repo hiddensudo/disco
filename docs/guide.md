@@ -223,3 +223,5 @@ Settings → Interface → **Language and file type icons** enables bundled SVG 
 File zoom changes by 10 percentage points by default. Set a custom step under Settings → Interface → File zoom step. Ctrl+0 restores 100%; remap Reset file zoom in Shortcuts. An existing Ctrl+0 assignment is preserved, with a free reset shortcut selected during migration.
 
 Direct-file windows respect Show categories. Home and breadcrumbs reuse an existing snapshot, or read only the selected directory if it is outside the snapshot. Unknown folder sizes show —. Scan calculates recursive sizes explicitly; navigation keeps open tabs and drafts.
+
+Document controls use one toolbar: Save/Copy on the left, Markdown Read/Edit on the right beside Reload. Narrow panels use icon actions and shorter mode labels. Zoom out, percentage reset (Fit for images) and zoom in are in the bottom status bar; full document status is available on hover.

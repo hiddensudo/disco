@@ -5,7 +5,7 @@ use crate::{
 };
 use eframe::egui::{self, Align2, FontId, Pos2, Rect, RichText, Sense, Stroke, Vec2};
 
-fn command(
+pub(super) fn command(
     ui: &mut egui::Ui,
     art: &crate::art::Art,
     rect: Rect,
@@ -186,136 +186,9 @@ impl Disco {
         let old_spacing = ui.spacing().item_spacing.y;
         ui.spacing_mut().item_spacing.y = 0.;
         let width = ui.available_width();
-        let (bar, _) = ui.allocate_exact_size(Vec2::new(width, 30.), Sense::hover());
-        let refresh = command(
-            ui,
-            &self.art,
-            Rect::from_min_size(Pos2::new(bar.right() - 30., bar.top()), Vec2::splat(30.)),
-            11,
-            "",
-            self.editor.saving.is_none() && self.editor.untitled.is_none(),
-            false,
-            &t,
-        )
-        .on_hover_text(crate::tr!("Оновити прев’ю", "Reload preview"))
-        .clicked();
-        if matches!(self.file_preview.content, Some(Content::Image { .. })) {
-            let mut x = bar.left();
-            for (w, text, help, action) in [
-                (
-                    76.,
-                    crate::tr!("Вписати", "Fit"),
-                    crate::tr!("Показати картинку цілком", "Fit the entire image"),
-                    0,
-                ),
-                (30., "−", crate::tr!("Зменшити", "Zoom out"), 1),
-                (30., "+", crate::tr!("Збільшити", "Zoom in"), 2),
-            ] {
-                if command(
-                    ui,
-                    &self.art,
-                    Rect::from_min_size(Pos2::new(x, bar.top()), Vec2::new(w, 30.)),
-                    usize::MAX,
-                    text,
-                    true,
-                    false,
-                    &t,
-                )
-                .on_hover_text(help)
-                .clicked()
-                {
-                    match action {
-                        0 => self.editor.zoom.factor = 1.,
-                        1 => self.editor.zoom.change(
-                            -1.,
-                            self.preferences.layout.file_zoom_step,
-                            true,
-                        ),
-                        _ => self.editor.zoom.change(
-                            1.,
-                            self.preferences.layout.file_zoom_step,
-                            true,
-                        ),
-                    }
-                }
-                x += w + 6.;
-            }
-        } else if matches!(self.file_preview.content, Some(Content::Text { .. })) {
-            let labels = width >= 250.;
-            let mut x = bar.left();
-            let save_width = if labels { 96. } else { 30. };
-            if self.editor.document.is_some() {
-                if command(
-                    ui,
-                    &self.art,
-                    Rect::from_min_size(Pos2::new(x, bar.top()), Vec2::new(save_width, 30.)),
-                    28,
-                    if labels {
-                        crate::tr!("Зберегти", "Save")
-                    } else {
-                        ""
-                    },
-                    (self.editor.dirty() || self.editor.untitled.is_some())
-                        && self.editor.saving.is_none()
-                        && !self.demo
-                        && !read_only,
-                    false,
-                    &t,
-                )
-                .on_hover_text(crate::tr!(
-                    "Зберегти зміни · Ctrl+S",
-                    "Save changes · Ctrl+S"
-                ))
-                .clicked()
-                {
-                    self.save_editor(ui.ctx());
-                }
-                x += save_width + 6.;
-            }
-            let copy_width = if labels { 100. } else { 30. };
-            if command(
-                ui,
-                &self.art,
-                Rect::from_min_size(Pos2::new(x, bar.top()), Vec2::new(copy_width, 30.)),
-                27,
-                if labels {
-                    crate::tr!("Копіювати", "Copy")
-                } else {
-                    ""
-                },
-                true,
-                false,
-                &t,
-            )
-            .on_hover_text(crate::tr!("Копіювати текст", "Copy text"))
-            .clicked()
-            {
-                if let Some(doc) = &self.editor.document {
-                    ui.ctx().copy_text(doc.text.clone());
-                } else if let Some(Content::Text { lines, .. }) = &self.file_preview.content {
-                    ui.ctx().copy_text(lines.join("\n"));
-                }
-            }
-        }
         let markdown = path.as_deref().is_some_and(crate::markdown::supported)
             && matches!(self.file_preview.content, Some(Content::Text { .. }));
-        if matches!(
-            self.file_preview.content,
-            Some(Content::Text { .. } | Content::Image { .. })
-        ) {
-            ui.horizontal(|ui| {
-                if markdown {
-                    for (editing,label,id) in [(false,crate::tr!("Читання","Read"),"markdown-read"),(true,crate::tr!("Редагування","Edit"),"markdown-edit")] {
-                        let response=ui.selectable_value(&mut self.editor.markdown.editing,editing,label);
-                        ui.interact(response.rect,egui::Id::unique(id),Sense::hover());
-                    }
-                }
-                if ui.small_button(format!("{:.0}%",self.editor.zoom.factor*100.)).on_hover_text(crate::tr!(
-                    "Масштаб файла · Ctrl+Plus / Ctrl+Minus або Ctrl + коліщатко. Натисни для 100%.",
-                    "File zoom · Ctrl+Plus / Ctrl+Minus or Ctrl + mouse wheel. Click for 100%."
-                )).clicked() {self.editor.zoom.factor=1.;}
-            });
-        }
+        let refresh = self.document_toolbar(ui, width, markdown, read_only);
         ui.add_space(8.);
         let error_height = if self.editor.error.is_empty() {
             0.
@@ -326,15 +199,7 @@ impl Disco {
             self.file_preview.content,
             Some(Content::Text { .. } | Content::Image { .. })
         );
-        let footer_height = if has_footer {
-            ui.painter()
-                .layout_no_wrap("UTF-8".into(), FontId::proportional(11.), color(&t.muted))
-                .size()
-                .y
-                + 6.
-        } else {
-            0.
-        };
+        let footer_height = if has_footer { 32. } else { 0. };
         let room = (bottom - ui.cursor().min.y - footer_height - error_height).max(80.);
         let height = if compact {
             match &self.file_preview.content {
@@ -650,23 +515,7 @@ impl Disco {
             _ => None,
         };
         if let Some(text) = footer {
-            let response = ui
-                .add(
-                    egui::Label::new(RichText::new(&text).size(11.).color(color(
-                        if self.editor.dirty() {
-                            &t.accent
-                        } else {
-                            &t.muted
-                        },
-                    )))
-                    .truncate(),
-                )
-                .on_hover_text(&text);
-            ui.interact(
-                response.rect,
-                egui::Id::unique("preview-status"),
-                Sense::hover(),
-            );
+            self.document_status(ui, &text);
         }
         if !self.editor.error.is_empty() {
             ui.add(

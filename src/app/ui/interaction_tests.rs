@@ -613,7 +613,17 @@ fn full_window_view_switches_properties_and_breadcrumbs_work_with_dirty_text() {
             (area.bottom() - status.bottom()).abs() < 3.,
             "unused footer space: {status:?} in {area:?}"
         );
-        assert!((status.top() - viewport.bottom() - 6.).abs() < 2.);
+        let footer = ctx
+            .read_response(Id::unique("document-status-bar"))
+            .unwrap()
+            .rect;
+        let zoom = ctx
+            .read_response(Id::unique("document-zoom-reset"))
+            .unwrap()
+            .rect;
+        assert!(footer.contains_rect(status));
+        assert!(footer.contains_rect(zoom));
+        assert!((footer.top() - viewport.bottom() - 6.).abs() < 2.);
     }
     assert!(Path::new(&app.browser.root).starts_with(&root));
 }
@@ -2918,6 +2928,55 @@ fn markdown_modes_preserve_drafts_undo_and_tab_identity() {
     frame(&mut app, &ctx, &mut time, vec![]);
     click(&mut app, &ctx, &mut time, Id::unique("markdown-read"));
     assert_eq!(app.editor.document.as_ref().unwrap().text, original);
+    // Document controls remain in one row even in a narrow Overview inspector.
+    for width in [220., 300., 480., 900.] {
+        time += 0.05;
+        ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(
+                    Pos2::ZERO,
+                    Vec2::new(width + 24., 600.),
+                )),
+                time: Some(time),
+                ..Default::default()
+            },
+            |ui| {
+                egui::CentralPanel::default()
+                    .frame(egui::Frame::new().inner_margin(12.))
+                    .show(ui, |ui| {
+                        let area = ui.available_rect_before_wrap();
+                        app.file_preview_ui(ui, false, area.height());
+                    });
+            },
+        )
+        .drop_without_applying_deltas();
+        let bounds = |id| ctx.read_response(Id::unique(id)).unwrap().rect;
+        let toolbar = bounds("document-toolbar");
+        for id in [
+            "document-save",
+            "document-copy",
+            "markdown-read",
+            "markdown-edit",
+            "document-reload",
+        ] {
+            assert!(
+                toolbar.contains_rect(bounds(id)),
+                "{id} escapes at width {width}"
+            );
+        }
+        assert!(bounds("document-copy").right() < bounds("markdown-read").left());
+        assert!(bounds("markdown-edit").right() < bounds("document-reload").left());
+        let footer = bounds("document-status-bar");
+        assert!(footer.top() > bounds("preview-viewport").bottom());
+        for id in [
+            "document-zoom-out",
+            "document-zoom-reset",
+            "document-zoom-in",
+        ] {
+            assert!(footer.contains_rect(bounds(id)));
+        }
+        assert_eq!(app.editor.document.as_ref().unwrap().text, original);
+    }
 }
 
 #[test]

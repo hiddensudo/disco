@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- Document actions and the Markdown Read/Edit segment share a single toolbar, with compact controls in narrow inspectors. File zoom, Fit/reset and zoom buttons now sit in the bottom status bar beside truncated document metadata.
+
 - Direct-file windows retain the category rail and existing scan snapshot. Home and breadcrumbs reuse known folders or browse an asynchronous, bounded single-directory listing without recursively scanning. Unmeasured folder sizes show a dash; Scan explicitly calculates sizes. Open tabs and drafts remain intact.
 
 - File zoom uses additive 10 percentage-point steps, configurable in Interface settings. Ctrl+0 resets the active document to 100%; Reset file zoom is remappable in Shortcuts. Existing shortcut bindings survive migration, including an occupied Ctrl+0.
