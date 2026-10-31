@@ -16,8 +16,8 @@ impl Default for Zoom {
     }
 }
 impl Zoom {
-    pub fn change(&mut self, steps: f32, image: bool) {
-        self.factor = (self.factor * 1.1_f32.powf(steps.clamp(-20., 20.)))
+    pub fn change(&mut self, steps: f32, percent: f32, image: bool) {
+        self.factor = (self.factor + steps.clamp(-20., 20.) * percent / 100.)
             .clamp(if image { 0.25 } else { 0.5 }, if image { 8. } else { 3. });
         if (self.factor - 1.).abs() < 0.0001 {
             self.factor = 1.;
@@ -88,6 +88,14 @@ impl Disco {
         {
             return;
         }
+        if self.preferences.layout.shortcuts.reset_zoom.consume(ctx) {
+            self.editor.zoom.factor = 1.;
+            ctx.input_mut(|i| {
+                i.events
+                    .retain(|e| !matches!(e, Event::Text(s) if s == "0"))
+            });
+            return;
+        }
         let steps = ctx.input_mut(|i| {
             let mut steps = 0.;
             let mut consumed = false;
@@ -119,6 +127,7 @@ impl Disco {
         });
         self.editor.zoom.change(
             steps,
+            self.preferences.layout.file_zoom_step,
             matches!(
                 self.file_preview.content,
                 Some(crate::file_preview::Content::Image { .. })
@@ -164,6 +173,7 @@ impl Disco {
         });
         self.editor.zoom.change(
             steps,
+            self.preferences.layout.file_zoom_step,
             matches!(
                 self.file_preview.content,
                 Some(crate::file_preview::Content::Image { .. })
@@ -179,17 +189,24 @@ mod tests {
     fn zoom_is_bounded_and_physical_plus_supports_alternate_layouts() {
         let mut zoom = Zoom::default();
         for _ in 0..100 {
-            zoom.change(1., false);
+            zoom.change(1., 10., false);
         }
         assert_eq!(zoom.factor, 3.);
         for _ in 0..100 {
-            zoom.change(-1., false);
+            zoom.change(-1., 10., false);
         }
         assert_eq!(zoom.factor, 0.5);
         for _ in 0..100 {
-            zoom.change(-1., true);
+            zoom.change(-1., 10., true);
         }
         assert_eq!(zoom.factor, 0.25);
+        zoom.factor = 1.;
+        zoom.change(2., 10., false);
+        assert!((zoom.factor - 1.2).abs() < 0.00001);
+        zoom.change(-2., 10., false);
+        assert!((zoom.factor - 1.).abs() < 0.00001);
+        zoom.change(1., 25., false);
+        assert_eq!(zoom.factor, 1.25);
         assert_eq!(zoom_key(Key::Plus, None), Some(1.));
         assert_eq!(zoom_key(Key::Equals, None), Some(1.));
         assert_eq!(zoom_key(Key::A, Some(Key::Equals)), Some(1.));

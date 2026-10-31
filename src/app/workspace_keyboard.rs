@@ -268,8 +268,13 @@ impl Disco {
             return;
         }
         for command in crate::shortcuts::Command::ALL {
+            // File commands are routed only when the document has focus.
+            if command == crate::shortcuts::Command::ResetZoom {
+                continue;
+            }
             if self.preferences.layout.shortcuts.get(command).consume(ctx) {
                 match command {
+                    crate::shortcuts::Command::ResetZoom => {}
                     crate::shortcuts::Command::NewTab => self.request_empty_tab(ctx),
                     crate::shortcuts::Command::Terminal => {
                         if self.browser.view != View::Trash {

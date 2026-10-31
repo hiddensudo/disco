@@ -84,6 +84,21 @@ pub(super) fn show(
         .small()
         .color(color(&t.muted)),
     );
+    cols[0].label(crate::tr!("Крок масштабу файла", "File zoom step"));
+    cols[0].add(
+        egui::DragValue::new(&mut layout.file_zoom_step)
+            .range(0.1..=1000.)
+            .speed(1.)
+            .suffix(crate::tr!(" п.п.", " pp")),
+    );
+    cols[0].label(
+        RichText::new(crate::tr!(
+            "Ctrl +/− та коліщатко. Скидання: налаштування хоткеїв.",
+            "Ctrl +/− and mouse wheel. Reset: shortcut settings."
+        ))
+        .small()
+        .color(color(&t.muted)),
+    );
     cols[0].add_space(4.);
     let icons = cols[0].checkbox(
         &mut layout.file_type_icons,

@@ -2856,6 +2856,24 @@ fn markdown_modes_preserve_drafts_undo_and_tab_identity() {
     assert!(app.editor.zoom.factor > 1.);
     assert_eq!(ctx.pixels_per_point(), ppp);
     assert_eq!(app.editor.document.as_ref().unwrap().text, original);
+    assert!((app.editor.zoom.factor - 1.1).abs() < 0.00001);
+    press_key(&mut app, &ctx, &mut time, Key::Num0, Modifiers::CTRL);
+    assert_eq!(app.editor.zoom.factor, 1.);
+    app.preferences.layout.file_zoom_step = 25.;
+    press_key(&mut app, &ctx, &mut time, Key::Equals, Modifiers::CTRL);
+    assert_eq!(app.editor.zoom.factor, 1.25);
+    app.preferences
+        .layout
+        .shortcuts
+        .assign(
+            crate::shortcuts::Command::ResetZoom,
+            crate::shortcuts::Binding::new(Key::F9, Modifiers::NONE),
+        )
+        .unwrap();
+    press_key(&mut app, &ctx, &mut time, Key::Num0, Modifiers::CTRL);
+    assert_eq!(app.editor.zoom.factor, 1.25);
+    press_key(&mut app, &ctx, &mut time, Key::F9, Modifiers::NONE);
+    assert_eq!(app.editor.zoom.factor, 1.);
     let factor = app.editor.zoom.factor;
     click(&mut app, &ctx, &mut time, Id::unique("markdown-read"));
     let viewport = ctx

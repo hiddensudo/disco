@@ -226,8 +226,16 @@ impl Disco {
                 {
                     match action {
                         0 => self.editor.zoom.factor = 1.,
-                        1 => self.editor.zoom.change(-1., true),
-                        _ => self.editor.zoom.change(1., true),
+                        1 => self.editor.zoom.change(
+                            -1.,
+                            self.preferences.layout.file_zoom_step,
+                            true,
+                        ),
+                        _ => self.editor.zoom.change(
+                            1.,
+                            self.preferences.layout.file_zoom_step,
+                            true,
+                        ),
                     }
                 }
                 x += w + 6.;

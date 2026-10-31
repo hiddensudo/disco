@@ -7,15 +7,23 @@ pub enum Command {
     Terminal,
     Focus,
     Overview,
+    ResetZoom,
 }
 impl Command {
-    pub const ALL: [Self; 4] = [Self::NewTab, Self::Terminal, Self::Focus, Self::Overview];
+    pub const ALL: [Self; 5] = [
+        Self::NewTab,
+        Self::Terminal,
+        Self::Focus,
+        Self::Overview,
+        Self::ResetZoom,
+    ];
     pub fn label(self) -> &'static str {
         match self {
             Self::NewTab => crate::tr!("Нова вкладка", "New tab"),
             Self::Terminal => crate::tr!("Термінал", "Terminal"),
             Self::Focus => crate::tr!("Фокус", "Focus"),
             Self::Overview => crate::tr!("Огляд", "Overview"),
+            Self::ResetZoom => crate::tr!("Скинути масштаб файла", "Reset file zoom"),
         }
     }
 }
@@ -107,13 +115,59 @@ impl Binding {
         Ok(())
     }
 }
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Shortcuts {
     pub new_tab: Binding,
     pub terminal: Binding,
     pub focus: Binding,
     pub overview: Binding,
+    pub reset_zoom: Binding,
+}
+// Missing reset binding in older configs must not invalidate an existing Ctrl+0.
+impl<'de> Deserialize<'de> for Shortcuts {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(default, deny_unknown_fields)]
+        struct Stored {
+            new_tab: Binding,
+            terminal: Binding,
+            focus: Binding,
+            overview: Binding,
+            reset_zoom: Option<Binding>,
+        }
+        impl Default for Stored {
+            fn default() -> Self {
+                let s = Shortcuts::default();
+                Self {
+                    new_tab: s.new_tab,
+                    terminal: s.terminal,
+                    focus: s.focus,
+                    overview: s.overview,
+                    reset_zoom: None,
+                }
+            }
+        }
+        let s = Stored::deserialize(d)?;
+        let reset = s.reset_zoom.unwrap_or_else(|| {
+            [
+                Binding::new(Key::Num0, Modifiers::CTRL),
+                Binding::new(Key::Num0, Modifiers::CTRL | Modifiers::ALT),
+                Binding::new(Key::F12, Modifiers::CTRL | Modifiers::ALT),
+                Binding::new(Key::F11, Modifiers::CTRL | Modifiers::ALT),
+                Binding::new(Key::F10, Modifiers::CTRL | Modifiers::ALT),
+            ]
+            .into_iter()
+            .find(|b| ![&s.new_tab, &s.terminal, &s.focus, &s.overview].contains(&b))
+            .unwrap()
+        });
+        Ok(Self {
+            new_tab: s.new_tab,
+            terminal: s.terminal,
+            focus: s.focus,
+            overview: s.overview,
+            reset_zoom: reset,
+        })
+    }
 }
 impl Default for Shortcuts {
     fn default() -> Self {
@@ -123,6 +177,7 @@ impl Default for Shortcuts {
             terminal: Binding::new(Key::T, mods),
             focus: Binding::new(Key::F, mods),
             overview: Binding::new(Key::V, mods),
+            reset_zoom: Binding::new(Key::Num0, Modifiers::CTRL),
         }
     }
 }
@@ -133,10 +188,25 @@ impl Shortcuts {
             Command::Terminal => &self.terminal,
             Command::Focus => &self.focus,
             Command::Overview => &self.overview,
+            Command::ResetZoom => &self.reset_zoom,
         }
     }
     pub fn assign(&mut self, command: Command, binding: Binding) -> Result<(), String> {
         binding.validate()?;
+        if command == Command::ResetZoom
+            && binding.ctrl
+            && !binding.alt
+            && matches!(
+                Key::from_name(&binding.key),
+                Some(Key::Plus | Key::Equals | Key::Minus)
+            )
+        {
+            return Err(crate::tr!(
+                "Комбінація зайнята масштабуванням",
+                "This shortcut is reserved for zoom"
+            )
+            .into());
+        }
         if let Some(other) = Command::ALL
             .into_iter()
             .find(|other| *other != command && self.get(*other) == &binding)
@@ -152,6 +222,7 @@ impl Shortcuts {
             Command::Terminal => self.terminal = binding,
             Command::Focus => self.focus = binding,
             Command::Overview => self.overview = binding,
+            Command::ResetZoom => self.reset_zoom = binding,
         }
         Ok(())
     }
@@ -168,6 +239,11 @@ mod tests {
     use super::*;
     #[test]
     fn bindings_validate_reservations_conflicts_and_roundtrip() {
+        let old = "[focus]\nkey='0'\nctrl=true\nalt=false\nshift=false\n";
+        let migrated: Shortcuts = toml::from_str(old).unwrap();
+        migrated.validate().unwrap();
+        assert_eq!(migrated.focus, Binding::new(Key::Num0, Modifiers::CTRL));
+        assert_ne!(migrated.reset_zoom, migrated.focus);
         let mut keys = Shortcuts::default();
         keys.validate().unwrap();
         assert!(keys.assign(Command::Focus, keys.terminal.clone()).is_err());

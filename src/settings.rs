@@ -92,6 +92,7 @@ pub struct Layout {
     #[serde(default)]
     pub text_scale_version: u8,
     pub sidebar_text_scale: f32,
+    pub file_zoom_step: f32,
     pub file_type_icons: bool,
     pub show_count: bool,
     pub drive_name: String,
@@ -149,6 +150,7 @@ impl Default for Layout {
             text_scale: 1.,
             text_scale_version: 1,
             sidebar_text_scale: 1.,
+            file_zoom_step: 10.,
             file_type_icons: false,
             show_count: false,
             drive_name: String::new(),
@@ -269,6 +271,8 @@ impl Layout {
             .contains(&self.text_scale)
             || !self.sidebar_text_scale.is_finite()
             || !(0.8..=1.2).contains(&self.sidebar_text_scale)
+            || !self.file_zoom_step.is_finite()
+            || !(0.1..=1000.).contains(&self.file_zoom_step)
             || !self.icon_scale.is_finite()
             || !(0.8..=1.4).contains(&self.icon_scale)
             || !self.motion_speed.is_finite()
