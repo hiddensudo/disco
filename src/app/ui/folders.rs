@@ -97,6 +97,15 @@ impl Disco {
         rows
     }
     pub(in crate::app) fn build_visible_rows(&self) -> Vec<TreeRow> {
+        if let Some(path) = &self.paths.standalone {
+            return vec![TreeRow::File(
+                Arc::new(crate::directory_files::Entry {
+                    path: path.clone(),
+                    bytes: self.browser.properties.as_ref().map_or(0, |p| p.bytes),
+                }),
+                0,
+            )];
+        }
         let Some(r) = &self.scan.report else {
             return vec![];
         };
@@ -339,7 +348,7 @@ impl Disco {
             Stroke::new(1., color(&t.border)),
             egui::StrokeKind::Inside,
         );
-        if self.scan.report.is_none() {
+        if self.scan.report.is_none() && self.paths.standalone.is_none() {
             let center = outer.center();
             self.art.paint(
                 ui,

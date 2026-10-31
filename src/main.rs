@@ -18,6 +18,7 @@ mod live_files;
 mod markdown;
 mod motion;
 mod navigation;
+mod path_input;
 mod recycle;
 mod refresh;
 mod scan;
@@ -108,6 +109,13 @@ fn main() -> eframe::Result {
         }
         return Ok(());
     }
+    let startup = match path_input::startup(&args) {
+        Ok(path) => path,
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(2);
+        }
+    };
     let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1360., 660.])
@@ -138,6 +146,6 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "disco",
         options,
-        Box::new(|cc| Ok(Box::new(app::Disco::new(cc)))),
+        Box::new(move |cc| Ok(Box::new(app::Disco::new_with_path(cc, startup)))),
     )
 }

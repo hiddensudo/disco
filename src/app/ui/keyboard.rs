@@ -14,7 +14,7 @@ struct Item {
 impl Disco {
     /// Run before TextEdit: its code-editor Tab handling also accepts Ctrl+Tab.
     pub(in crate::app) fn file_cycle_shortcuts(&mut self, ctx: &egui::Context) {
-        if self.terminal_focused(ctx) {
+        if self.terminal_focused(ctx) || self.paths.editing {
             return;
         }
         if (self.preferences.open && ctx.embed_viewports())
@@ -78,7 +78,7 @@ impl Disco {
     }
     pub(in crate::app) fn keyboard_navigation(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx();
-        if self.terminal_focused(ctx) {
+        if self.terminal_focused(ctx) || self.paths.editing {
             return;
         }
         if (self.preferences.open && ctx.embed_viewports())
@@ -241,6 +241,14 @@ impl Disco {
         }
     }
     fn keyboard_items(&mut self) -> Vec<Item> {
+        if let Some(path) = &self.paths.standalone {
+            return vec![Item {
+                path: path.clone(),
+                bytes: self.browser.properties.as_ref().map_or(0, |p| p.bytes),
+                folder: None,
+                is_dir: false,
+            }];
+        }
         match self.browser.view {
             View::Folders => {
                 let rows = self.visible_rows();

@@ -192,7 +192,7 @@ Settings → Shortcuts records a combination when you click its field and press 
 | Ctrl+N | Create a file; `new_folder/file.txt` also creates parents |
 | Ctrl+S | Save without leaving the editor |
 | Ctrl+Tab / Ctrl+Shift+Tab | Next / previous visible file, skipping folders |
-| Ctrl+L / F5 | Search / refresh current scope |
+| Ctrl+F / F5 | Search / refresh current scope |
 | Alt+Home | Open configured Home |
 | Ctrl+Alt+arrows | Move between panels |
 | F6 / Shift+F6 | Cycle panels without inserting an editor tab |
@@ -215,3 +215,5 @@ AI prompts follow the application language by default. Enable **Separate AI prom
 Markdown (`.md`/`.markdown`) opens in **Read** mode. Use **Read / Edit** in the same document to switch without saving or losing your draft, undo history or cursor. Read mode supports tables, lists, quotations, highlighted code, relative local raster images, links and heading anchors. Remote images are not fetched. Links open only when clicked; local files open in disco. Read-only categories still prevent edits. Text previews keep the existing 128 KiB bound; larger documents show the bounded beginning.
 
 File zoom: focus the document and use Ctrl+Plus (or Ctrl+=) / Ctrl+Minus, or hold Ctrl and scroll over its content. Text and Markdown zoom from 50–300%; images from 25–800% of Fit. Click the percentage to reset. Zoom stays with each open Focus tab for the session; it changes neither the UI/sidebar nor file contents. Terminal and other text fields keep their keys.
+
+Open one file or folder directly with `disco file.txt` or `disco /path/to/folder` (relative paths use the launching directory; `--` allows names beginning with a dash). A direct file opens in Focus with only that file in the left tree and no category rail or disk scan. Open a folder to use it as the workspace root. Ctrl+L or the pencil beside the breadcrumbs edits the address; Ctrl+F focuses filename search. Suggestions include folders and files, including hidden entries; use arrows, Enter to open, Tab to complete, or Esc to cancel. Relative address paths use the current folder; `~/` uses your home. Explicit symlinks resolve to their target. Completion is bounded and runs off the UI thread; unsaved documents keep the Save/Discard/Cancel guard.

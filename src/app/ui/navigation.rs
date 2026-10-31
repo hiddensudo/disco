@@ -267,7 +267,7 @@ impl Disco {
             11,
             if narrow {
                 ""
-            } else if self.scan.report.is_some() {
+            } else if self.scan.report.is_some() || self.paths.standalone.is_some() {
                 crate::tr!("Оновити", "Refresh")
             } else {
                 crate::tr!("Сканувати", "Scan")
@@ -279,10 +279,14 @@ impl Disco {
                 && self.scan.restore_requested_root.is_none(),
             &t,
         )
-        .on_hover_text(crate::tr!(
-            "Оновити лише поточну папку або корені категорії",
-            "Refresh only the current folder or category roots"
-        ))
+        .on_hover_text(if self.paths.standalone.is_some() {
+            crate::tr!("Перечитати відкритий файл", "Reload the open file")
+        } else {
+            crate::tr!(
+                "Оновити лише поточну папку або корені категорії",
+                "Refresh only the current folder or category roots"
+            )
+        })
         .clicked()
         {
             if self.scoped.busy() {

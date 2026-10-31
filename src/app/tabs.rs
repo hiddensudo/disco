@@ -66,6 +66,9 @@ impl Disco {
         path: PathBuf,
         ctx: &egui::Context,
     ) -> bool {
+        if self.paths.standalone.is_some() && path.is_absolute() {
+            self.paths.standalone = Some(path.clone());
+        }
         let temporary = self.tabs.preview_request.as_ref() == Some(&path);
         if temporary {
             self.tabs.preview_request = None;

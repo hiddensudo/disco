@@ -52,7 +52,7 @@ impl Disco {
     }
     fn available_areas(&self) -> Vec<Area> {
         let mut areas = vec![];
-        if self.preferences.layout.categories {
+        if self.preferences.layout.categories && self.paths.standalone.is_none() {
             areas.push(Area::Categories);
         }
         areas.push(Area::Tree);
@@ -257,6 +257,7 @@ impl Disco {
     pub(in crate::app) fn application_shortcuts(&mut self, ctx: &egui::Context) {
         if !ctx.input(|i| i.focused)
             || self.preferences.open
+            || self.paths.editing
             || self.deletion.confirm
             || self.purge_targets.is_some()
             || self.editor.pending.is_some()
@@ -295,7 +296,8 @@ impl Disco {
         }
     }
     pub(in crate::app) fn workspace_shortcuts(&mut self, ctx: &egui::Context) {
-        if (self.preferences.open && ctx.embed_viewports())
+        if self.paths.editing
+            || (self.preferences.open && ctx.embed_viewports())
             || self.deletion.confirm
             || self.purge_targets.is_some()
             || self.editor.pending.is_some()
@@ -334,7 +336,7 @@ impl Disco {
             self.open_preferences_keyboard(ctx);
             return;
         }
-        if ctx.input_mut(|i| i.consume_key(Modifiers::CTRL, Key::L)) {
+        if ctx.input_mut(|i| i.consume_key(Modifiers::CTRL, Key::F)) {
             self.focus_area(Area::Search, ctx);
             return;
         }

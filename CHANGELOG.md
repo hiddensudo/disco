@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- Open a file or workspace from the command line. Ctrl+L edits the address with asynchronous file/folder suggestions; Ctrl+F focuses filename search. Direct files open without a category or disk scan, with unsaved-document protection.
+
 - File zoom through Ctrl+Plus/Minus and Ctrl+wheel, independent of UI/sidebar scale. Each Focus tab retains its session zoom; text/Markdown support 50–300%, images 25–800% of Fit, with a percentage reset.
 
 - Bundled category icons follow the theme text color in the sidebar and icon picker. Folders, images and documents use distinct open line symbols that stay legible on light, pink and dark surfaces; imported artwork keeps its original colors.

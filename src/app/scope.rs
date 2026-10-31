@@ -424,6 +424,9 @@ impl Disco {
         roots
     }
     fn build_scope_roots(&self) -> Vec<PathBuf> {
+        if self.paths.standalone.is_some() {
+            return vec![];
+        }
         if let Some(path) = self
             .browser
             .table_root
@@ -462,6 +465,10 @@ impl Disco {
         }
     }
     pub(in crate::app) fn refresh_scope(&mut self, ctx: &egui::Context) {
+        if self.paths.standalone.is_some() {
+            self.editor_action(super::editor::Action::Reload, ctx);
+            return;
+        }
         if self.browser.view == View::Trash {
             if !self.demo && !self.recycle.busy {
                 self.recycle.refresh(ctx);
@@ -730,30 +737,32 @@ impl Disco {
             self.scoped.dirty.clear();
             self.scoped.full = false;
         }
-        let home =
-            if self.preferences.layout.search_home_fallback && !self.browser.filter.is_empty() {
-                if self
-                    .scoped
-                    .home
-                    .as_ref()
-                    .is_none_or(|(path, _)| path != &self.preferences.layout.home_path)
-                {
-                    self.scoped.home = Some((
-                        self.preferences.layout.home_path.clone(),
-                        self.preferences.layout.home_directory(),
-                    ));
-                }
-                self.scoped
-                    .home
-                    .as_ref()
-                    .map(|(_, p)| p.clone())
-                    .filter(|home| {
-                        self.scope_filter().is_some()
-                            || !roots.iter().any(|root| home.starts_with(root))
-                    })
-            } else {
-                None
-            };
+        let home = if self.paths.standalone.is_none()
+            && self.preferences.layout.search_home_fallback
+            && !self.browser.filter.is_empty()
+        {
+            if self
+                .scoped
+                .home
+                .as_ref()
+                .is_none_or(|(path, _)| path != &self.preferences.layout.home_path)
+            {
+                self.scoped.home = Some((
+                    self.preferences.layout.home_path.clone(),
+                    self.preferences.layout.home_directory(),
+                ));
+            }
+            self.scoped
+                .home
+                .as_ref()
+                .map(|(_, p)| p.clone())
+                .filter(|home| {
+                    self.scope_filter().is_some()
+                        || !roots.iter().any(|root| home.starts_with(root))
+                })
+        } else {
+            None
+        };
         self.search.configure(
             crate::file_search::Spec {
                 query: self.browser.filter.clone(),

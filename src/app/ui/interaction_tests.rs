@@ -2876,3 +2876,125 @@ fn markdown_modes_preserve_drafts_undo_and_tab_identity() {
     click(&mut app, &ctx, &mut time, Id::unique("markdown-read"));
     assert_eq!(app.editor.document.as_ref().unwrap().text, original);
 }
+
+#[test]
+fn direct_file_and_address_completion_open_paths_without_losing_drafts() {
+    let Ok(root) = std::env::var("DISCO_ADDRESS_FIXTURE") else {
+        let root = std::env::temp_dir().join(format!("disco-address-{}", std::process::id()));
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::create_dir_all(root.join("files/A folder")).unwrap();
+        fs::write(root.join("files/hello world.txt"), "hello\n").unwrap();
+        fs::write(root.join("files/.hidden"), "hidden").unwrap();
+        fs::write(root.join("files/A folder/notes.txt"), "notes\n").unwrap();
+        fs::write(
+            root.join("config/layout.toml"),
+            "language='en'\nsave_scan=true\nanimations=false\n",
+        )
+        .unwrap();
+        let out=Command::new(std::env::current_exe().unwrap()).args(["--exact","app::ui::interaction_tests::direct_file_and_address_completion_open_paths_without_losing_drafts","--nocapture"])
+            .env("DISCO_ADDRESS_FIXTURE",&root).env("DISCO_CONFIG_DIR",root.join("config")).env("XDG_DATA_HOME",root.join("data")).output().unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            out.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return;
+    };
+    use crate::app::workspace_keyboard::Area;
+    use egui::{Key, Modifiers};
+    let root = PathBuf::from(root);
+    let file = root.join("files/hello world.txt");
+    let ctx = egui::Context::default();
+    let mut time = 0.;
+    let mut app = Disco::new_with_path(
+        &eframe::CreationContext::_new_kittest(ctx.clone()),
+        Some(file.clone()),
+    );
+    wait_document(&mut app, &ctx, &mut time);
+    assert_eq!(app.paths.standalone.as_ref(), Some(&file));
+    assert!(app.scan.report.is_none());
+    assert!(!app.scan.busy);
+    assert_eq!(app.build_visible_rows().len(), 1);
+    press_key(&mut app, &ctx, &mut time, Key::L, Modifiers::CTRL);
+    assert!(app.paths.editing);
+    assert_eq!(
+        ctx.memory(|m| m.focused()),
+        Some(Id::unique("address-path"))
+    );
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Paste(root.join("files").display().to_string())],
+    );
+    let start = Instant::now();
+    while app.paths.completion.hits.len() < 3 && start.elapsed() < Duration::from_secs(3) {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(app.paths.completion.hits.len(), 3);
+    assert!(app.paths.completion.hits[0].directory);
+    press_key(&mut app, &ctx, &mut time, Key::ArrowDown, Modifiers::NONE);
+    press_key(&mut app, &ctx, &mut time, Key::Tab, Modifiers::NONE);
+    assert!(app.paths.input.ends_with("A folder/"));
+    press_key(&mut app, &ctx, &mut time, Key::Escape, Modifiers::NONE);
+    assert!(!app.paths.editing);
+    assert_eq!(app.editor.path.as_ref(), Some(&file));
+    let next = root.join("files/A folder/notes.txt");
+    app.submit_path(next.display().to_string(), &ctx);
+    wait_document(&mut app, &ctx, &mut time);
+    let start = Instant::now();
+    while app.editor.path.as_ref() != Some(&next) && start.elapsed() < Duration::from_secs(3) {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    wait_document(&mut app, &ctx, &mut time);
+    assert_eq!(app.paths.standalone.as_ref(), Some(&next));
+    assert_eq!(app.build_visible_rows().len(), 1);
+    assert!(app.scan.report.is_none());
+    app.focus_area(Area::Editor, &ctx);
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Text("draft".into())],
+    );
+    assert!(app.editor.dirty());
+    let draft = app.editor.document.as_ref().unwrap().text.clone();
+    app.submit_path(root.join("files/A folder").display().to_string(), &ctx);
+    let start = Instant::now();
+    while app.editor.pending.is_none() && start.elapsed() < Duration::from_secs(3) {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(matches!(app.editor.pending, Some(Action::OpenPath(_))));
+    press_key(&mut app, &ctx, &mut time, Key::Escape, Modifiers::NONE);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, draft);
+    assert_eq!(app.paths.standalone.as_ref(), Some(&next));
+    app.editor.document.as_mut().unwrap().text = fs::read_to_string(&next).unwrap();
+    app.submit_path(root.join("files/A folder").display().to_string(), &ctx);
+    let start = Instant::now();
+    while (app.paths.standalone.is_some() || app.scan.busy)
+        && start.elapsed() < Duration::from_secs(4)
+    {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(app.paths.standalone.is_none());
+    assert!(app.scan.report.is_some());
+    assert_eq!(
+        app.browser.root,
+        root.join("files/A folder").display().to_string()
+    );
+    let _ = app.scope_roots();
+    app.submit_path(file.display().to_string(), &ctx);
+    let start = Instant::now();
+    while app.paths.standalone.as_ref() != Some(&file) && start.elapsed() < Duration::from_secs(3) {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(app.scope_roots().is_empty());
+    assert!(app.scan.report.is_none());
+}

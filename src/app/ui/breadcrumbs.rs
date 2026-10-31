@@ -14,6 +14,10 @@ pub(super) fn ancestors(path: &Path) -> Vec<PathBuf> {
 }
 impl Disco {
     pub(in crate::app) fn breadcrumb_path(&mut self, ui: &mut egui::Ui, rect: Rect, path: &Path) {
+        if self.address_bar(ui, rect) {
+            return;
+        }
+        let rect = Rect::from_min_max(rect.min, rect.max - Vec2::new(30., 0.));
         let nodes = ancestors(path);
         if nodes.is_empty() || rect.width() < 20. {
             return;
@@ -130,6 +134,7 @@ impl Disco {
             .report
             .as_ref()
             .and_then(|r| r.folders.iter().position(|f| f.path == path));
+        self.paths.standalone = None;
         self.browser.category = Category::All;
         self.browser.view = View::Folders;
         self.browser.filter.clear();

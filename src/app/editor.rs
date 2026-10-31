@@ -59,6 +59,7 @@ impl Bookmark {
 pub(super) enum Action {
     Transition(Bookmark),
     Navigate(PathBuf),
+    OpenPath(crate::path_input::Resolved),
     NewFile(PathBuf),
     NewTextTab(PathBuf),
     SelectFile {
@@ -369,6 +370,7 @@ impl Disco {
                 self.editor.path = None;
             }
             Action::Navigate(path) => self.navigate_path(path),
+            Action::OpenPath(path) => self.open_resolved_path(path, ctx),
             Action::NewTextTab(directory) => self.open_empty_tab(directory, ctx),
             Action::NewFile(directory) => {
                 self.new_file = Some(super::new_file::Draft::new(directory));

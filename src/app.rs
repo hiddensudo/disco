@@ -23,6 +23,7 @@ mod document_zoom;
 mod editor;
 mod jobs;
 mod new_file;
+mod paths;
 mod scope;
 mod state;
 mod tabs;
@@ -36,6 +37,7 @@ use self::{
 };
 pub(crate) struct Disco {
     art: art::Art,
+    paths: paths::Paths,
     themes: crate::themes::Manager,
     collections: crate::categories::Manager,
     frame_probe: Option<frame_probe::FrameProbe>,
@@ -68,7 +70,14 @@ pub(crate) struct Disco {
     shots: usize,
 }
 impl Disco {
+    #[cfg(test)]
     pub(crate) fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        Self::new_with_path(cc, None)
+    }
+    pub(crate) fn new_with_path(
+        cc: &eframe::CreationContext<'_>,
+        startup: Option<PathBuf>,
+    ) -> Self {
         art::fonts(&cc.egui_ctx);
         cc.egui_ctx
             .options_mut(|options| options.zoom_with_keyboard = false);
@@ -154,6 +163,7 @@ impl Disco {
         let settings_open = argument("--settings").is_some();
         let mut s = Self {
             art: art::Art::load(&cc.egui_ctx),
+            paths: Default::default(),
             themes,
             collections: crate::categories::Manager::load(),
             frame_probe: if demo {
@@ -271,7 +281,7 @@ impl Disco {
             s.preferences.snapshot =
                 Some((s.preferences.theme.clone(), s.preferences.layout.clone()));
         }
-        if !demo && s.preferences.layout.save_scan {
+        if !demo && startup.is_none() && s.preferences.layout.save_scan {
             let (tx, rx) = mpsc::channel();
             s.scan.rx = Some(rx);
             s.scan.restore_requested_root = Some(s.browser.root.clone());
@@ -291,6 +301,10 @@ impl Disco {
         s.apply_style(&cc.egui_ctx);
         if args.iter().any(|a| a == "--new-tab") {
             s.request_empty_tab(&cc.egui_ctx);
+        }
+        if let Some(path) = startup {
+            s.paths.input = path.display().to_string();
+            s.paths.resolver.request(path);
         }
         s
     }
@@ -369,9 +383,11 @@ impl eframe::App for Disco {
         self.files.poll(self.scan.report_revision);
         self.poll_new_file(ui.ctx());
         self.poll_save_as(ui.ctx());
+        self.poll_paths(ui.ctx());
         self.sync_file_preview(ui.ctx());
         let shown = self.terminal_shown();
         self.terminal.poll(&self.preferences.theme, shown);
+        self.path_shortcuts(ui.ctx());
         self.application_shortcuts(ui.ctx());
         self.workspace_shortcuts(ui.ctx());
         self.document_zoom_shortcuts(ui.ctx());
@@ -469,7 +485,7 @@ impl eframe::App for Disco {
             self.show_inspector_panel(ui);
             self.terminal_panel(ui);
         }
-        if self.preferences.layout.categories {
+        if self.preferences.layout.categories && self.paths.standalone.is_none() {
             let categories = egui::Panel::left("categories")
                 .exact_size(if self.preferences.layout.category_labels {
                     self.preferences.layout.category_width
@@ -503,7 +519,7 @@ impl eframe::App for Disco {
                     self.recycle_content(ui);
                     return;
                 }
-                if !self.preferences.layout.categories {
+                if !self.preferences.layout.categories && self.paths.standalone.is_none() {
                     ui.horizontal(|ui| {
                         for cat in [
                             Category::All,
