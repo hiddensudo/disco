@@ -67,7 +67,7 @@ pub(crate) struct Syntax {
     tx: Option<SyncSender<()>>,
     rx: Option<Receiver<Parsed>>,
     parsed: Option<Parsed>,
-    galley: Option<(FontId, u32, u32, u64, Color32, Arc<egui::Galley>)>,
+    layout_job: Option<(FontId, u32, u32, u64, Color32, egui::text::LayoutJob)>,
 }
 fn parse(
     syntaxes: &SyntaxSet,
@@ -124,7 +124,7 @@ impl Syntax {
         self.extension = extension.into();
         self.generation = self.generation.wrapping_add(1);
         self.revision = self.revision.wrapping_add(1);
-        self.galley = None;
+        self.layout_job = None;
         if self.tx.is_none() {
             let (tx, wake) = mpsc::sync_channel(1);
             let (results, rx) = mpsc::channel();
@@ -172,19 +172,19 @@ impl Syntax {
                 if parsed.generation == self.generation {
                     self.parsed = Some(parsed);
                     self.revision = self.revision.wrapping_add(1);
-                    self.galley = None;
+                    self.layout_job = None;
                 }
             }
         }
         let dpi = ui.ctx().pixels_per_point().to_bits();
-        if let Some((old, width, old_dpi, revision, old_color, galley)) = &self.galley {
+        if let Some((old, width, old_dpi, revision, old_color, job)) = &self.layout_job {
             if old == &font
                 && *width == 0
                 && *old_dpi == dpi
                 && *revision == self.revision
                 && *old_color == color
             {
-                return galley.clone();
+                return ui.fonts_mut(|fonts| fonts.layout_job(job.clone()));
             }
         }
         let mut job = egui::text::LayoutJob::default();
@@ -224,9 +224,11 @@ impl Syntax {
             );
         }
         job.wrap.max_width = f32::INFINITY;
-        let galley = ui.fonts_mut(|f| f.layout_job(job));
-        self.galley = Some((font, 0, dpi, self.revision, color, galley.clone()));
-        galley
+        // Cache syntax formatting, never atlas-dependent glyph UVs. Opening
+        // the terminal installs fonts and replaces the atlas; egui's own
+        // layout cache invalidates correctly for that and atlas rollover.
+        self.layout_job = Some((font, 0, dpi, self.revision, color, job.clone()));
+        ui.fonts_mut(|fonts| fonts.layout_job(job))
     }
     pub fn language(&self) -> Option<&str> {
         self.parsed
@@ -271,6 +273,38 @@ mod tests {
             "1000 cached colored layouts: {:.3} ms",
             start.elapsed().as_secs_f64() * 1000.
         );
+    }
+    #[test]
+    fn terminal_font_install_rebuilds_cached_text_for_the_current_atlas() {
+        let ctx = egui::Context::default();
+        crate::art::fonts(&ctx);
+        let mut syntax = Syntax::default();
+        let text = "int main() { return 42; }\n";
+        let font = FontId::monospace(13.);
+        let mut before = None;
+        ctx.run_ui(egui::RawInput::default(), |ui| {
+            before = Some(syntax.layout(ui, text, font.clone(), None, Color32::WHITE));
+        })
+        .drop_without_applying_deltas();
+        // Freeze parser state: the next frame must change only because the
+        // terminal replaces the shared font atlas, not because parsing finished.
+        syntax.rx = None;
+        crate::art::terminal_fonts(&ctx);
+        let mut after = None;
+        ctx.run_ui(egui::RawInput::default(), |ui| {
+            after = Some(syntax.layout(ui, text, font.clone(), None, Color32::WHITE));
+            let fresh = ui
+                .fonts_mut(|fonts| fonts.layout_job(before.as_ref().unwrap().job.as_ref().clone()));
+            assert!(
+                Arc::ptr_eq(after.as_ref().unwrap(), &fresh),
+                "editor must use a layout belonging to the current font atlas"
+            );
+        })
+        .drop_without_applying_deltas();
+        assert!(!Arc::ptr_eq(
+            before.as_ref().unwrap(),
+            after.as_ref().unwrap()
+        ));
     }
     #[test]
     fn syntect_handles_multiline_comments_unicode_and_supported_languages() {
