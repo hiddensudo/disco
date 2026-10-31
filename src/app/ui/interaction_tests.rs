@@ -3453,3 +3453,139 @@ fn terminal_and_external_writers_update_the_active_file_without_scope_refresh_or
     wait_text(&mut app, &ctx, &mut time, "active again\n");
     assert!(app.scan.report.is_none() && !crate::snapshot::file().exists());
 }
+
+#[test]
+fn focus_ctrl_f_searches_live_text_without_editing_and_preserves_terminal_routing() {
+    let Ok(root) = std::env::var("DISCO_FIND_UI_FIXTURE") else {
+        let root = std::env::temp_dir().join(format!("disco-find-ui-{}", std::process::id()));
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::create_dir_all(root.join("files")).unwrap();
+        fs::write(
+            root.join("files/find.rs"),
+            "fn first() {}\n// \u{41a}\u{456}\u{442}\nfn last() {}\n",
+        )
+        .unwrap();
+        fs::write(root.join("config/layout.toml"), "language='en'\ntext_scale_version=1\nsave_scan=false\nauto_refresh=false\nall_files_auto_refresh=false\nanimations=false\n").unwrap();
+        let result = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "app::ui::interaction_tests::focus_ctrl_f_searches_live_text_without_editing_and_preserves_terminal_routing", "--nocapture"])
+            .env("DISCO_FIND_UI_FIXTURE", &root).env("DISCO_CONFIG_DIR", root.join("config"))
+            .env("XDG_DATA_HOME", root.join("data")).env("SHELL", "/bin/sh").output().unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            result.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        );
+        return;
+    };
+    use egui::{Key, Modifiers};
+    let root = PathBuf::from(root);
+    let path = root.join("files/find.rs");
+    let ctx = egui::Context::default();
+    let mut time = 0.;
+    let mut app = Disco::new_with_path(
+        &eframe::CreationContext::_new_kittest(ctx.clone()),
+        Some(path.clone()),
+    );
+    wait_document(&mut app, &ctx, &mut time);
+    let original = app.editor.document.as_ref().unwrap().text.clone();
+    press_key(&mut app, &ctx, &mut time, Key::F, Modifiers::CTRL);
+    assert!(app.editor.find.open);
+    assert_eq!(
+        ctx.memory(|m| m.focused()),
+        Some(Id::unique("document-find"))
+    );
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Text("fn".into())],
+    );
+    assert_eq!(app.editor.find.matches.len(), 2);
+    assert_eq!(app.editor.find.current, 0);
+    press_key(&mut app, &ctx, &mut time, Key::Enter, Modifiers::NONE);
+    assert_eq!(app.editor.find.current, 1);
+    press_key(&mut app, &ctx, &mut time, Key::F3, Modifiers::NONE);
+    assert_eq!(app.editor.find.current, 0);
+    press_key(&mut app, &ctx, &mut time, Key::Enter, Modifiers::SHIFT);
+    assert_eq!(app.editor.find.current, 1);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, original);
+    assert!(!app.editor.dirty());
+    assert_eq!(app.browser.filter, "");
+    press_key(&mut app, &ctx, &mut time, Key::Escape, Modifiers::NONE);
+    assert!(!app.editor.find.open);
+    let editor_id = Id::unique(("file-editor", &app.editor.path));
+    assert_eq!(ctx.memory(|m| m.focused()), Some(editor_id));
+    // Search the actual draft, without writing it to disk or inserting query text.
+    app.editor
+        .document
+        .as_mut()
+        .unwrap()
+        .text
+        .push_str("fn draft() {}\n");
+    app.editor.find.query = "fn".into();
+    // Clear the previous search selection so Ctrl+F retains our last query.
+    let mut state = egui::TextEdit::load_state(&ctx, editor_id).unwrap();
+    state.cursor.set_char_range(None);
+    state.store(&ctx, editor_id);
+    press_key(&mut app, &ctx, &mut time, Key::F, Modifiers::CTRL);
+    assert_eq!(app.editor.find.matches.len(), 3);
+    let field = ctx.read_response(Id::unique("document-find")).unwrap().rect;
+    assert!(field.is_positive());
+    assert_eq!(fs::read_to_string(&path).unwrap(), original);
+    let output = ctx.run_ui(
+        egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1360., 800.))),
+            time: Some(time + 0.05),
+            ..Default::default()
+        },
+        |ui| eframe::App::ui(&mut app, ui, &mut eframe::Frame::_new_kittest()),
+    );
+    let highlight = crate::settings::color(&app.preferences.theme.accent).linear_multiply(0.35);
+    assert!(
+        output
+            .shapes
+            .iter()
+            .any(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.fill == highlight)),
+        "current match must actually be highlighted"
+    );
+    output.drop_without_applying_deltas();
+    time += 0.05;
+    // Source search remains available in Markdown and read-only categories.
+    let markdown = root.join("files/note.md");
+    fs::write(&markdown, "# Title\n\nneedle in **bold**\n").unwrap();
+    app.select_file(markdown, 30);
+    wait_document(&mut app, &ctx, &mut time);
+    app.preferences.layout.all_files_read_only = true;
+    assert!(!app.editor.markdown.editing);
+    press_key(&mut app, &ctx, &mut time, Key::F, Modifiers::CTRL);
+    assert!(app.editor.markdown.editing);
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Text("needle".into())],
+    );
+    assert_eq!(app.editor.find.matches.len(), 1);
+    assert!(!app.editor.dirty());
+    app.activate_tab(&path, &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    app.editor.find.open = false;
+    app.toggle_terminal(&ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert!(app.terminal_focused(&ctx));
+    press_key(&mut app, &ctx, &mut time, Key::F, Modifiers::CTRL);
+    assert!(!app.editor.find.open, "terminal retains Ctrl+F");
+    app.terminal.shutdown();
+    app.preferences.layout.preview_mode = PreviewMode::Overview;
+    app.focus_area(crate::app::workspace_keyboard::Area::Tree, &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    press_key(&mut app, &ctx, &mut time, Key::F, Modifiers::CTRL);
+    assert_eq!(
+        ctx.memory(|m| m.focused()),
+        Some(Id::unique("folder-search"))
+    );
+    assert!(!app.editor.find.open);
+    assert!(app.editor.dirty());
+}

@@ -80,6 +80,7 @@ pub(super) enum Action {
 }
 #[derive(Default)]
 pub(super) struct Editor {
+    pub find: super::document_find::Find,
     pub markdown: crate::markdown::Reader,
     pub zoom: super::document_zoom::Zoom,
     pub path: Option<PathBuf>,

@@ -78,7 +78,8 @@ The bottom-left **···** menu contains Large files, Cleanup and Duplicates. De
 | Key | Action |
 | --- | --- |
 | ↑ / ↓, Enter | Select a file or enter a folder |
-| Ctrl+F / F5 | Search / refresh the current scope |
+| Ctrl+F | Focus: find in file; Overview: filename search |
+| F5 | Refresh the current scope |
 | Ctrl+T | New in-memory text tab; Ctrl+S chooses its first save path |
 | Ctrl+S / Ctrl+N | Save / create a file, including `new_folder/file.txt` |
 | Ctrl+Tab / Ctrl+Shift+Tab | Preview the next / previous visible file |

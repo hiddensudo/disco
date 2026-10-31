@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- Ctrl+F in Focus searches the active file’s current text, including unsaved edits. The inline find bar provides Unicode-aware literal matching, case sensitivity, a match counter, highlighted results, wrapping next/previous navigation and Escape to close. Enter/Shift+Enter and F3/Shift+F3 navigate results; Overview retains filename search and focused terminals retain Ctrl+F. Markdown searches its source.
+
 - External file edits update the visible document without a blank/loading frame. The previous buffer stays on screen until the background read is ready, unchanged syntax colors remain stable while parsing catches up, and cursor selections track insertions/deletions above them. File sizes update in the existing tree instead of clearing its directory listing; edits made during loading remain protected.
 
 - Opening the terminal no longer makes editor text disappear. Syntax formatting stays cached, while glyph layouts follow egui’s current font atlas after terminal fonts load or the atlas resets; document contents, selection and undo remain intact.

@@ -342,8 +342,13 @@ impl Disco {
             self.open_preferences_keyboard(ctx);
             return;
         }
+        self.document_find_shortcuts(ctx);
         if ctx.input_mut(|i| i.consume_key(Modifiers::CTRL, Key::F)) {
-            self.focus_area(Area::Search, ctx);
+            if self.preferences.layout.preview_mode == PreviewMode::Focus {
+                self.open_document_find(ctx);
+            } else {
+                self.focus_area(Area::Search, ctx);
+            }
             return;
         }
         if ctx.input_mut(|i| i.consume_key(Modifiers::ALT, Key::Home)) {

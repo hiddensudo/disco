@@ -47,6 +47,9 @@ impl Disco {
         let entering_focus =
             mode == PreviewMode::Focus && self.preferences.layout.preview_mode != mode;
         self.preferences.layout.preview_mode = mode;
+        if mode != PreviewMode::Focus {
+            self.editor.find.open = false;
+        }
         match mode {
             PreviewMode::Overview => self.preferences.layout.properties = true,
             PreviewMode::Focus => self.preferences.layout.properties = false,
@@ -190,6 +193,7 @@ impl Disco {
             && matches!(self.file_preview.content, Some(Content::Text { .. }));
         let refresh = self.document_toolbar(ui, width, markdown, read_only);
         ui.add_space(8.);
+        self.document_find_ui(ui);
         let error_height = if self.editor.error.is_empty() {
             0.
         } else {
@@ -336,6 +340,15 @@ impl Disco {
                                 ));
                                 output.state.clone().store(ui.ctx(), output.response.id);
                             }
+                            if let Some(range) = self.editor.find.paint(
+                                ui,
+                                &output.galley,
+                                output.galley_pos,
+                                color(&t.accent),
+                            ) {
+                                output.state.cursor.set_char_range(Some(range));
+                                output.state.clone().store(ui.ctx(), output.response.id);
+                            }
                             self.editor.focused |= output.response.has_focus();
                             let clip = ui.clip_rect();
                             for (n, row) in output.galley.rows.iter().enumerate() {
@@ -408,6 +421,12 @@ impl Disco {
                                             egui::Label::new(galley.clone())
                                                 .selectable(true)
                                                 .wrap_mode(egui::TextWrapMode::Extend),
+                                        );
+                                        self.editor.find.paint(
+                                            ui,
+                                            &galley,
+                                            response.rect.min,
+                                            color(&t.accent),
                                         );
                                         for (n, row) in galley.rows.iter().enumerate() {
                                             let y = response.rect.top() + row.pos.y;

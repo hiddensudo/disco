@@ -192,7 +192,8 @@ Settings → Shortcuts records a combination when you click its field and press 
 | Ctrl+N | Create a file; `new_folder/file.txt` also creates parents |
 | Ctrl+S | Save without leaving the editor |
 | Ctrl+Tab / Ctrl+Shift+Tab | Next / previous visible file, skipping folders |
-| Ctrl+F / F5 | Search / refresh current scope |
+| Ctrl+F | Focus: find in file; Overview: filename search |
+| F5 | Refresh the current scope |
 | Alt+Home | Open configured Home |
 | Ctrl+Alt+arrows | Move between panels |
 | F6 / Shift+F6 | Cycle panels without inserting an editor tab |
@@ -216,7 +217,7 @@ Markdown (`.md`/`.markdown`) opens in **Read** mode. Use **Read / Edit** in the 
 
 File zoom: focus the document and use Ctrl+Plus (or Ctrl+=) / Ctrl+Minus, or hold Ctrl and scroll over its content. Text and Markdown zoom from 50–300%; images from 25–800% of Fit. Click the percentage to reset. Zoom stays with each open Focus tab for the session; it changes neither the UI/sidebar nor file contents. Terminal and other text fields keep their keys.
 
-Open one file or folder directly with `disco file.txt` or `disco /path/to/folder` (relative paths use the launching directory; `--` allows names beginning with a dash). A direct file opens in Focus with only that file in the left tree and no category rail or disk scan. Open a folder to use it as the workspace root. Ctrl+L or the pencil beside the breadcrumbs edits the address; Ctrl+F focuses filename search. Suggestions include folders and files, including hidden entries; use arrows, Enter to open, Tab to complete, or Esc to cancel. Relative address paths use the current folder; `~/` uses your home. Explicit symlinks resolve to their target. Completion is bounded and runs off the UI thread; unsaved documents keep the Save/Discard/Cancel guard.
+Open one file or folder directly with `disco file.txt` or `disco /path/to/folder` (relative paths use the launching directory; `--` allows names beginning with a dash). A direct file opens in Focus with only that file in the left tree and no category rail or disk scan. Open a folder to use it as the workspace root. Ctrl+L or the pencil beside the breadcrumbs edits the address; Ctrl+F searches the active file in Focus and filenames in Overview. Suggestions include folders and files, including hidden entries; use arrows, Enter to open, Tab to complete, or Esc to cancel. Relative address paths use the current folder; `~/` uses your home. Explicit symlinks resolve to their target. Completion is bounded and runs off the UI thread; unsaved documents keep the Save/Discard/Cancel guard.
 
 Settings → Interface → **Language and file type icons** enables bundled SVG symbols for 59 language/format families (C/C++, Rust, JavaScript/TypeScript, Java, Python, Go, JSON/YAML/TOML and more). The default is off. Names/extensions are matched without case; Dockerfile, Makefile and common dotfiles are recognized. `.h` uses C, `.hpp` uses C++, `.m` uses Objective-C. Unknown files and images keep their generic symbols; custom category artwork is unaffected. Save/Cancel apply normally. Colors are slightly darkened on light themes for legibility; there are no runtime downloads.
 
@@ -237,3 +238,7 @@ These are preview-only changes: Read/Edit keeps the original Markdown, draft and
 After opening a standalone file, choosing a category or Home loads an existing saved snapshot in the background. This reads cached sizes without starting a new scan, preserves the selected category and keeps the document, draft, cursor and undo state. If no snapshot is available, Scan appears below the explanation inside the empty file tree. A small spinner indicates loading. Explicit scanning and a newly opened path take priority over an older cache request.
 
 The active document automatically follows changes made by Codex, terminal tools or other programs, including atomic saves. This works for standalone CLI files and with category auto-refresh disabled; no folder rescan or cache write is required. Clean buffers update after a short debounce without a blank/loading frame: the previous text remains visible until the new read is ready. The tab, scroll position and zoom stay intact; the selection follows unchanged text when content is inserted or removed above it. Unsaved local edits are kept with a conflict warning; Save cannot silently overwrite an externally replaced file. Once local edits are undone/discarded, the clean buffer can follow the disk again. Hiding or closing the terminal does not disable this behavior.
+
+### Find in file
+
+In Focus, Ctrl+F searches the active tab’s current text, including unsaved edits. A single-line selection seeds the query. Matches are highlighted with a current/total counter; Aa toggles case sensitivity. Enter / F3 moves forward, Shift+Enter / Shift+F3 moves backward, wrapping at the ends; Enter works while the find field has focus. Escape closes the bar and returns to the editor. Matching is literal, Unicode-aware and does not modify text. Markdown switches to its source so code and collapsed details are searchable too. For truncated large-file previews, only the loaded excerpt is searched. A focused terminal retains Ctrl+F for its running program.

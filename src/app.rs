@@ -19,6 +19,7 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+mod document_find;
 mod document_zoom;
 mod editor;
 mod jobs;
