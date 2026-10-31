@@ -280,6 +280,13 @@ impl Disco {
                         ui.horizontal_top(|ui| {
                             let gutter_left = ui.cursor().min.x;
                             ui.allocate_space(Vec2::new(30., 0.));
+                            let editor_id = egui::Id::unique(("file-editor", &path));
+                            self.languages.before(
+                                ui.ctx(),
+                                editor_id,
+                                &doc.text,
+                                read_only || busy,
+                            );
                             let mut buffer = doc.buffer_with_access(!read_only);
                             let syntax = &mut self.syntax;
                             let mut layouter =
@@ -311,6 +318,9 @@ impl Disco {
                                         .show(ui)
                                 })
                                 .inner;
+                            drop(buffer);
+                            self.languages
+                                .after(ui, &mut output, &doc.text, read_only || busy);
                             text_changed = output.response.changed();
                             let blank_gutter = Rect::from_min_max(
                                 Pos2::new(

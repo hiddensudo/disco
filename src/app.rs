@@ -41,6 +41,7 @@ pub(crate) struct Disco {
     art: art::Art,
     paths: paths::Paths,
     themes: crate::themes::Manager,
+    languages: crate::lsp::state::State,
     collections: crate::categories::Manager,
     frame_probe: Option<frame_probe::FrameProbe>,
     scan: ScanState,
@@ -252,6 +253,7 @@ impl Disco {
             live: crate::live_files::LiveFiles::default(),
             syntax: crate::syntax::Syntax::default(),
             editor: editor::Editor::default(),
+            languages: crate::lsp::state::State::new(settings::config_dir()),
             tabs: tabs::Tabs::default(),
             terminal: crate::terminal::Terminal::default(),
             keyboard: workspace_keyboard::Keyboard::default(),
@@ -390,6 +392,15 @@ impl eframe::App for Disco {
         self.poll_paths(ui.ctx());
         self.sync_file_preview(ui.ctx());
         self.poll_document_changes(ui.ctx());
+        self.languages.tick(
+            ui.ctx(),
+            self.editor
+                .path
+                .as_deref()
+                .filter(|_| self.editor.untitled.is_none()),
+            self.editor.document.as_ref().map(|d| d.text.as_str()),
+            self.tabs.order.clone(),
+        );
         let shown = self.terminal_shown();
         self.terminal.poll(&self.preferences.theme, shown);
         self.path_shortcuts(ui.ctx());
@@ -604,6 +615,7 @@ impl eframe::App for Disco {
         if let Some(probe) = &mut self.frame_probe {
             probe.tick(ui, frame.info().cpu_usage);
         }
+        self.languages.overlay(&ctx);
         resize_edges(ui);
         if !self.preferences.open {
             self.capture_qa(&ctx);
@@ -611,6 +623,7 @@ impl eframe::App for Disco {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.languages.shutdown();
         self.terminal.shutdown();
         self.scan.control.cancel.store(true, Ordering::Relaxed);
     }

@@ -1,0 +1,53 @@
+version = 1
+
+[servers.clangd]
+name = "C / C++ · clangd"
+extensions = ["c", "h", "cc", "cpp", "cxx", "hpp", "hh", "hxx", "m", "mm"]
+languages = ["c", "cpp", "cpp", "cpp", "cpp", "cpp", "cpp", "cpp", "objective-c", "objective-cpp"]
+command = "clangd"
+args = ["--background-index=false", "--clang-tidy=false"]
+root_markers = ["compile_commands.json", "compile_flags.txt", ".clangd", "CMakeLists.txt", ".git"]
+provider = "system"
+enabled = false
+
+[servers.rust-analyzer]
+name = "Rust · rust-analyzer"
+extensions = ["rs"]
+languages = ["rust"]
+command = "rust-analyzer"
+args = []
+root_markers = ["Cargo.toml", ".git"]
+provider = "github_release"
+repository = "rust-lang/rust-analyzer"
+version = "2026-10-26"
+asset = "rust-analyzer-x86_64-unknown-linux-gnu.gz"
+sha256 = "4c83773525f93b636ed79761389568b4d2a89c05fa7ecc440245032d49ad80ce"
+platform = "linux-x86_64"
+enabled = false
+
+[servers.pyright]
+name = "Python · Pyright"
+extensions = ["py", "pyi"]
+languages = ["python", "python"]
+command = "pyright-langserver"
+args = ["--stdio"]
+root_markers = ["pyproject.toml", "pyrightconfig.json", "setup.py", "requirements.txt", ".git"]
+provider = "npm"
+package = "pyright"
+version = "1.1.414"
+integrity = "sha512-FPZZb51jepDX4eP7TEYDeNFtmE3WgwkkEcJpvH3/QmUSsj0EAy3LXu+xB4T/FWDejtsXlCfFr/rbWFjwuwuXww=="
+enabled = false
+
+[servers.typescript]
+name = "JavaScript / TypeScript"
+extensions = ["ts", "tsx", "js", "jsx", "mjs", "cjs"]
+languages = ["typescript", "typescriptreact", "javascript", "javascriptreact", "javascript", "javascript"]
+command = "typescript-language-server"
+args = ["--stdio"]
+root_markers = ["tsconfig.json", "jsconfig.json", "package.json", ".git"]
+provider = "npm"
+package = "typescript-language-server"
+version = "6.0.2"
+integrity = "sha512-Ph7Ql+xkUJvMamnkh1h+aKP6HxLR7lrWIYkPn9/LZBkJdJZgtIj7OoVhkDYtQ7zFPTPmqZHOVXaUKGyz9M2q1Q=="
+extra_packages = ["typescript@5.9.3"]
+enabled = false

@@ -206,7 +206,7 @@ File-list shortcuts do not run while typing in text fields. In Focus, Ctrl+Tab s
 
 ## Current limitations
 
-- The integrated terminal is a native embedding of an adapted widget, not a promise of compatibility with every terminal application. LSP/code completion is not included.
+- The integrated terminal is a native embedding of an adapted widget, not a promise of compatibility with every terminal application.
 
 In Focus, clicking files in the tree reuses one temporary tab. Click inside its document or image to keep it open; tree double-clicks do not pin it. Enter/Right-arrow keyboard actions still keep the preview. Unsaved documents remain protected.
 
@@ -247,3 +247,5 @@ The find bar floats at the editor’s top right; opening, closing or leaving it 
 Ctrl+Z undoes edit actions: each paste, Enter, cut or selection replacement is a separate step. Ordinary typing and repeated deletion may group until cursor/type changes or a pause. Ctrl+Y / Ctrl+Shift+Z redo; a new text edit discards the redo branch. Save, tab switches and Markdown Read/Edit preserve history.
 
 Filename search falls back through selected folder/file parent → current directory/category roots → configured Home. A wider level runs only when the earlier level has no matches; Home fallback can be disabled in Settings. The origin stays fixed until the query is cleared or category changes, so selecting a result cannot retarget a query. Status shows the actual search area and inaccessible paths. Files and folders in unexpanded/unscanned directories are searchable without a snapshot. Clearing the query preserves the selected result and reveals its directory when outside the original tree, without a recursive scan.
+
+Language servers: [setup, completion and installations](language-servers.md).

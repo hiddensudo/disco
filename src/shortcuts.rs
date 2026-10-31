@@ -115,7 +115,7 @@ impl Binding {
             && !self.alt
             && matches!(
                 key,
-                Key::S | Key::N | Key::W | Key::L | Key::Tab | Key::Comma
+                Key::S | Key::N | Key::W | Key::L | Key::Tab | Key::Comma | Key::Space
             ))
             || (self.ctrl
                 && self.alt

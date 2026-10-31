@@ -115,3 +115,7 @@ Cache/category investigation and remaining storage design: [DSC-033](investigati
 The pinned egui 0.37 source in `vendor/egui` adds opt-in action undo only for the file editor; other fields retain upstream behavior. Patch details: `vendor/egui/DISCO-PATCH.md`; scenarios and VS Code source comparison: [editor undo](investigations/editor-undo.md). Both upstream licenses ship in the runtime bundle.
 
 Filename search captures a selected-directory anchor per nonempty query session/category/config revision. Spec includes actual category identity separately from optional automatic classification. One cancellable worker visits selected → category roots → optional configured Home, publishes phase progress, deduplicates normalized roots and rejects obsolete progress/results. Results render before standalone/directory/snapshot fallbacks, so no scan is needed to search. Clearing an out-of-tree result browses its parent lazily and preserves the current document.
+
+## Language servers
+
+`src/lsp/{catalog,protocol,client,manager,state}.rs` separates validated global configuration, bounded UTF-16/JSON-RPC framing, background stdio sessions, explicit owned installation transactions, and UI generations/overlays. Preferences live in `app/ui/preferences/languages.rs`. See [setup and protocol limits](language-servers.md) and [headless verification/resources](investigations/lsp-resources.md). Server artifacts are runtime dependencies managed explicitly by the user and are not bundled in release archives.

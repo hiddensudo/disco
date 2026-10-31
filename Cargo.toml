@@ -12,6 +12,7 @@ members = ["prototypes/terminal", "vendor/egui_term"]
 default-members = ["."]
 
 [dependencies]
+url = "=2.5.8"
 egui_commonmark = { version = "=0.26.0", default-features = false, features = ["pulldown_cmark", "better_syntax_highlighting"] }
 pulldown-cmark = { version = "0.13", default-features = false }
 egui_term = { path = "vendor/egui_term" }

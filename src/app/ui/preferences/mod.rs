@@ -8,6 +8,7 @@ use eframe::egui::{self, Align2, FontId, Pos2, Rect, RichText, Sense, Stroke, Ve
 mod appearance;
 mod categories;
 mod interface;
+mod languages;
 pub(in crate::app) mod shortcuts;
 
 impl Disco {
@@ -47,6 +48,7 @@ impl Disco {
         }
         let ctx = ui.ctx().clone();
         self.themes.begin_edit();
+        self.languages.manager.begin_edit();
         let mut opened = !ctx.input(|i| i.viewport().close_requested());
         let save;
         let mut cancel;
@@ -158,6 +160,7 @@ impl Disco {
                 (2, crate::tr!("Категорії", "Categories"), 0),
                 (3, crate::tr!("Гарячі клавіші", "Shortcuts"), 2),
                 (4, crate::tr!("Про програму", "About"), 17),
+                (5, crate::tr!("Мовні сервери", "Language servers"), 2),
             ] {
                 let r = Rect::from_min_size(
                     nav.min + Vec2::new(0., 13. + i as f32 * 45.),
@@ -217,6 +220,8 @@ impl Disco {
                             crate::tr!("Категорії", "Categories")
                         } else if self.preferences.page == 3 {
                             crate::tr!("Гарячі клавіші", "Shortcuts")
+                        } else if self.preferences.page == 5 {
+                            crate::tr!("Мовні сервери", "Language servers")
                         } else {
                             crate::tr!("Про програму", "About")
                         })
@@ -260,6 +265,11 @@ impl Disco {
                             .show(ui, |ui| self.categories_preferences(ui));
                     } else if self.preferences.page == 3 {
                         self.preferences.recorder.show(ui, &mut layout);
+                    } else if self.preferences.page == 5 {
+                        egui::ScrollArea::vertical()
+                            .id_salt("lsp-preferences")
+                            .max_height((body.height() - 62.).max(160.))
+                            .show(ui, |ui| self.language_preferences(ui));
                     } else {
                         ui.add_space(10.);
                         ui.horizontal(|ui| {
@@ -503,6 +513,7 @@ impl Disco {
                         .map(|c| c.validate())
                         .unwrap_or(Ok(()))
                 })
+                .and_then(|_| self.languages.manager.save())
                 .and_then(|_| self.collections.save())
                 .and_then(|_| self.themes.save(&self.preferences.theme))
                 .and_then(|_| settings::write(&p.join("layout.toml"), &self.preferences.layout))
@@ -532,6 +543,7 @@ impl Disco {
         }
         if cancel || !opened {
             self.themes.cancel();
+            self.languages.manager.cancel_edit();
             self.collections.draft = None;
             self.collections.folder_input.clear();
             if let Some((t, l)) = self.preferences.snapshot.take() {

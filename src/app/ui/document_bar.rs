@@ -170,6 +170,30 @@ impl Disco {
         reload.clicked()
     }
     pub(super) fn document_status(&mut self, ui: &mut egui::Ui, text: &str) {
+        let info = if !self.languages.diagnostics.is_empty() {
+            crate::tr!(
+                "{n} діагн.",
+                "{n} diagnostics",
+                n = self.languages.diagnostics.len()
+            )
+        } else if !self.languages.sessions.is_empty() {
+            "LSP".into()
+        } else {
+            String::new()
+        };
+        let text = if info.is_empty() {
+            text.to_owned()
+        } else {
+            format!(
+                "{text} · {info}{}",
+                if self.languages.compile_config {
+                    ""
+                } else {
+                    " · compile_commands.json?"
+                }
+            )
+        };
+        let text = text.as_str();
         let t = self.preferences.theme.clone();
         let (bar, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 26.), Sense::hover());
         ui.interact(bar, egui::Id::unique("document-status-bar"), Sense::hover());

@@ -17,6 +17,7 @@ mod frame_probe;
 mod i18n;
 mod index;
 mod live_files;
+mod lsp;
 mod markdown;
 mod motion;
 mod navigation;

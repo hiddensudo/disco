@@ -93,3 +93,5 @@ In Focus, keyboard browsing reuses one temporary tab. Enter or → keeps it open
 - [User guide](docs/guide.md) — terminal controls, tabs, categories, previews, settings and current limitations.
 - [Development](docs/development.md) — checks, source map and component licenses.
 - [Release history](CHANGELOG.md) · [Category TOML example](categories.example.toml)
+
+Language servers, code completion and managed installations: [LSP guide](docs/language-servers.md).

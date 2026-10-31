@@ -4129,3 +4129,240 @@ fn filename_search_prioritizes_selection_keeps_origin_and_reveals_home_results_w
     assert_eq!(cli.build_visible_rows().len(), 1);
     assert!(cli.scan.report.is_none() && !cli.scan.busy);
 }
+
+#[test]
+fn lsp_real_editor_completion_is_one_undo_and_settings_are_opt_in() {
+    if crate::lsp::catalog::executable(Path::new("clangd")).is_none() {
+        return;
+    }
+    let name = "app::ui::interaction_tests::lsp_real_editor_completion_is_one_undo_and_settings_are_opt_in";
+    let Ok(root) = std::env::var("DISCO_LSP_UI_FIXTURE") else {
+        let root = std::env::temp_dir().join(format!("disco-lsp-ui-{}", std::process::id()));
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::create_dir_all(root.join("project")).unwrap();
+        fs::write(root.join("config/layout.toml"),"language='en'\ntext_scale_version=1\nsave_scan=false\nauto_refresh=false\nanimations=false\n").unwrap();
+        fs::write(root.join("project/compile_flags.txt"), "-std=c++20\n").unwrap();
+        fs::write(
+            root.join("project/main.cpp"),
+            "#include <vector>\nvoid f(){ /* 🦀 */ std::vec }\nint broken = ;\n",
+        )
+        .unwrap();
+        let out = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", name, "--nocapture"])
+            .env("DISCO_LSP_UI_FIXTURE", &root)
+            .env("DISCO_CONFIG_DIR", root.join("config"))
+            .env("XDG_DATA_HOME", root.join("data"))
+            .output()
+            .unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            out.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return;
+    };
+    let root = PathBuf::from(root);
+    let path = root.join("project/main.cpp");
+    let ctx = egui::Context::default();
+    let mut time = 0.;
+    let mut app = Disco::new_with_path(
+        &eframe::CreationContext::_new_kittest(ctx.clone()),
+        Some(path.clone()),
+    );
+    wait_document(&mut app, &ctx, &mut time);
+    assert!(app.languages.client.is_none());
+    assert!(
+        app.languages
+            .manager
+            .catalog
+            .servers
+            .values()
+            .all(|s| !s.enabled)
+    );
+    app.languages.manager.begin_edit();
+    app.languages
+        .manager
+        .draft
+        .as_mut()
+        .unwrap()
+        .servers
+        .get_mut("clangd")
+        .unwrap()
+        .enabled = true;
+    app.languages.manager.cancel_edit();
+    assert!(!app.languages.manager.catalog.servers["clangd"].enabled);
+    app.languages.manager.begin_edit();
+    app.languages
+        .manager
+        .draft
+        .as_mut()
+        .unwrap()
+        .servers
+        .get_mut("clangd")
+        .unwrap()
+        .enabled = true;
+    app.languages.manager.save().unwrap();
+    let until = Instant::now() + Duration::from_secs(15);
+    while Instant::now() < until
+        && (app.languages.sessions.is_empty()
+            || !app.languages.sessions[0].ready
+            || app.languages.diagnostics.is_empty())
+    {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(!app.languages.diagnostics.is_empty());
+    assert_eq!(app.languages.sessions.len(), 1);
+    assert_eq!(app.languages.sessions[0].root, root.join("project"));
+    assert!(app.languages.compile_config);
+    let editor_id = Id::unique(("file-editor", &app.editor.path));
+    ctx.memory_mut(|m| m.request_focus(editor_id));
+    let original = app.editor.document.as_ref().unwrap().text.clone();
+    let index = original[..original.find("std::vec").unwrap() + 8]
+        .chars()
+        .count();
+    let mut state = egui::TextEdit::load_state(&ctx, editor_id).unwrap();
+    state
+        .cursor
+        .set_char_range(Some(egui::text::CCursorRange::one(
+            egui::text::CCursor::new(index),
+        )));
+    state.store(&ctx, editor_id);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    let until = Instant::now() + Duration::from_secs(8);
+    let mut retry = Instant::now() - Duration::from_secs(1);
+    while Instant::now() < until && app.languages.completion_count() == 0 {
+        if retry.elapsed() > Duration::from_millis(250) {
+            press_key(
+                &mut app,
+                &ctx,
+                &mut time,
+                egui::Key::Space,
+                egui::Modifiers::CTRL,
+            );
+            retry = Instant::now();
+        }
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(
+        app.languages.completion_count() > 0,
+        "real popup should contain std::vec completion"
+    );
+    let viewport = ctx
+        .read_response(Id::unique("preview-viewport"))
+        .unwrap()
+        .rect;
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        egui::Key::Enter,
+        egui::Modifiers::NONE,
+    );
+    let completed = app.editor.document.as_ref().unwrap().text.clone();
+    assert_ne!(completed, original);
+    assert!(completed.contains("vector"));
+    assert_eq!(
+        ctx.read_response(Id::unique("preview-viewport"))
+            .unwrap()
+            .rect,
+        viewport
+    );
+    assert_eq!(
+        fs::read_to_string(&path).unwrap(),
+        original,
+        "completion never writes disk by itself"
+    );
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        egui::Key::Z,
+        egui::Modifiers::CTRL | egui::Modifiers::COMMAND,
+    );
+    assert_eq!(
+        app.editor.document.as_ref().unwrap().text,
+        original,
+        "one undo must reverse the completion and additional edits together"
+    );
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        egui::Key::Z,
+        egui::Modifiers::CTRL | egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+    );
+    assert_eq!(app.editor.document.as_ref().unwrap().text, completed);
+    let server_pid = app.languages.sessions[0].pid;
+    let (app_rss, app_ticks) = crate::lsp::client::metrics(std::process::id());
+    let (server_rss, server_ticks) = crate::lsp::client::metrics(server_pid);
+    eprintln!(
+        "small headless full app: disco rss={app_rss} cpu_ticks={app_ticks}; clangd rss={server_rss} cpu_ticks={server_ticks}"
+    );
+    if let Some(output) = std::env::var_os("DISCO_LSP_METRICS_FILE") {
+        // Let header indexing finish before calling this an idle sample.
+        let warm = Instant::now();
+        let mut stable = Instant::now();
+        let mut previous = crate::lsp::client::metrics(server_pid).1;
+        while warm.elapsed() < Duration::from_secs(15) && stable.elapsed() < Duration::from_secs(3)
+        {
+            frame(&mut app, &ctx, &mut time, vec![]);
+            std::thread::sleep(Duration::from_millis(100));
+            let ticks = crate::lsp::client::metrics(server_pid).1;
+            if ticks != previous {
+                previous = ticks;
+                stable = Instant::now();
+            }
+        }
+        let a0 = crate::lsp::client::metrics(std::process::id());
+        let s0 = crate::lsp::client::metrics(server_pid);
+        let began = Instant::now();
+        while began.elapsed() < Duration::from_secs(3) {
+            frame(&mut app, &ctx, &mut time, vec![]);
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        let a1 = crate::lsp::client::metrics(std::process::id());
+        let s1 = crate::lsp::client::metrics(server_pid);
+        let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as f64;
+        let seconds = began.elapsed().as_secs_f64();
+        let output = PathBuf::from(output);
+        fs::write(&output,serde_json::to_vec_pretty(&serde_json::json!({"headless":true,"disco_rss":a1.0,"clangd_rss":s1.0,"disco_cpu_ticks_total":a1.1,"clangd_cpu_ticks_total":s1.1,"idle_seconds":seconds,"disco_idle_cpu_percent":(a1.1-a0.1)as f64/hz/seconds*100.,"clangd_idle_cpu_percent":(s1.1-s0.1)as f64/hz/seconds*100.})).unwrap()).unwrap();
+        app.close_tab_now(&path, &ctx);
+        let close = Instant::now();
+        while close.elapsed() < Duration::from_secs(34)
+            && Path::new(&format!("/proc/{server_pid}")).exists()
+        {
+            frame(&mut app, &ctx, &mut time, vec![]);
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        assert!(
+            !Path::new(&format!("/proc/{server_pid}")).exists(),
+            "production 30 s idle policy must reap the process"
+        );
+        let mut record: serde_json::Value =
+            serde_json::from_slice(&fs::read(&output).unwrap()).unwrap();
+        record["after_close_seconds"] = serde_json::json!(close.elapsed().as_secs_f64());
+        record["server_after_close"] = serde_json::json!(false);
+        record["disco_rss_after_close"] =
+            serde_json::json!(crate::lsp::client::metrics(std::process::id()).0);
+        fs::write(&output, serde_json::to_vec_pretty(&record).unwrap()).unwrap();
+        app.languages.shutdown();
+        return;
+    }
+    app.preferences.open = true;
+    app.preferences.page = 5;
+    frame(&mut app, &ctx, &mut time, vec![]);
+    app.preferences.open = false;
+    let stop = app.languages.client.as_ref().unwrap().stop("clangd");
+    stop.recv_timeout(Duration::from_secs(3)).unwrap();
+    assert!(!Path::new(&format!("/proc/{server_pid}")).exists());
+    assert_eq!(
+        app.editor.document.as_ref().unwrap().text,
+        completed,
+        "stopping LSP preserves the draft"
+    );
+    app.languages.shutdown();
+}
