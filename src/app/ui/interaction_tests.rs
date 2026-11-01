@@ -4421,6 +4421,12 @@ fn typing_c_identifiers_and_cpp_scope_opens_completion_without_a_shortcut() {
             "std::",
             true,
         ),
+        (
+            "wayland.cpp",
+            "#include <iostream>\n#include <vector>\nvoid f() {\n    \n    std::cout << \"OK\";\n}\n",
+            "std::",
+            false,
+        ),
     ] {
         let path = root.join("project").join(filename);
         fs::write(&path, source).unwrap();
@@ -4478,7 +4484,15 @@ fn typing_c_identifiers_and_cpp_scope_opens_completion_without_a_shortcut() {
         }
         let until = Instant::now() + Duration::from_secs(5);
         while app.languages.completion_count() == 0 && Instant::now() < until {
-            frame(&mut app, &ctx, &mut time, vec![]);
+            let noise = if filename == "wayland.cpp" {
+                vec![egui::Event::Ime(egui::ImeEvent::Preedit {
+                    text: String::new(),
+                    active_range_chars: None,
+                })]
+            } else {
+                vec![]
+            };
+            frame(&mut app, &ctx, &mut time, noise);
             std::thread::sleep(Duration::from_millis(20));
         }
         assert!(

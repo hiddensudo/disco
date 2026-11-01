@@ -376,6 +376,9 @@ impl Session {
             return Ok(());
         };
         let position = protocol::position(&doc.doc.text, index);
+        super::trace(format_args!(
+            "server request {kind:?} version={version} request={request} position={position:?}"
+        ));
 
         let method = if kind == Kind::Completion {
             "textDocument/completion"
@@ -485,6 +488,16 @@ impl Session {
                     return Ok(());
                 }
                 let result = &value["result"];
+                if p.kind == Kind::Completion {
+                    super::trace(format_args!(
+                        "server completion reply request={} raw_items={}",
+                        p.request,
+                        result
+                            .as_array()
+                            .or_else(|| result["items"].as_array())
+                            .map_or(0, Vec::len)
+                    ));
+                }
                 let event = if p.kind == Kind::Completion {
                     Event::Completion {
                         path: p.path,

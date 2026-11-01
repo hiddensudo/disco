@@ -99,6 +99,11 @@ impl State {
         let changed = path_changed || self.text.as_ref() != text;
         let sync = changed || self.revision != self.manager.revision || self.open != open;
         if changed {
+            super::trace(format_args!(
+                "sync next_version={} chars={} path_changed={path_changed}",
+                self.version + 1,
+                text.chars().count()
+            ));
             self.version += 1;
             self.path = path.map(Path::to_path_buf);
             self.text = Arc::from(text);
@@ -130,6 +135,21 @@ impl State {
         }
         if let Some(client) = &self.client {
             for e in client.poll() {
+                if let Event::Completion {
+                    version,
+                    request,
+                    items,
+                    path,
+                } = &e
+                {
+                    super::trace(format_args!(
+                        "completion response version={version}/{} request={request}/{} items={} same_path={}",
+                        self.version,
+                        self.completion,
+                        items.len(),
+                        self.path.as_ref() == Some(path)
+                    ));
+                }
                 match e {
                     Event::Completion {
                         path,
@@ -190,6 +210,10 @@ impl State {
     fn request(&mut self, kind: Kind, index: usize) {
         if let (Some(c), Some(p)) = (&mut self.client, &self.path) {
             let id = c.request(p.clone(), self.version, index, kind);
+            super::trace(format_args!(
+                "request {kind:?} id={id} version={} index={index}",
+                self.version
+            ));
             match kind {
                 Kind::Completion => self.completion = id,
                 Kind::Hover => self.hover = id,
@@ -204,19 +228,20 @@ impl State {
             return;
         }
         if ctx.input(|i| {
-            i.events.iter().any(|e| {
-                matches!(
-                    e,
-                    egui::Event::Text(_)
-                        | egui::Event::Paste(_)
-                        | egui::Event::Cut
-                        | egui::Event::Ime(_)
-                        | egui::Event::Key {
-                            key: egui::Key::Backspace | egui::Key::Delete,
-                            pressed: true,
-                            ..
-                        }
-                )
+            i.events.iter().any(|e| match e {
+                egui::Event::Text(s) | egui::Event::Paste(s) => !s.is_empty(),
+                // Wayland may emit empty preedit/IME lifecycle events without
+                // changing the buffer. They must not erase a just-arrived list.
+                egui::Event::Ime(
+                    egui::ImeEvent::Commit(s) | egui::ImeEvent::Preedit { text: s, .. },
+                ) => !s.is_empty(),
+                egui::Event::Cut
+                | egui::Event::Key {
+                    key: egui::Key::Backspace | egui::Key::Delete,
+                    pressed: true,
+                    ..
+                } => true,
+                _ => false,
             })
         }) {
             self.items.clear();
@@ -295,6 +320,11 @@ impl State {
             .char_range()
             .map(|r| usize::from(r.primary.index))
             .unwrap_or(0);
+        if out.response.changed() && text != self.text.as_ref() {
+            self.items.clear();
+            self.completion = 0;
+            self.due = None;
+        }
         if index != self.cursor {
             self.completion = 0;
             self.due = None;
@@ -306,6 +336,21 @@ impl State {
                 .iter()
                 .any(|e| matches!(e, egui::Event::Text(s) | egui::Event::Ime(egui::ImeEvent::Commit(s)) if !s.is_empty()))
         });
+        if out.response.changed() {
+            super::trace(format_args!(
+                "edit index={index} changed=true focused={} readonly={read_only} typed={typed} text_event={} ime_commit={} ime_preedit={}",
+                out.response.has_focus(),
+                ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Text(_)))),
+                ui.input(|i| i
+                    .events
+                    .iter()
+                    .any(|e| matches!(e, egui::Event::Ime(egui::ImeEvent::Commit(_))))),
+                ui.input(|i| i
+                    .events
+                    .iter()
+                    .any(|e| matches!(e, egui::Event::Ime(egui::ImeEvent::Preedit { .. }))))
+            ));
+        }
         if out.response.changed() && out.response.has_focus() && !read_only && typed {
             let prefix: String = text.chars().take(index).collect();
             let identifier = prefix
@@ -427,6 +472,12 @@ impl State {
         if self.items.is_empty() {
             return;
         }
+        super::trace(format_args!(
+            "overlay items={} focus={:?} anchor={:?}",
+            self.items.len(),
+            ctx.memory(|m| m.focused()),
+            self.anchor
+        ));
         if let Some(path) = &self.path {
             if !ctx.memory(|m| m.has_focus(egui::Id::unique(("file-editor", &Some(path.clone())))))
             {
@@ -439,14 +490,27 @@ impl State {
             .fixed_pos(at)
             .show(ctx, |ui| {
                 let popup = egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.set_width(380.);
+                    ui.set_width(480.);
+                    ui.spacing_mut().item_spacing.y = 0.;
+                    ui.spacing_mut().button_padding = egui::vec2(6., 2.);
+                    ui.spacing_mut().interact_size.y = 22.;
                     egui::ScrollArea::vertical()
                         .max_height(220.)
                         .show(ui, |ui| {
                             for (n, item) in self.items.iter().enumerate() {
                                 let r = ui
-                                    .selectable_label(n == self.selected, &item.label)
-                                    .on_hover_text(&item.detail);
+                                    .add(
+                                        egui::Button::selectable(
+                                            n == self.selected,
+                                            egui::RichText::new(item.label.trim_start_matches('•'))
+                                                .monospace()
+                                                .size(12.),
+                                        )
+                                        .truncate()
+                                        .min_size(egui::vec2(480., 22.))
+                                        .corner_radius(0),
+                                    )
+                                    .on_hover_text(format!("{}\n{}", item.label, item.detail));
                                 if n == self.selected {
                                     r.scroll_to_me(Some(egui::Align::Center));
                                 }
