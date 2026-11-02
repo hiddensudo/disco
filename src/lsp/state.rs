@@ -27,6 +27,7 @@ pub struct State {
     pub diagnostics: Vec<Diagnostic>,
     items: Vec<Completion>,
     selected: usize,
+    revealed_selection: Option<usize>,
     completion: u64,
     signature: Option<protocol::SignatureHelp>,
     signature_selected: usize,
@@ -62,6 +63,7 @@ impl State {
             diagnostics: vec![],
             items: vec![],
             selected: 0,
+            revealed_selection: None,
             completion: 0,
             signature: None,
             signature_selected: 0,
@@ -184,6 +186,7 @@ impl State {
                         if items.is_empty() {
                             self.completion = 0;
                         }
+                        self.revealed_selection = None;
                         self.items = items;
                         self.selected = 0;
                         self.docs_due = Some(Instant::now() + Duration::from_millis(120));
@@ -590,6 +593,7 @@ impl State {
             }
         }
         if self.items.is_empty() {
+            self.revealed_selection = None;
             self.signature_overlay(ctx);
             return;
         }
@@ -623,27 +627,32 @@ impl State {
             .fixed_pos(at)
             .show(ctx, |ui| {
                 let popup = egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.set_width(480.);
+                    ui.set_width(420.);
+                    let selected_fill = ui.visuals().selection.bg_fill.gamma_multiply(0.35);
+                    ui.visuals_mut().selection.bg_fill = selected_fill;
                     ui.spacing_mut().item_spacing.y = 0.;
                     ui.spacing_mut().button_padding = egui::vec2(6., 2.);
                     ui.spacing_mut().interact_size.y = 22.;
                     egui::ScrollArea::vertical()
-                        .max_height(220.)
+                        .id_salt("completion-list")
+                        .scroll_bar_visibility(
+                            egui::scroll_area::ScrollBarVisibility::AlwaysVisible,
+                        )
+                        .animated(false)
+                        .max_height(198.)
                         .show(ui, |ui| {
                             for (n, item) in self.items.iter().enumerate() {
-                                let r = ui
-                                    .add(
-                                        egui::Button::selectable(
-                                            n == self.selected,
-                                            egui::RichText::new(item.label.trim_start_matches('•'))
-                                                .monospace()
-                                                .size(12.),
-                                        )
-                                        .truncate()
-                                        .min_size(egui::vec2(480., 22.))
-                                        .corner_radius(0),
+                                let r = ui.add(
+                                    egui::Button::selectable(
+                                        n == self.selected,
+                                        egui::RichText::new(item.label.trim_start_matches('•'))
+                                            .monospace()
+                                            .size(12.),
                                     )
-                                    .on_hover_text(format!("{}\n{}", item.label, item.detail));
+                                    .truncate()
+                                    .min_size(egui::vec2(ui.available_width(), 24.))
+                                    .corner_radius(2),
+                                );
                                 if r.hovered()
                                     && self.selected != n
                                     && ui.input(|i| {
@@ -657,8 +666,11 @@ impl State {
                                         Some(Instant::now() + Duration::from_millis(120));
                                     ctx.request_repaint_after(Duration::from_millis(120));
                                 }
-                                if n == self.selected {
-                                    r.scroll_to_me(Some(egui::Align::Center));
+                                // Reveal only a new keyboard selection. Re-centering every frame
+                                // fights wheel scrolling and makes clipped boundary rows oscillate.
+                                if n == self.selected && self.revealed_selection != Some(n) {
+                                    r.scroll_to_me(None);
+                                    self.revealed_selection = Some(n);
                                 }
                                 ui.interact(
                                     r.rect,
@@ -695,14 +707,29 @@ impl State {
                             ui.separator();
                             egui::ScrollArea::vertical()
                                 .id_salt("completion-documentation")
-                                .max_height(140.)
+                                .auto_shrink([false, false])
+                                .max_height(128.)
                                 .show(ui, |ui| {
-                                    if !item.detail.is_empty() {
-                                        ui.monospace(&item.detail);
+                                    ui.spacing_mut().item_spacing.y = 5.;
+                                    if let Some(count) = overload_count(&item.detail) {
+                                        ui.label(
+                                            egui::RichText::new(crate::tr!(
+                                                "{count} варіантів виклику",
+                                                "{count} overloads",
+                                                count = count
+                                            ))
+                                            .small()
+                                            .weak(),
+                                        );
+                                    } else if !item.detail.is_empty() {
+                                        ui.label(
+                                            egui::RichText::new(&item.detail)
+                                                .monospace()
+                                                .small()
+                                                .weak(),
+                                        );
                                     }
-                                    if !description.is_empty() {
-                                        ui.label(description);
-                                    }
+                                    render_documentation(ui, &description);
                                 });
                         }
                     }
@@ -836,12 +863,12 @@ impl State {
                         .max_height(160.)
                         .show(ui, |ui| {
                             if !signature.documentation.is_empty() {
-                                ui.label(&signature.documentation);
+                                render_documentation(ui, &signature.documentation);
                             }
                             if let Some(p) = active {
                                 if !p.documentation.is_empty() {
                                     ui.separator();
-                                    ui.label(&p.documentation);
+                                    render_documentation(ui, &p.documentation);
                                 }
                             }
                         });
@@ -892,5 +919,225 @@ impl State {
         if let Some(mut c) = self.client.take() {
             c.shutdown();
         }
+    }
+}
+
+// clangd's bundled-completion detail is metadata, not a function signature.
+fn overload_count(detail: &str) -> Option<usize> {
+    detail
+        .strip_prefix('[')?
+        .strip_suffix(" overloads]")?
+        .parse()
+        .ok()
+}
+
+/// Present common Doxygen commands without exposing markup in plain-text LSP docs.
+/// Unknown commands and ordinary prose are preserved.
+fn documentation_lines(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .map(|line| {
+            let line = line.trim();
+            let command = line.strip_prefix('@').or_else(|| line.strip_prefix('\\'));
+            if let Some(command) = command {
+                if let Some(rest) = command.strip_prefix("brief ") {
+                    return (String::new(), clean_doc_inline(rest.trim()));
+                }
+                if let Some(rest) = command.strip_prefix("param ") {
+                    let rest = rest.trim();
+                    let rest = if rest.starts_with('[') {
+                        rest.split_once(']')
+                            .map_or(rest, |(_, rest)| rest.trim_start())
+                    } else {
+                        rest
+                    };
+                    let (name, description) =
+                        rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+                    return (name.to_owned(), clean_doc_inline(description.trim()));
+                }
+                if let Some(rest) = command
+                    .strip_prefix("throw ")
+                    .or_else(|| command.strip_prefix("throws "))
+                    .or_else(|| command.strip_prefix("exception "))
+                {
+                    return (
+                        crate::tr!("Винятки", "Throws").to_owned(),
+                        clean_doc_inline(rest.trim()),
+                    );
+                }
+                if let Some(rest) = command
+                    .strip_prefix("return ")
+                    .or_else(|| command.strip_prefix("returns "))
+                {
+                    return (
+                        crate::tr!("Результат", "Returns").to_owned(),
+                        clean_doc_inline(rest.trim()),
+                    );
+                }
+            }
+            (String::new(), clean_doc_inline(line))
+        })
+        .collect()
+}
+
+fn clean_doc_inline(text: &str) -> String {
+    text.split_inclusive(char::is_whitespace)
+        .filter_map(|word| {
+            let token = word.trim_end();
+            if matches!(
+                token,
+                "@a" | "@c" | "@p" | "@ref" | "\\a" | "\\c" | "\\p" | "\\ref"
+            ) {
+                None
+            } else if word
+                .strip_prefix('%')
+                .is_some_and(|tail| tail.starts_with(char::is_alphabetic))
+            {
+                Some(&word[1..])
+            } else {
+                Some(word)
+            }
+        })
+        .collect()
+}
+
+fn render_documentation(ui: &mut egui::Ui, text: &str) {
+    for (name, description) in documentation_lines(text) {
+        if name.is_empty() {
+            if description.is_empty() {
+                ui.add_space(3.);
+            } else {
+                ui.label(egui::RichText::new(description).size(12.));
+            }
+        } else {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(egui::RichText::new(name).monospace().size(12.).weak());
+                ui.label(egui::RichText::new(description).size(12.));
+            });
+        }
+    }
+}
+
+#[cfg(test)]
+mod presentation_tests {
+    use super::*;
+
+    #[test]
+    fn doxygen_is_readable_and_unrecognized_prose_is_preserved() {
+        crate::i18n::with_language(crate::i18n::Language::En, || {
+            assert_eq!(
+                documentation_lines(
+                    "@brief Replace characters.\n@param __pos Index to start.\n@param [in,out] value Input value.\n\\return New text.\n@note Keep this.\nnormal prose"
+                ),
+                vec![
+                    ("".into(), "Replace characters.".into()),
+                    ("__pos".into(), "Index to start.".into()),
+                    ("value".into(), "Input value.".into()),
+                    ("Returns".into(), "New text.".into()),
+                    ("".into(), "@note Keep this.".into()),
+                    ("".into(), "normal prose".into()),
+                ]
+            );
+        });
+        crate::i18n::with_language(crate::i18n::Language::Uk, || {
+            assert_eq!(
+                documentation_lines("@return value")[0].0,
+                "\u{420}\u{435}\u{437}\u{443}\u{43b}\u{44c}\u{442}\u{430}\u{442}"
+            );
+        });
+        assert_eq!(
+            clean_doc_inline("Index @a pos in %string; @c size() at 50%."),
+            "Index pos in string; size() at 50%."
+        );
+        assert_eq!(overload_count("[18 overloads]"), Some(18));
+        assert_eq!(overload_count("int replace()"), None);
+    }
+
+    #[test]
+    fn last_completion_stays_still_and_wheel_scroll_is_not_undone() {
+        let ctx = egui::Context::default();
+        let mut state = State::new(std::env::temp_dir().join("disco-popup-layout-unused"));
+        state.anchor = Some(egui::pos2(100., 100.));
+        state.items = (0..30).map(|n| Completion {
+            label: format!("function_{n}(…)"), detail: "[18 overloads]".into(),
+            raw: serde_json::json!({"documentation":"@brief Replace characters.\n@param __pos Index of first character."}),
+        }).collect();
+        state.selected = 29;
+        let mut time = 0.;
+        let mut frame = |state: &mut State, events| {
+            time += 0.016;
+            let output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1000., 800.),
+                    )),
+                    time: Some(time),
+                    events,
+                    ..Default::default()
+                },
+                |ui| state.overlay(ui.ctx()),
+            );
+            output.drop_without_applying_deltas();
+            (
+                state.completion_rect.unwrap(),
+                ctx.read_response(egui::Id::unique(("lsp-completion-row", 29usize)))
+                    .unwrap()
+                    .rect,
+            )
+        };
+        for _ in 0..5 {
+            frame(&mut state, vec![]);
+        }
+        let stable = frame(&mut state, vec![]);
+        assert!(
+            stable.0.contains_rect(stable.1),
+            "last item should be fully visible: {stable:?}"
+        );
+        for _ in 0..60 {
+            assert_eq!(frame(&mut state, vec![]), stable);
+        }
+        frame(
+            &mut state,
+            vec![egui::Event::PointerMoved(egui::pos2(200., 110.))],
+        );
+        let selected = state.selected;
+        frame(
+            &mut state,
+            vec![egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                phase: egui::TouchPhase::Move,
+                source: egui::MouseWheelSource::Wheel,
+                delta: egui::vec2(0., 96.),
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+        for _ in 0..60 {
+            frame(&mut state, vec![]);
+        }
+        let scrolled = frame(&mut state, vec![]);
+        assert!(
+            scrolled.1.top() > stable.1.top() + 30.,
+            "wheel scrolling must not snap back"
+        );
+        assert_eq!(state.selected, selected);
+        for _ in 0..30 {
+            assert_eq!(frame(&mut state, vec![]), scrolled);
+        }
+        state.items[0].raw["documentation"] =
+            serde_json::Value::String("Long documentation.\n".repeat(50));
+        state.selected = 0;
+        for _ in 0..5 {
+            frame(&mut state, vec![]);
+        }
+        assert_eq!(
+            state.completion_rect.unwrap().size(),
+            stable.0.size(),
+            "switching to long docs must not resize the popup or list"
+        );
+        let first = ctx
+            .read_response(egui::Id::unique(("lsp-completion-row", 0usize)))
+            .unwrap()
+            .rect;
+        assert!(state.completion_rect.unwrap().contains_rect(first));
     }
 }
