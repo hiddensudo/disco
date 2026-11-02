@@ -1,81 +1,118 @@
-# Language servers / Мовні сервери
+# Code completion and language servers
 
-## English
+[User guide](guide.md) · **English** / [Українська](language-servers.uk.md)
 
-Open **Settings → Language servers**, enable a server, and **Save**. All servers are disabled initially. `clangd` uses the installed system binary; Rust, Python and JavaScript/TypeScript also have explicit managed installation buttons. Installation does not enable a language. Node.js and npm are required for npm servers; `curl` and `sha256sum` are required for managed downloads. Missing tools, incompatible engines, unsupported platforms and network errors are reported without replacing the current installation.
+For **0.2.3-unstable**. Syntax colors work without a server. Completion, signatures, documentation and diagnostics require an enabled language server; no AI account is needed.
 
-In a saved text document, **Ctrl+Space** requests completion; typing at least two identifier characters or `.`, `::` and `->` triggers it automatically after a short pause. Use ↑/↓, Enter/Tab and Escape in the floating list. Hover over code for plain-text documentation. Diagnostics mark the affected lines and appear on hover; their count is in the bottom document status. Accepting a completion, including additional text edits, is one undoable action. It changes the draft, never writes the file itself. Existing optional auto-save remains applicable.
+## Set up a language
 
-Servers start lazily for an enabled extension, not for a category or the entire disk. The nearest ancestor with a configured marker determines the project root; the file's parent is the fallback. Documents in one `(server, root)` share a process. Up to four projects run concurrently. Close their tabs to release a session after 30 seconds, or use **Stop / Restart**. Stop remains in effect until Restart, disabling/re-enabling the server, or restarting disco. Unsaved tabs connect only after their first save with a supported extension. Initialization and protocol IO run on background threads.
+1. Open **Settings → Language servers** (`Ctrl+,`). All languages start disabled.
+2. Install the server or select an existing installation as described below.
+3. Check the language and **Save**. Installing alone does not enable it.
+4. Open a saved source file with the matching extension. Allow the server to initialize, then try `Ctrl+Space` inside a function.
 
-For C/C++, provide `compile_commands.json` or `compile_flags.txt` at the project root. Without either, clangd uses fallback flags; Settings and the document status indicate this. The default disables clangd's background index and clang-tidy. Rust's default disables build scripts, proc macros and check-on-save. These reduce automatic project work; compiler-quality Rust diagnostics and every third-party server feature are not promised by this initial client.
+![Language servers settings: enabled clangd, installation status and session controls](screenshots/lsp-settings.png)
 
-### Catalog and storage
+| Language | Bundled entry | What you need |
+| --- | --- | --- |
+| C / C++ | clangd | Install `clangd` through your system package manager; `clangd --version` must work. Also install your compiler and its standard-library headers. |
+| Rust | rust-analyzer | Use **Install** for the managed binary. The Rust toolchain and project dependencies are separate. |
+| Python | Pyright | Node.js and npm; click **Install**. The project’s Python environment is separate. |
+| JavaScript / TypeScript | typescript-language-server | Node.js and npm; **Install** includes the catalog’s TypeScript dependency. Install your project dependencies separately. |
 
-The active profile's `lsp.toml` is the **only** disco LSP command catalog. For the installed development launcher this is normally `~/.config/disco-unstable/lsp.toml`; the normal profile uses `~/.config/disco/lsp.toml`. The path is shown in Settings. Edit this file with disco closed and restart to load changes. Project-local `lsp.toml` files are not read. A normal user-controlled server can still interpret its own project configuration.
+Managed downloads also require `curl` and `sha256sum`. Errors appear in this page. **Stop** suspends that session until Restart, re-enabling the server, or restarting disco. Files in the same project share a server; it exits 30 seconds after its last document closes. Untitled tabs connect after their first save with a supported extension.
 
-The bundled [`assets/lsp.toml`](../assets/lsp.toml) is a complete example. `version = 1`; every `[servers.ID]` contains:
+## C++: tell clangd how to build the project
 
-| Fields | Meaning |
+The filename is **`compile_commands.json`**, not `compile.commands.json`. It describes include paths, compiler flags and the C++ standard for each source file.
+
+For a CMake project, configure it from its root:
+
+```sh
+cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+```
+
+clangd searches parent directories and their `build/` subdirectories. A database elsewhere needs a link/copy in the source root or an explicit clangd configuration. For a small project with shared flags, a root-level `compile_flags.txt` is enough, with one flag per line:
+
+```text
+-std=c++20
+-Iinclude
+```
+
+Use paths and flags from your actual build. `compile_commands.json` takes precedence when both files exist. See [clangd’s project setup guide](https://clangd.llvm.org/installation#project-setup).
+
+### Try the included example
+
+From the disco checkout, after enabling clangd:
+
+```sh
+disco docs/examples/lsp/main.cpp
+```
+
+The [example](examples/lsp/main.cpp) includes `compile_flags.txt`, three documented `combine` overloads and a `std::string`. Type on the blank line inside `main()`; no scan or build is needed to try completion. The C++ standard-library headers must still be installed.
+
+## Two panels, two different actions
+
+### 1. Choose a name: the completion list
+
+Type `comb` or `title.repl`, or press **Ctrl+Space**. Two identifier characters, `.`, `::` and `->` trigger suggestions after a short pause.
+
+![One combine completion with a count of three overloads and a description below](screenshots/lsp-completion.png)
+
+**↑ / ↓** selects; **Enter / Tab** inserts; **Escape** closes. Documentation below the list belongs to the selected item. clangd groups overloads into one entry. **“3 overloads” is a count, not a switcher: Alt+arrows do not cycle signatures in this list.**
+
+### 2. Inspect the call: parameter help
+
+Accept `combine`, then type **`(`**. With the cursor inside the call, **Ctrl+Shift+Space** opens the same panel manually.
+
+![combine call with signature help, overload counter, previous and next buttons, and documentation](screenshots/lsp-signature.png)
+
+Use **‹ / ›** or **Alt+← / Alt+→** to inspect signatures. Ordinary arrows move the cursor. Type `1,` to see the current argument highlighted:
+
+![Second argument highlighted after a comma in a combine call](screenshots/lsp-parameter.png)
+
+clangd can narrow the available signatures as you enter arguments. Inspecting another signature does not change the code or force the compiler to choose it. Escape dismisses the panel. Both panels float above the document without moving its text.
+
+Descriptions come from the server, usually source/header comments; they may be incomplete or absent. disco presents common Doxygen tags as readable descriptions and parameter rows. It does not fetch documentation pages or generate AI explanations. Hover over code or diagnostic markers for additional information; the document status shows the diagnostic count.
+
+## If suggestions do not appear
+
+| Check | Action |
 | --- | --- |
-| `name`, `enabled` | Display name and explicit opt-in |
-| `extensions`, `languages` | Equally sized arrays mapping extensions to LSP language IDs |
-| `command`, `args`, `root_markers` | Executable, arguments and nearest-root markers |
-| `provider = "system"` | Existing executable, resolved through absolute PATH entries or an absolute executable path |
-| `provider = "rustup"` | External `rustup run VERSION COMMAND`; `version` defaults to `stable` |
-| `provider = "github_release"` | A standalone gzip binary: `repository`, pinned `version`, exact `asset`, `sha256`, `platform` (e.g. `linux-x86_64`) |
-| `provider = "npm"` | Pinned `package`, `version`, `integrity` (SHA-512), optional pinned `extra_packages` |
+| Language enabled? | Check its box and **Save**; an installed server may still be disabled. |
+| Saved file? | Save an untitled tab with a supported extension, e.g. `.cpp`. Use `.cpp` for `std::`; a `.c` file is C. |
+| Server running? | Check errors and session status in Language servers; use **Restart** if stopped. |
+| Cursor in code? | Focus the editor, put the cursor inside a function and press `Ctrl+Space`. A focused terminal receives its own keys. |
+| Missing includes or wrong flags? | Check compiler/standard-library installation and the build database. A missing database uses fallback flags. |
+| No signature arrows? | Accept the name and type `(` first; keep the cursor inside the call. |
+| No description? | The server may not provide one. This is separate from whether completion works. |
 
-Managed data lives at `$XDG_DATA_HOME/disco/lsp` (normally `~/.local/share/disco/lsp`), separate from scan caches. `state.toml` records the selected and previous versions, source, verified digest and size. Per-version `install.toml` retains the matching metadata for rollback. Settings shows the full managed installation size including Node dependencies; an external probe reports only the executable size. `system` and `rustup` installations are never updated or removed by disco.
+## Installation management and custom servers
 
-**Check updates** explicitly contacts the official GitHub release API or npm registry and stages a pinned candidate in memory; **Update** installs that candidate. There is no automatic update check. Installation downloads into a temporary directory, checks the artifact digest (or npm lock integrity), uses npm `--ignore-scripts --engine-strict`, then atomically selects the new version. A failed or cancelled operation preserves the current version. The previous version remains available for rollback; older managed versions are cleaned up after a successful update. Removing a managed server waits for its sessions to stop and removes only its marked installation directory. It reports the freed size. Package actions take effect immediately; Save/Cancel applies to the enable checkboxes.
+**Check updates** explicitly checks GitHub/npm; **Update** installs the offered version. Managed downloads are verified before switching. Failed/cancelled installs keep the working version. **Roll back** selects the previous managed version; **Remove** deletes disco-managed files only. System/rustup installations are managed externally. Package actions happen immediately; Save/Cancel applies to language checkboxes.
 
-### Protocol boundary and verification
+The catalog path appears in Settings: normally `~/.config/disco/lsp.toml`, or `~/.config/disco-unstable/lsp.toml` for an isolated development launcher. Close disco before editing it, then restart. Project-local disco `lsp.toml` files are not loaded. See the complete [bundled catalog](../assets/lsp.toml).
 
-The client uses bounded stdio JSON-RPC, UTF-16 positions and full-document changes. Completion and hover responses are checked against path, document version and request generation; superseded requests are cancelled. Versioned diagnostics are rejected when stale. The LSP protocol permits unversioned diagnostic notifications: these are associated with the current open document, so a server that omits versions cannot provide the same strict stale-diagnostic guarantee. Drafts remain intact on server errors or Stop.
+<details>
+<summary>Catalog fields and storage</summary>
 
-This first client supports plain-text completion edits (including additional edits), plain-text hover, completion documentation (including lazy `completionItem/resolve`), signature help and push diagnostics. It does not advertise snippets, arbitrary command execution, workspace edits, rename, formatting, code actions, a debugger or semantic tokens. Large documents retain disco's existing 128 KiB editor bound. `async-lsp` was evaluated; the current bounded stdio worker avoids adding an async runtime for this scope. See the [LSP specification](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/) and [async-lsp](https://github.com/oxalica/async-lsp).
+`version = 1`. Each `[servers.ID]` specifies `name`, `enabled`, matching `extensions` / `languages` arrays, `command`, `args` and `root_markers`. The nearest ancestor with a marker is the project root; otherwise the file’s parent is used.
 
-Headless protocol/editor tests use real clangd without opening desktop windows. Optional explicit network tests install official Rust/Python/TypeScript artifacts in a disposable profile, exercise failed verification and rollback, and then initialize the installed servers offline. Resource measurements and their limits are in [the investigation](investigations/lsp-resources.md).
+| Provider | Additional fields |
+| --- | --- |
+| `system` | Existing executable name or absolute executable path |
+| `rustup` | `version` (default `stable`); runs `rustup run VERSION COMMAND` |
+| `github_release` | `repository`, pinned `version`, exact gzip `asset`, `sha256`, `platform` |
+| `npm` | `package`, pinned `version`, SHA-512 `integrity`, optional pinned `extra_packages` |
 
-### Function overloads and parameter documentation
+Managed packages live in `$XDG_DATA_HOME/disco/lsp` (normally `~/.local/share/disco/lsp`). Version metadata supports verification and rollback. Up to four project sessions run concurrently. Managed size includes dependencies; external probes report executable size.
 
-The default `clangd` entry adds `--completion-style=bundled` unless its arguments already explicitly select a completion style. clangd combines related overloads into one completion row; explicit `detailed` remains available in the user catalog. Other servers control their own grouping; disco does not merge unrelated symbols just because their names match.
+</details>
 
-The selected completion shows its detail and documentation below the list, in the same floating panel. If the server supports `completionItem/resolve`, missing documentation is requested after a short selection debounce. Stale replies are checked against document version and selection request; resolve never replaces the original insertion edits. Documentation comes from the server, often source/header comments, and may be absent. The initial display is bounded plain text, not fetched web documentation or generated AI text.
+## Current scope
 
-After `(` or `,`, parameter help shows available signatures, the current argument and any signature/parameter description. `Ctrl+Shift+Space` requests it manually. Use the `‹` / `›` buttons or `Alt+Left` / `Alt+Right` to inspect another overload. These shortcuts take priority over folder history only while the signature panel is active in the editor; ordinary Left/Right still move the cursor. Switching the displayed signature does not edit code or force the compiler's overload selection. The server may narrow the list as arguments are typed. Escape dismisses the panel. Both panels float over the editor without changing its viewport size.
+Supported: plain-text completion with additional edits, lazy completion documentation, hover, signature help and push diagnostics. Accepting a suggestion is one undoable edit; it does not itself save the file. Existing auto-save rules still apply.
 
-## Українська
+Not implemented: snippets, go-to-definition, rename, formatting, code actions, workspace edits, semantic tokens, debugger or integrated AI completion. The editor’s 128 KiB / 2,000-line limits still apply. clangd’s background index and clang-tidy are disabled by default; Rust build scripts, proc macros and check-on-save are disabled by default. Versionless server diagnostics cannot provide the same stale-result guarantees as versioned messages.
 
-Відкрий **Налаштування → Мовні сервери**, увімкни потрібний сервер і натисни **Зберегти**. Типово всі вимкнені. `clangd` використовує системну установку. Для Rust, Python та JavaScript/TypeScript є окремі кнопки встановлення; встановлення саме по собі не вмикає мову. Для npm-серверів потрібні Node.js і npm, для завантажень — `curl` і `sha256sum`. Помилка мережі, відсутній runtime, несумісна версія Node або платформа залишають робочу установку.
-
-У збереженому текстовому файлі **Ctrl+Space** відкриває підказки; набір щонайменше двох символів назви, `.`, `::` і `->` викликають їх після короткої паузи. ↑/↓ обирають, Enter/Tab приймають, Escape закриває. Список плаває над документом і не зсуває текст. Наведення показує довідку та повідомлення діагностики; кількість діагностик є внизу документа. Прийняття підказки разом із додатковими правками відкатується одним Undo. Зміни залишаються чернеткою; опційне автозбереження працює за наявними правилами.
-
-Один процес обслуговує документи одного сервера й кореня проєкту. Корінь — найближчий предок із маркером із каталогу; інакше батьківська папка файла. Ліміт — чотири активні проєкти. Через 30 с без відкритих документів процес завершується. Є **Зупинити / Перезапустити**; після Stop сервер не стартує до Restart, повторного вимкнення/увімкнення чи перезапуску disco. Незбережені вкладки підключаються після першого збереження з відомим розширенням.
-
-Для clangd бажаний `compile_commands.json` або `compile_flags.txt`. Їх відсутність показується в налаштуваннях і статусі документа. Типово фоновий індекс і clang-tidy вимкнені; для Rust вимкнені build scripts, proc macros і check-on-save. Цей початковий клієнт не обіцяє всі можливості повноцінного IDE або перевірку Rust компілятором.
-
-Каталог — лише глобальний `lsp.toml` активного профілю; шлях видно в налаштуваннях. Для development-лаунчера зазвичай це `~/.config/disco-unstable/lsp.toml`. Редагуй із закритим disco та перезапусти. Проєктні каталоги disco не виконує, але сам мовний сервер може читати власні налаштування проєкту. Повний приклад — [`assets/lsp.toml`](../assets/lsp.toml), поля й провайдери описані в таблиці вище.
-
-Власні пакети лежать у `$XDG_DATA_HOME/disco/lsp` (типово `~/.local/share/disco/lsp`), окремо від кешу сканувань. `state.toml` містить поточну/попередню версію, джерело, хеш і розмір; `install.toml` кожної версії зберігає її метадані для відкату. Системні й rustup-установки disco не видаляє й не оновлює.
-
-Перевірка оновлень виконується лише кнопкою через офіційний GitHub API або npm. Нова версія спочатку завантажується й перевіряється, npm запускається без lifecycle scripts; перемикання відбувається після успіху. Збій чи скасування зберігає попередню робочу версію. Після оновлення доступний відкат; ще старіші власні версії прибираються. Видалення чекає зупинки сервера й прибирає тільки позначений власний каталог із показом звільненого обсягу. Дії з пакетами виконуються одразу, а Зберегти/Скасувати стосуються галочок увімкнення.
-
-Completion і hover захищені перевіркою шляху, версії тексту та покоління запиту. Застарілі версійовані діагностики відкидаються. Якщо сервер не передає версію діагностики, протокол не дозволяє так само строго перевірити її актуальність. Підтримуються звичайні текстові підказки з додатковими правками, документація вибраної підказки (зокрема через `completionItem/resolve`), довідка про параметри й push-діагностика; snippets, команди, workspace edits, rename, formatting, code actions і semantic tokens не заявлені. Помилки сервера не змінюють чернетку.
-
-Перевірки працюють без desktop-вікон. Реальні пакети тестуються в окремому профілі; [заміри ресурсів](investigations/lsp-resources.md) окремо пояснюють межі headless-вимірювання.
-
-### Перевантаження й довідка про параметри
-
-Типовий сервер `clangd` запускається з `--completion-style=bundled`, якщо в його аргументах ще не задано режим явно. Пов’язані перевантаження показуються однією підказкою; це групування сервера, а не злиття довільних однакових назв. Інші сервери визначають власне групування.
-
-Під вибраною підказкою показуються тип/сигнатура й опис. Якщо сервер підтримує `completionItem/resolve`, відсутній опис довантажується після короткої паузи вибору. Застарілі відповіді відкидаються; результат resolve не підміняє правки вставлення. Джерело — сервер, зазвичай коментарі коду/заголовків; текст може бути відсутнім. Виведення обмежене звичайним текстом, без завантаження вебсторінок чи генерації опису AI.
-
-Після `(` або `,` з’являються сигнатури, виділення поточного аргументу й документація функції/параметра. Ручний виклик — `Ctrl+Shift+Space`. Стрілки `‹` / `›` у панелі або `Alt+←` / `Alt+→` перемикають довідку між перевантаженнями. Ці комбінації мають пріоритет над історією папок лише в активній панелі підписів редактора; звичайні ←/→ рухають курсор. Вибір підпису не змінює код і не примушує компілятор вибрати певне перевантаження. Сервер уточнює варіанти за аргументами. Escape закриває панель; розмір області документа залишається незмінним.
-
-### Completion panel presentation / Оформлення списку підказок
-
-The completion list reveals a changed selection once, without continuous re-centering. Wheel scrolling is preserved. The documentation pane has a bounded, stable height while moving between descriptions. Bundled overload counts are secondary metadata; common Doxygen `@brief`, `@param`, and `@return` commands are presented as prose and named parameter rows in completion and signature documentation. Unknown commands remain intact. Server-provided prose is not translated or generated by disco.
-
-Список прокручується до нового вибору один раз, без постійного центрування; ручне прокручування зберігається. Область документації має обмежену сталу висоту під час переходів між описами. Кількість варіантів виклику показується другорядним текстом; типові Doxygen-команди `@brief`, `@param` і `@return` відображаються як опис і рядки з назвами параметрів у підказках та сигнатурах. Невідомі команди зберігаються. Текст документації надходить від сервера — disco його не перекладає й не генерує.
+Developer details and resource measurements: [LSP investigation](investigations/lsp-resources.md). Screenshots show native 0.2.3-unstable UI with the included example, captured on a private virtual display.

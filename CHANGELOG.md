@@ -4,62 +4,22 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
-- Filename search prioritizes the selected folder (or file parent), then the category/current directory, then the configured Home only when allowed and earlier levels have no matches. The origin stays fixed while typing or selecting results; UI progress names the actual search area. Unscanned categories and CLI files show recursive file/folder results without a snapshot. Clearing a Home result reveals its directory without scanning.
-
-- File-editor Undo/Redo follows edit actions instead of timer-only snapshots: individual pastes, Enter, cut and selection replacements have distinct boundaries even in one input frame. Continuous typing/deletion groups by cursor/type/pause, IME composition remains one step, redo survives cursor movement and new edits clear its branch. Save, tab and Markdown mode changes preserve history; read-only mode cannot consume it.
-
-- A category configured above the root of a narrow saved snapshot now shows its known descendants instead of an empty tree, while retaining the missing-coverage marker. Snapshot diagnostics report the actual cache/root and indexed versus missing category roots. The cache/profile investigation documents narrow last-scan replacement and profile separation without modifying live caches.
-
-- Shortcut recording waits through left/right Ctrl, Alt, Shift and Super key events, displays held modifiers, and commits only a main key. Repeats/releases cannot trigger actions while recording; focus loss cancels safely. Legacy modifier-only bindings are repaired individually without discarding the rest of the layout.
-
-- Ctrl+Tab / Ctrl+Shift+Tab now switch existing Focus tabs in their visible left-to-right / right-to-left order, wrapping at either end. They no longer browse the file tree or use activation history; drafts, tab order and per-tab state remain intact. Plain Shift+Tab keeps its editor behavior and focused terminals retain their shortcuts.
-
-- File search now floats over the editor instead of pushing its text downward. It stays open while editing without changing the document viewport. Closing clears the query by default; Interface settings can retain the last query for each open tab. Search-generated selections do not accidentally restore a cleared query.
-
-- Ctrl+F in Focus searches the active file’s current text, including unsaved edits. The inline find bar provides Unicode-aware literal matching, case sensitivity, a match counter, highlighted results, wrapping next/previous navigation and Escape to close. Enter/Shift+Enter and F3/Shift+F3 navigate results; Overview retains filename search and focused terminals retain Ctrl+F. Markdown searches its source.
-
-- External file edits update the visible document without a blank/loading frame. The previous buffer stays on screen until the background read is ready, unchanged syntax colors remain stable while parsing catches up, and cursor selections track insertions/deletions above them. File sizes update in the existing tree instead of clearing its directory listing; edits made during loading remain protected.
-
-- Opening the terminal no longer makes editor text disappear. Syntax formatting stays cached, while glyph layouts follow egui’s current font atlas after terminal fonts load or the atlas resets; document contents, selection and undo remain intact.
-
-- The active file now follows external edits independently of category auto-refresh, scan snapshots or terminal focus. A bounded background metadata monitor catches normal writes, atomic replacements and file removal/recreation. Clean documents reload with cursor, focus and zoom preserved; local drafts remain intact with conflict protection, and changes arriving during Save are processed after completion.
-
-- Choosing a category after opening a file from the CLI now restores the saved scan asynchronously, without rescanning or replacing the current draft. Later category choices reuse that snapshot. Empty file trees have a single scan action below wrapped explanatory text, and small loading indicators distinguish snapshot restoration, directory reads and scans. Late cache results cannot replace a newly opened path or an explicit scan.
-
-- Markdown reading has its own typography: real bold headings, comfortable line spacing, theme-aware links/tables and a true monospace code face at physical pixel-aligned sizes. Code blocks expand to their full height with wrapped long lines and a vector copy/check control. Details/summary sections use lazy native disclosures; missing local images show their alt text. Read/Edit retains the source buffer, cursor and undo state.
-
-- Document actions and the Markdown Read/Edit segment share a single toolbar, with compact controls in narrow inspectors. File zoom, Fit/reset and zoom buttons now sit in the bottom status bar beside truncated document metadata.
-
-- Direct-file windows retain the category rail and existing scan snapshot. Home and breadcrumbs reuse known folders or browse an asynchronous, bounded single-directory listing without recursively scanning. Unmeasured folder sizes show a dash; Scan explicitly calculates sizes. Open tabs and drafts remain intact.
-
-- File zoom uses additive 10 percentage-point steps, configurable in Interface settings. Ctrl+0 resets the active document to 100%; Reset file zoom is remappable in Shortcuts. Existing shortcut bindings survive migration, including an occupied Ctrl+0.
-
-- Optional SVG language/file-type icons for 59 families, including C/C++, Rust, JSON/YAML/TOML, JS/TS, Java and Python. The setting defaults off, supports Save/Cancel, and retains generic fallbacks. Material Icon Theme assets and the MIT notice ship locally.
-
-- Open a file or workspace from the command line. Ctrl+L edits the address with asynchronous file/folder suggestions; Ctrl+F focuses filename search. Direct files open without a category or disk scan, with unsaved-document protection.
-
-- File zoom through Ctrl+Plus/Minus and Ctrl+wheel, independent of UI/sidebar scale. Each Focus tab retains its session zoom; text/Markdown support 50–300%, images 25–800% of Fit, with a percentage reset.
-
-- Bundled category icons follow the theme text color in the sidebar and icon picker. Folders, images and documents use distinct open line symbols that stay legible on light, pink and dark surfaces; imported artwork keeps its original colors.
-
-- Soft Rose: a gentle pink preset with distinctly pink backgrounds and panels, a dusty rose accent and warm dark text. New bundled presets are added to existing catalogs without changing the current selection or replacing custom colors.
-
-- Docker/BuildKit native Linux bundle build with a pinned Rust/Debian builder, Cargo caches, user-owned export, checksums, runtime report and CI artifacts. Host Rust/dev packages are unnecessary.
-
-- Markdown Read/Edit modes share one document, draft and undo history. Native cached rendering supports tables, lists, code highlighting, heading anchors and local images without automatic network fetches.
-- AI prompts follow the UI language unless Separate AI prompt language is checked; category and theme prompts then use the independent Ukrainian/English selection.
-- Tree clicks reuse one preview tab; clicking document/image content keeps it open. Development builds install under the disco name, replacing the old duplicate launcher.
-
-- Theme catalog with five dark and four light presets, accent swatches, a five-row scrolling picker and a fixed Create new action. Custom themes stay in draft until Save. A robot button shows a UA/EN prompt with the full TOML schema, actual paths, catalog context and instructions for assistants without PC access. Legacy colors migrate without losing their original file.
-- Compact 8 px tree indentation, width-aware ellipsis and a narrower size column keep nested folders readable in Focus. The sidebar has its own 80–120% text scale. New UI 100% matches the old 85%; existing scales migrate once without changing their physical size.
-- A minimal line disco-ball logo stays transparent throughout the app, with white or black lines selected for contrast against each surface. Window/taskbar icons keep a rounded dark/light background with transparent corners matching the theme; the installed launcher follows the saved theme. Both READMEs use the line logo and adapt to GitHub's light/dark color scheme.
-- Sharp in-app logo rendering at physical pixel size.
-
-- Ctrl+T opens an in-memory text tab. Its first Ctrl+S asks for a path relative to the folder selected at creation, or accepts a literal absolute path. Pasting, nested directories, conflict-safe first writes, tab switching and unsaved-close protection are supported. New tab is also available in the shortcut recorder.
-
-- Added a Shortcuts settings section with key recording, collision checks, reset and KDE conflict hints. Local defaults: Ctrl+Alt+T terminal, Ctrl+Alt+F Focus, Ctrl+Alt+V Overview.
-
-- Title-bar Overview, Focus and Terminal controls use compact icons by default. Interface settings can restore labels; spacing is shared with the window controls.
+- **Language servers:** opt-in settings for system clangd and managed Rust/Python/JavaScript/TypeScript servers. Automatic/manual completion, hover, diagnostics, shared background sessions, explicit install/update/rollback/remove and resource information. See the [illustrated setup guide](docs/language-servers.md).
+- **Function help:** clangd groups overloads into one completion. Accept the name and type `(` to inspect signatures with ‹/› or Alt+Left/Right; Ctrl+Shift+Space opens parameter help manually. Descriptions and current-argument highlighting float over the document. Stable list scrolling and readable Doxygen descriptions replace jumping rows and raw tags.
+- **Direct paths:** `disco file.txt` opens a standalone document without scanning; `disco /path/to/project` opens and scans that folder as a workspace. Ctrl+L edits the path with asynchronous file/folder suggestions. Direct-file windows retain the category rail; Home and breadcrumbs reuse cached folders or list a single directory without recursively scanning.
+- **File search:** selected folder/file parent → current directory/category roots → optional Home, advancing only without matches. The origin remains fixed while selecting results. Search includes unexpanded/unscanned directories; clearing an outside result reveals its folder without scanning.
+- **Find in file:** Ctrl+F in Focus opens a floating, literal Unicode-aware search over current text, including drafts. Case sensitivity, match counts, highlighting, wrapping next/previous and F3 navigation. Closing clears the query by default; an Interface option retains it per open tab for the session. Overview and terminal key routing remain separate.
+- **Tabs:** Ctrl+Tab / Ctrl+Shift+Tab follows visible right/left order with wrapping. Tree selections reuse one preview; clicking document/image content, editing, or Enter/Right in the tree keeps it. Drafts and per-tab state survive switching.
+- **New documents:** Ctrl+T creates an in-memory tab. First Ctrl+S chooses a relative/absolute path, creates missing parents and rejects existing files. Cancel retains the draft; unsaved-close protection applies.
+- **Editing:** action-based Undo/Redo gives paste, Enter, cut and selection replacement distinct steps. Ordinary typing/deletion can group; IME is one action. Save, tab changes and Markdown modes retain history.
+- **External changes:** active documents follow terminal/agent edits and atomic saves independently of category refresh. Background reads retain visible text and unaffected syntax colors until ready; cursor/selection track changes where possible. Dirty drafts keep conflict protection. Loading terminal fonts no longer hides editor text.
+- **Markdown:** native Read/Edit with one source buffer and undo history; headings, tables, lists, quotes, anchors, local images and lazy details/summary. Full-height wrapped code blocks have copy controls. Reading typography and colors follow the theme; remote images are not fetched.
+- **Document controls:** unified toolbar and bottom zoom/status controls. Ctrl+Plus/Minus, Ctrl+wheel and reset with Ctrl+0; additive 10-point default step, configurable step and remappable reset. Each tab retains session zoom separately from the UI/sidebar.
+- **Themes and icons:** five dark/four light presets, including pink-surfaced Soft Rose. Accent swatches, five visible theme rows, pinned Create, separate TOML color files and a robot prompt with schema/paths. Independent AI prompt language is optional. Theme-aware line branding, rounded taskbar backgrounds and optional bundled file-type icons for 59 families.
+- **Interface:** compact 8 px tree indentation, independent 80–120% sidebar scale, and a new UI 100% baseline matching the former 85%. Compact title controls have optional labels. Shortcut recording waits for a main key, supports modifier combinations and rejects conflicts without losing valid bindings.
+- **Cached scans:** categories above a narrow snapshot show known descendants and missing coverage. CLI-file category changes restore saved data asynchronously with loading indicators and an in-tree Scan action. Snapshot diagnostics explain the active profile/root; the [investigation](docs/investigations/cache-categories.md) documents one-last-scan replacement and separate profiles.
+- **Packaging:** development installs are named disco and replace the old duplicate launcher. Docker/BuildKit builds native Linux bundles without host Rust/dev packages, with caches, checksums, dependency reports and CI artifacts.
+- **Documentation:** reorganized English/Ukrainian guides, 34 current native screenshots and a ready-to-open C++ example. See [English](docs/guide.md) / [Українська](docs/guide.uk.md).
 
 ## 0.2.2 — 2026-10-29
 

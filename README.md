@@ -12,9 +12,9 @@
 
 A native Linux disk space analyzer with file previews, text editing, and an integrated terminal. Built with Rust and egui, without a background indexing service.
 
-**[0.2.2 release notes](CHANGELOG.md#022--2026-10-29)** · **English** / [Українська](README.uk.md)
+**[What’s new in 0.2.3-unstable](CHANGELOG.md#023-unstable--in-development)** · **English** / [Українська](README.uk.md)
 
-![Overview: folder tree, properties and bottom terminal](docs/screenshots/overview-terminal.png)
+![Focus: Markdown, document zoom and integrated terminal](docs/screenshots/focus-023.png)
 
 ## Install
 
@@ -23,13 +23,13 @@ Build without host Rust/dev packages: `./scripts/build-docker.sh`. See the [Dock
 You need Linux, **Rust 1.95+**, a C compiler, Git and Python 3. The UI uses Wayland or X11 with OpenGL.
 
 ```sh
-git clone https://github.com/hiddensudo/disco.git
+git clone --branch disco-0.2.3-unstable https://github.com/hiddensudo/disco.git
 cd disco
 cargo build --release --locked
 python3 install.py
 ```
 
-Launch **disco** from the application menu or run `~/.local/bin/disco`.
+Launch **disco** from the application menu or run `~/.local/bin/disco`. To keep development settings/cache separate, use `python3 install.py --config-dir ~/.config/disco-unstable` for the installation step.
 
 <details>
 <summary>Update or run without installing</summary>
@@ -60,9 +60,7 @@ The bottom-left **···** menu contains Large files, Cleanup and Duplicates. De
 | Terminal below the tree and category rail | Terminal beside the document |
 | Full-height properties on the right | More space for reading and editing |
 
-![Focus: highlighted Rust source and side terminal](docs/screenshots/focus-terminal.png)
-
-*Native screenshots from 0.2.2 using demonstration data.*
+*Native 0.2.3-unstable screenshots use demonstration data on a private virtual display.*
 
 ## What else can it do?
 
@@ -71,7 +69,12 @@ The bottom-left **···** menu contains Large files, Cleanup and Duplicates. De
 - Refresh the current scope; enable live updates and read-only mode per category.
 - Create custom categories, import icons, and configure them with separate TOML files.
 - Restore items from Trash and see its size separately; Trash refreshes without rescanning folders.
-- Change colors, spacing, text size and language in a separate settings window.
+- Read Markdown with full-height code blocks; find text in a floating panel and zoom with Ctrl+wheel.
+- Follow external file edits from terminal tools while protecting local drafts.
+- Enable language servers for completion, diagnostics and parameter help; see the [illustrated LSP guide](docs/language-servers.md).
+- Choose dark/light presets, create a theme and set prompt language independently from the UI.
+
+Open a file with `disco README.md` or a workspace with `disco /path/to/project`. **Ctrl+L** edits the path with file/folder suggestions. Opening a file needs no scan; explicitly opening a workspace folder starts its scan.
 
 ## Handy keys
 
@@ -79,6 +82,8 @@ The bottom-left **···** menu contains Large files, Cleanup and Duplicates. De
 | --- | --- |
 | ↑ / ↓, Enter | Select a file or enter a folder |
 | Ctrl+F | Focus: find in file; Overview: filename search |
+| Ctrl+Plus / Minus, Ctrl+0 | File zoom / reset; Ctrl+wheel also works |
+| Ctrl+Space / Ctrl+Shift+Space | Code completion / parameter help (LSP) |
 | F5 | Refresh the current scope |
 | Ctrl+T | New in-memory text tab; Ctrl+S chooses its first save path |
 | Ctrl+S / Ctrl+N | Save / create a file, including `new_folder/file.txt` |
@@ -86,7 +91,7 @@ The bottom-left **···** menu contains Large files, Cleanup and Duplicates. De
 | Ctrl+Alt+arrows | Move focus between panels |
 | Ctrl+Shift+C / V | Copy / paste in the terminal |
 
-In Focus, keyboard browsing reuses one temporary tab. Enter or → keeps it open; a second → focuses the document. The terminal session survives hiding and layout changes. Closing it with × ends its processes.
+In Focus, browsing reuses one temporary tab. Click inside its document/image, edit, or press Enter/→ in the tree to keep it. A second → focuses the document. The terminal session survives hiding and layout changes. Closing it with × ends its processes.
 
 ## More detail
 
@@ -94,4 +99,5 @@ In Focus, keyboard browsing reuses one temporary tab. Enter or → keeps it open
 - [Development](docs/development.md) — checks, source map and component licenses.
 - [Release history](CHANGELOG.md) · [Category TOML example](categories.example.toml)
 
-Language servers, code completion and managed installations: [LSP guide](docs/language-servers.md).
+- [LSP setup with screenshots](docs/language-servers.md) — installation, completion versus signature help, and troubleshooting.
+- [Ready-to-open C++ example](docs/examples/lsp/main.cpp) — `disco docs/examples/lsp/main.cpp` from this checkout.

@@ -2,250 +2,179 @@
 
 [← README](../README.md) · **English** / [Українська](guide.uk.md)
 
-## Browse and scan
+For **0.2.3-unstable**. [Open paths](#open-a-file-or-workspace) · [Tabs and editing](#tabs-and-editing) · [Find and zoom](#find-and-zoom) · [Markdown](#markdown) · [LSP](language-servers.md) · [Themes](#themes-and-settings) · [Keys](#keyboard-reference)
 
-Click the drive name to select a folder, then Scan. A scan can be paused or cancelled. The last complete snapshot is saved and restored on startup; **F5 / Refresh** rereads the current folder scope or active category roots. Unrelated subtrees, expanded folders and unsaved text are retained.
+## Open a file or workspace
 
-Sizes reflect allocated disk blocks. Scans do not follow symbolic links and stay on one filesystem. Restored results are a snapshot, not a claim that every file is unchanged.
+```sh
+disco README.md           # relative to the terminal's current directory
+disco /path/to/project   # open and scan a workspace folder
+disco -- ./-notes.txt    # a filename beginning with a dash
+```
 
-Click folders to expand them; Enter enters a folder. Breadcrumbs follow the selected folder or the selected file's parent. Click a component to navigate, or **…** to reach hidden ancestors. Navigation buttons, Backspace and mouse side buttons move through history. Home uses `/home`, falling back to `/`; change it under Settings → Interface → Panels, Home & search.
+A direct file opens in **Focus**, with the file in the left tree. The category rail follows your Show categories preference. Opening a file does not scan its parent. Home and breadcrumb navigation reuse cached sizes or list only the selected directory; a dash means an unmeasured size. Explicitly opening a folder through the CLI or address field starts a workspace scan.
 
-Search includes files and folders in the current scope. Clicking a folder result enters it and clears the query; subsequent searches use that scope. Optional Home fallback runs after no scope results. Results are cancellable and limited to 2,000 displayed items. See [current limitations](#current-limitations) for the open search bug.
+**Ctrl+L** or the pencil beside the breadcrumbs edits the path. Type an absolute path, `~/…`, or a path relative to the current folder. Suggestions include files, folders and hidden entries. ↑/↓ chooses, **Tab** completes, **Enter** opens, **Escape** cancels. A file opens as a document; a folder becomes the current workspace and starts scanning.
+
+![Editable path with file and folder suggestions](screenshots/address.png)
+
+Click a breadcrumb to navigate, or **…** for hidden ancestors. Back/forward, Backspace and mouse side buttons follow navigation history. **Alt+Home** uses the Home path configured under Settings → Interface.
+
+## Browse, scan and search filenames
+
+Choose a folder with the drive/path control, then **Scan** to calculate folder sizes. You can pause or cancel. **F5 / Refresh** rereads the current scope/category; unrelated subtrees and drafts stay intact. A small spinner distinguishes loading a directory, restoring a snapshot and scanning.
+
+The last complete scan is restored when enabled. **It is one snapshot, not an archive of all scanned folders:** a new full scan replaces it. A narrow snapshot cannot supply sizes for every category. An unscanned tree offers Scan below its explanation. Choosing a category can load an existing snapshot without scanning. See [cache troubleshooting](investigations/cache-categories.md) if expected cached sizes are missing.
+
+Filename search uses the selected folder/file parent, then the current directory/category roots, then configured Home if allowed. It expands only when the earlier level has no matches. The origin stays fixed while typing and selecting results; clear the query to begin from a new place. Search works in unexpanded and unscanned directories, with up to 2,000 displayed results. Status names the search area. Clearing a result outside the original tree reveals its directory without scanning.
+
+![Filename search in Overview](screenshots/filename-search.png)
 
 ## Overview and Focus
 
-| Layout | Use it for | Resize |
+| Layout | Use it for | Terminal |
 | --- | --- | --- |
-| Overview | Disk usage, sizes, preview and file properties | Drag the left edge of properties |
-| Focus | A folder tree and tabbed document, without the SSD header or properties | Drag the tree/document divider |
+| **Overview** | Disk usage, folder sizes and properties | Below the tree |
+| **Focus** | Folder tree, document tabs and code | Beside the document |
 
-The title-bar buttons switch layouts and remember your choice. The category rail uses icons by default; hover for names, or enable labels in Settings → Interface.
+Title-bar icons switch layouts and toggle Terminal; hover for labels. Settings can restore text labels. Drag panel dividers to resize. The category rail uses theme-aware icons; names are optional.
+
+## Tabs and editing
+
+A tree click or keyboard selection reuses one italic **preview tab**. Select another file to replace that preview. **Click inside the document/image, edit it, or press Enter/→ in the tree to keep it.** Tree double-clicks do not pin it; they may launch the associated external application if enabled.
+
+![Kept main.cpp tab and italic README.md preview](screenshots/tabs.png)
+
+**Ctrl+Tab / Ctrl+Shift+Tab** switches existing tabs right/left in their visible order, wrapping at the ends. It does not use visit history or open extra files. Kept tabs retain drafts, cursor, scroll and session zoom. ×, middle-click or **Ctrl+W** closes a tab. Unsaved changes ask for Save / Discard / Cancel; up to 64 tabs can remain open.
+
+**Ctrl+S** saves the active file. **Ctrl+Z** undoes actions: paste, Enter, cut and selection replacement have separate boundaries; ordinary typing/deletion may group. **Ctrl+Y / Ctrl+Shift+Z** redoes. Save, tab changes and Markdown mode changes preserve undo history.
+
+### New files
+
+**Ctrl+T** creates an in-memory tab without touching disk. The first **Ctrl+S** asks for a path; relative paths use the folder selected when the tab was created. Absolute paths are accepted; missing parent folders are created. Existing files are not overwritten. Cancel keeps the draft. Untitled tabs do not auto-save.
+
+![Untitled draft and its first-save path dialog](screenshots/scratch-023.png)
+
+**Ctrl+N** creates a file directly; `nested/file.txt` creates missing parents. Unlike the first-save dialog, this older dialog treats a leading `/` as relative to the chosen folder.
+
+### External tools and auto-save
+
+The active file follows writes by terminal tools and coding agents, including atomic replacements. Clean text updates without a blank loading frame; cursor, selection, scroll and zoom are preserved where possible. This works without category live updates or rescanning. **A dirty local draft is kept with a conflict warning**, not silently replaced.
+
+Auto-save is off by default. Enable it per category, or for All folders in Interface settings. It saves after one second without typing, including inactive tabs. A category’s **Read-only** blocks disco edits, saves, creation and deletion; it does not restrict shell commands or OS permissions. Saves preserve encoding, BOM, line endings, permissions and extended attributes.
+
+## Find and zoom
+
+In **Focus**, **Ctrl+F** searches the active file’s current text, including unsaved edits. It floats over the editor without moving its text. A single-line selection seeds the query. **Aa** toggles case sensitivity; the counter shows current/total matches.
+
+![Floating find bar with match counter and highlighted code](screenshots/find.png)
+
+**Enter / Shift+Enter** in the find field and **F3 / Shift+F3** navigate forward/backward, wrapping. **Escape / ×** closes. Closing clears the query by default; enable **Remember query after closing file search** under Interface to retain it per open tab for this session. Matching is literal, not regex. Markdown find opens its source; truncated previews search only loaded text. In Overview, Ctrl+F focuses filename search; a focused terminal keeps its own Ctrl+F.
+
+Focus a document and use **Ctrl+Plus / Ctrl+Minus** (Ctrl+= also works), or **Ctrl+wheel over its content**. The default step is **10 percentage points**, configurable under Interface → File zoom step. **Ctrl+0** resets; remap Reset file zoom under Shortcuts. The bottom status bar also has −, percentage/reset and + controls. Text/Markdown: 50–300%; images: 25–800% of Fit. Zoom belongs to the tab for the session, separately from UI/sidebar text size.
+
+## Markdown
+
+`.md` / `.markdown` opens in **Read** mode. Switch **Read / Edit** in the document toolbar without saving or losing the draft, cursor or undo history.
+
+![Markdown reading with headings, a full-height highlighted code block, table and disclosure](screenshots/markdown.png)
+
+Read mode supports headings, lists, tables, quotations, links, heading anchors, local raster images and expandable `details` / `summary`. Code blocks show their full height, wrap long lines and have a copy button. Missing images show alt text; remote images are not fetched. Clicked local file links open in disco. Markdown zoom uses the same bottom controls.
+
+## Code completion (LSP)
+
+Enable a language server to add completion, descriptions, diagnostics and parameter help. Syntax highlighting alone does not enable suggestions. See the illustrated **[LSP setup and usage guide](language-servers.md)**, including a ready-to-open C++ example.
+
+The important distinction: a grouped completion’s overload count is only a count. Accept the name, type **`(`**, then use **‹ / ›** or **Alt+← / Alt+→** in the signature panel. **Ctrl+Shift+Space** requests that panel manually.
 
 ## Terminal
 
-Click **Terminal** beside the layout buttons. It starts your system shell in the selected folder or selected file's parent. Later browsing leaves that running shell's directory unchanged.
+Click the title-bar terminal icon or **Ctrl+Alt+T**. It starts your shell in the selected folder/file parent. Later browsing does not change that shell’s directory.
 
-| Control | Result |
+![Focus workspace with Markdown and the terminal alongside it](screenshots/focus-023.png)
+
+**–** or the toggle hides the panel while keeping its session; **×** ends the shell and session processes. Switching layouts keeps the same session. Drag the divider to resize; closing disco ends it. Terminal is hidden in Trash.
+
+**Ctrl+Shift+C / V** copies/pastes; **Ctrl+C** interrupts the running program. While the terminal has focus, ordinary editor keys go to it. **Ctrl+Alt+arrows** moves panel focus: Focus terminal ← returns to the document; Overview terminal ↑ returns to files, → enters properties. The terminal uses your installed shell/programs and theme colors.
+
+## Themes and settings
+
+**Ctrl+,** opens one separate settings window. Save applies the draft; Cancel, Escape or close restores it. Settings do not discard the main document.
+
+Appearance offers five dark presets (**Carbon, Ember, Noir, Midnight, Forest**) and four light presets (**Paper, Cairo, Glacier, Soft Rose**). The swatch shows each accent. The picker scrolls five rows at a time; **Create new…** stays below it. Name the theme, edit colors and Save; Cancel creates no files.
+
+![Theme picker with accent swatches and a fixed Create new action](screenshots/themes.png)
+
+The **robot button** opens a theme-generation prompt with the actual paths, catalog and color schema. Copy it to an assistant and append your desired colors/mood. It includes instructions for assistants without PC access. After external edits, **Reload themes**, then Save. Invalid files show an explanation; external changes made while Settings was open are not silently overwritten.
+
+<details>
+<summary>Theme prompt and Soft Rose examples</summary>
+
+![Theme-generation prompt with schema and real paths](screenshots/theme-prompt.png)
+
+The screenshot deliberately uses Ukrainian prompts in an English UI; prompt language is independent when enabled.
+
+![Soft Rose light preset](screenshots/soft-rose.png)
+
+</details>
+
+### Language, icons and independent scales
+
+![Independent prompt language, sidebar scale, zoom step and file icon settings](screenshots/interface.png)
+
+AI prompts follow the UI language by default. Check **Separate AI prompt language** to reveal an independent Ukrainian/English selector for category and theme prompts. The robot prompt is copied text; disco does not send it to an AI service.
+
+**Text size** controls the UI; its new 100% equals the old 85%. **Sidebar text size** independently scales the Focus tree from 80–120%; nested indentation is 8 px. Document zoom remains separate.
+
+Enable **Language and file type icons** for bundled symbols covering 59 language/format families, including C/C++, Rust, JS/TS, JSON/YAML/TOML. Dockerfile, Makefile and common dotfiles are recognized. Unknown files and images retain generic icons. It defaults off; no icon downloads occur.
+
+![Bundled extension icons in the file tree](screenshots/file-icons.png)
+
+### Shortcuts
+
+![Shortcut recorder with terminal, layouts, new tab and file zoom reset bindings](screenshots/shortcuts-023.png)
+
+Under Shortcuts, click a field and hold modifiers, then press the main key. **Ctrl+Alt alone is not a shortcut.** Ctrl/Alt/Shift combinations are supported. Escape cancels recording; Reset restores defaults. Conflicts and KDE global assignments are indicated. Desktop shortcuts may intercept keys before disco; disco does not change system assignments.
+
+## Categories, live folder updates and Trash
+
+Settings → Categories creates collections with absolute folder paths and built-in/imported artwork. Right-click a category to add selected folders. Drag categories to reorder; **Lock category order** prevents movement. Removing a category/path never deletes its files. The category robot prompt describes its schema and can help an assistant choose folders.
+
+Enable **Live file updates** per category to track the active folder scope. It is off by default and separate from active-document reload. Changes refresh affected directories; watch/access errors appear in status. There is no permanent indexing service. Collections may overlap; nested roots are counted once.
+
+The bottom-left **···** menu opens Large files, Cleanup and Duplicates. Delete asks before moving items to **Trash**. Trash supports Restore, permanently remove selected, and Empty; permanent removal asks again. Its refresh reconciles only Trash and free disk space, without replacing the folder snapshot.
+
+## Configuration and limits
+
+| Location in the normal profile | Purpose |
 | --- | --- |
-| Title-bar Terminal button or header **–** | Hide the panel, keeping its session and output |
-| Header **×** | End the shell and its session processes; free the panel |
-| Open after closing | Start a fresh session |
-| Change layout | Move the same running session |
-| Close disco | End the terminal session |
+| `~/.config/disco/layout.toml` | Language, layout, scales and shortcuts |
+| `~/.config/disco/themes.toml`, `themes/<id>.toml` | Theme index/active ID and separate color files |
+| `~/.config/disco/categories.toml`, `categories/*.toml` | Category index and individual collections |
+| `~/.config/disco/lsp.toml` | Language-server catalog |
+| `~/.cache/disco/last-scan.bin.gz` | One last complete snapshot |
 
-Overview docks the terminal below categories and files, keeping properties at full height. Drag the terminal's top divider to adjust height. Focus docks it on the right; drag its left edge to adjust width. The terminal is hidden in Trash.
+`XDG_CONFIG_HOME` / `XDG_CACHE_HOME` are supported. An installation using `--config-dir ~/.config/disco-unstable` has a **separate profile/cache**; the app is still named disco. Do not mistake a different profile for erased data. See the [theme catalog](../assets/themes.toml), [color file](../assets/themes/paper.toml) and [category schema](../categories.example.toml). Legacy `theme.toml` is retained as a migration backup. Keep imported `icons/` when sharing categories.
 
-### Terminal keyboard routes
-
-All panel routes below use **Ctrl+Alt** with an arrow. Plain arrows remain terminal input.
-
-| Starting panel | Overview | Focus |
-| --- | --- | --- |
-| Categories or file list | ↓ enters the terminal | Navigate through tree/document toward the right |
-| Terminal | ↑ files; → properties; ←/↓ stay in place | ← document; other directions stay in place |
-| Properties / document | ← terminal | → terminal, when visible |
-
-**Ctrl+Shift+C / Ctrl+Shift+V** copy and paste. **Ctrl+C** interrupts a process. Enter, Delete, Ctrl+S, Ctrl+N and Ctrl+W inside the terminal are shell input and do not trigger file actions.
-
-The PTY uses the Alacritty terminal engine with native egui rendering. Terminal colors follow the app theme; system monospace and symbol fonts are loaded on first use. A launcher-inherited `NO_COLOR` is cleared only for the PTY subprocess. Shell configuration remains your own. Compatibility and implementation notes: [development guide](development.md#terminal).
-
-## Untitled text tabs (0.2.3 preview)
-
-![In-memory text tab](screenshots/scratch-023.png)
-
-**Ctrl+T** opens a blank text tab in Focus without creating anything on disk. Type or paste normally. Multiple untitled tabs keep independent buffers; closing a modified tab or the app asks before discarding it. Untitled buffers do not auto-save until you choose a file path.
-
-The first **Ctrl+S** opens Save new file. The proposed base is the folder selected when the tab was created, or a selected file's parent; otherwise it uses the current scope root. Selecting `/workspace/dotfiles` therefore proposes that folder, not `/workspace`.
-
-| Input | Result with base `/workspace/dotfiles` |
-| --- | --- |
-| `notes.txt` | `/workspace/dotfiles/notes.txt` |
-| `nested/notes.txt` | `/workspace/dotfiles/nested/notes.txt` |
-| `../notes.txt` | `/workspace/notes.txt` |
-| `/tmp/notes.txt` | `/tmp/notes.txt` |
-
-Paste paths into the field, or choose a different base folder. Missing parent folders are created. Existing files are never overwritten, and symbolic parent directories are not followed. Invalid paths or write errors retain the dialog, input focus and draft. Cancel returns to the buffer. After saving, the tab becomes a normal named document; subsequent Ctrl+S saves it directly.
-
-This Save As dialog uses standard absolute-path semantics. The older **Ctrl+N** file-creation dialog retains its existing rule that a leading `/` stays relative to the chosen folder.
-
-## Preview, edit and keep tabs
-
-Select a file to preview it. Images preserve their proportions and support fit/zoom; portrait images use a taller canvas. Double-click opens an installed default application, when one is associated. Disable double-click opening under Settings → Interface → Default file view.
-
-Complete text files open in an editor with background syntax highlighting from syntect and bat/two-face grammars. **Ctrl+S** saves while keeping the editor focused. Clicking below a short document places the cursor at its end. Scrolling over the text stays within the document, including at the top and bottom.
-
-In Focus, keyboard file browsing reuses one italic temporary tab:
-
-1. Enter or → retains the preview. Editing also retains it.
-2. On a retained file, → focuses the document; Enter launches its default application, if available.
-3. Retained tabs keep their drafts, cursors and scroll positions when changing files or categories.
-
-Mouse selections open retained tabs. × or middle-click closes one; Ctrl+W closes the active tab. Unsaved text asks for Save / Discard / Cancel before leaving or closing, including inactive drafts when closing the app. Up to 64 tabs can remain open; only the visible image keeps a decoded texture.
-
-### Auto-save and read-only categories
-
-Auto-save defaults to off. Enable it per category, or for All folders under Settings → Interface → Panels, Home & search. It writes after one second without typing, including inactive tabs. External changes preserve a dirty draft rather than overwrite the disk; a failed save shows an error without endless retries.
-
-A category's read-only policy prevents editing, saving, creating and deleting inside disco. Previewing and copying remain available. It does not change operating-system permissions or commands run in a terminal.
-
-Saves preserve encoding, BOM, line endings, permissions and extended attributes. Text fragments from large files remain read-only.
-
-### Preview limits
-
-| Content | Supported formats | Limit |
-| --- | --- | --- |
-| Images | PNG, JPEG, WebP, BMP, TIFF | 32 MiB, 12 megapixels; retained preview up to 2048 px |
-| Text | UTF-8; UTF-16 with BOM | 128 KiB / 2,000 lines |
-
-Selected content is read in the background. Unsupported or oversized content shows an explanation. Expanded file listings are separately cached and bounded; truncated listings are labeled.
-
-## Categories
-
-Settings → Categories lets you create or rename a collection, choose from 38 SVG icons or import an SVG/PNG/JPEG/WebP, and add absolute folder paths. Right-click a category to add selected folders. Save applies changes; Cancel discards them. Removing a collection or a path leaves its data intact.
-
-Drag categories to reorder them. Trash stays at the bottom. Enable **Lock category order** under Interface to prevent movement.
-
-Collections can overlap. Nested roots within a collection are counted once. A built-in category with no explicit folders uses automatic rules; assigning folders replaces those rules. Sizes come from the current scan. An unscanned path offers Scan; scanning it replaces the current snapshot. For multiple roots on one filesystem, scan their common parent.
-
-### Category files
-
-The shared index is `~/.config/disco/categories.toml`:
-
-```toml
-version = 2
-files = ["categories/photos.toml"]
-```
-
-Each entry points to a separate category document, for example `categories/photos.toml`:
-
-```toml
-version = 1
-id = "photos"
-name = "Photography"
-icon = "camera"
-folders = ["/home/user/Pictures"]
-auto_refresh = false
-auto_save = false
-read_only = true
-```
-
-See the [full example](../categories.example.toml). Existing single-file lists migrate with a `.bak` backup. Valid external edits reload while Settings is closed; invalid input keeps the last valid configuration. Conflicting edits are not silently overwritten.
-
-The robot button in the category editor copies an agent prompt in the interface language, with the category's path and schema. Paste it into an agent with PC access to find folders. disco itself makes no AI or network requests for this action.
-
-Imported icons are stored in `~/.config/disco/icons/`. SVGs retain vector rendering; raster imports are bounded to 256 px. Imports accept up to 2 MiB and do not load external or embedded SVG images. Keep the icons directory when sharing a configuration.
-
-## Live updates
-
-Enable **Live file updates** per category in Settings. It defaults to off and watches only the active category/scope while disco runs. The first activation synchronizes that scope.
-
-Filesystem events are coalesced: an ordinary file change rereads its parent folder, with new directories added after discovery. Watch-limit and access errors appear in the status bar. Clean documents reload while keeping the cursor; dirty drafts retain their conflict protection. No permanent disk indexing service is installed.
-
-## Cleanup and Trash
-
-The bottom-left **···** menu opens Large files, Cleanup and Duplicates. Delete in the list, or Delete folder in properties, asks for confirmation before moving data to Trash.
-
-Trash supports restoring selected items, permanently removing selections and emptying the bin. Permanent deletion requires a separate confirmation. The drive bar shows Trash as an amber part of used space, plus an item count; it is not added to used space twice. Click that label to open Trash.
-
-After restore or permanent removal, disco automatically rereads only Trash and samples free disk space. It does not rescan the folder tree or replace your current scan snapshot. Successfully removed items disappear immediately, and unchanged Trash directory totals are reused. **Refresh / F5** inside Trash also stays within this scope. Folder-tree results remain a snapshot until that scope is refreshed separately.
-
-A failed or partially completed action still triggers reconciliation. Remaining items stay visible; unreadable contents are shown as unavailable, not as an empty bin. A restore collision can show an action error while the readable listing and its totals remain valid.
-
-## Settings and files
-
-Settings open in one separate, resizable window. Reopening raises it with its draft intact. Save persists changes; Cancel, Escape or closing restores the previous configuration. Your main file draft and folder context remain intact.
-
-Under Interface, **Text size** uses a new 100% baseline equal to the previous 85%. Existing layouts keep their actual size through a one-time migration. **Sidebar text size** (80–120%) independently resizes the Focus tree; its Reset button restores 100%. It does not resize your document or terminal. Nested folders use compact 8 px indentation and truncate long names before the size column; hover for the full path.
-
-Appearance includes five dark themes (Carbon, Ember, Noir, Midnight, Forest) and four light ones (Paper, Cairo, Glacier, Soft Rose). The rounded swatch before each name shows its accent. The picker shows up to five theme rows at a time; **Create new…** stays pinned below the scrolling list. Give a new theme a name, edit its colors and click Save. Cancel discards pending themes and color changes without creating files.
-
-The robot button opens an editable theme-generation prompt with the full color schema, actual configuration paths and the existing theme catalog. Copy it to your assistant and append the colors or mood you want. It tells assistants with PC access to create and register the theme; assistants without access must return the file and exact placement commands. Prompts currently follow the interface language. After external changes, click **Reload themes**, then Save. Invalid theme files are disabled with an explanation on hover; other themes remain available. Disco refuses to overwrite external theme changes made while Settings was open.
-
-| File | Purpose |
-| --- | --- |
-| `~/.config/disco/themes.toml` | Theme index and active theme ID |
-| `~/.config/disco/themes/<id>.toml` | Individual theme colors |
-| `~/.config/disco/theme.toml` | Original legacy theme, retained as a migration backup |
-| `~/.config/disco/layout.toml` | Language, sizes, layout and interface options |
-| `~/.config/disco/categories.toml` | Category index |
-| `~/.cache/disco/last-scan.bin.gz` | Last complete scan |
-
-`XDG_CONFIG_HOME` and `XDG_CACHE_HOME` are supported. `language = "en"` / `"uk"` and `preview_mode = "overview"` / `"focus"` can also be edited in `layout.toml`.
-
-Development builds are also installed as **disco**. To keep their separate configuration, use `python3 install.py --config-dir ~/.config/disco-unstable`; installation replaces the old disco Unstable launcher with one disco entry. The catalog contains `version = 1`, an `active` ID and `[themes.<id>]` entries with `name` and `file = "themes/<id>.toml"`. See the bundled [catalog](../assets/themes.toml) and [Paper color file](../assets/themes/paper.toml) for complete examples. Once migrated, edit the catalog/theme files rather than the old backup `theme.toml`.
-
-## Custom shortcuts
-
-![Shortcut recorder settings](screenshots/shortcuts-023.png)
-
-Settings → Shortcuts records a combination when you click its field and press the keys. Escape cancels capture; Reset restores defaults. Save persists changes and Cancel restores the prior bindings. The new-tab default is Ctrl+T. Other defaults are Ctrl+Alt+T for the terminal, Ctrl+Alt+F for Focus and Ctrl+Alt+V for Overview. Conflicting app bindings and reserved editor/navigation commands are rejected. KDE global assignments are highlighted: a compositor shortcut may intercept the key before disco receives it; reassign it in disco or system settings. No global shortcuts are modified.
+Text preview: UTF-8 or UTF-16 with BOM, up to **128 KiB / 2,000 lines**; truncated fragments are read-only. Images: PNG/JPEG/WebP/BMP/TIFF, up to **32 MiB / 12 megapixels**, retained at up to 2048 px. Unsupported content explains its limit. Scans use allocated blocks, stay on one filesystem and do not follow symlinks. Terminal compatibility depends on the running program.
 
 ## Keyboard reference
 
 | Keys | Action |
 | --- | --- |
-| ↑ / ↓, Home / End, Page Up / Down | Move through the file list |
-| → / ← | Expand/collapse folders; retain/focus a Focus file |
-| Enter | Enter a folder; retain/open a Focus file |
-| Backspace | Go back, otherwise select the parent |
-| Delete | Move selection to Trash after confirmation |
-| Ctrl+N | Create a file; `new_folder/file.txt` also creates parents |
-| Ctrl+S | Save without leaving the editor |
-| Ctrl+Tab / Ctrl+Shift+Tab | Next / previous open tab, wrapping |
-| Ctrl+F | Focus: find in file; Overview: filename search |
-| F5 | Refresh the current scope |
-| Alt+Home | Open configured Home |
-| Ctrl+Alt+arrows | Move between panels |
-| F6 / Shift+F6 | Cycle panels without inserting an editor tab |
-| Ctrl+comma | Open or raise Settings |
-| Ctrl+W | Close active Focus tab |
-| Ctrl+Shift+↑ / ↓ in categories | Reorder the selected category, when unlocked |
-| Tab / Shift+Tab, Space / Enter, Escape | Operate controls and dialogs |
+| ↑ / ↓, Home / End, Page Up / Down | File-list navigation |
+| → / ←, Enter | Expand/collapse; keep/focus a preview; enter a folder |
+| Ctrl+T / Ctrl+N / Ctrl+S | Untitled tab / create file / save |
+| Ctrl+W | Close the active tab safely |
+| Ctrl+Tab / Ctrl+Shift+Tab | Next / previous visible tab |
+| Ctrl+L | Edit address |
+| Ctrl+F, F3 / Shift+F3 | Find in Focus; next/previous match |
+| Ctrl+Plus / Minus, Ctrl+wheel, Ctrl+0 | File zoom / reset |
+| Ctrl+Space / Ctrl+Shift+Space | Completion / parameter help |
+| Alt+← / → in signature help | Inspect overloads |
+| Ctrl+Alt+F / V / T | Focus / Overview / Terminal defaults |
+| Ctrl+Alt+arrows, F6 / Shift+F6 | Move focus between panels |
+| F5 / Alt+Home / Ctrl+, | Refresh / configured Home / Settings |
+| Ctrl+Shift+C / V in terminal | Copy / paste |
 
-File-list shortcuts do not run while typing in text fields. In Focus, Ctrl+Tab switches open tabs left to right, and Ctrl+Shift+Tab switches right to left, wrapping at either end. The visible tab strip determines the order, independently of activation history or the file tree; no new files are opened. Plain Shift+Tab retains its editor behavior. System clipboard shortcuts work in editable fields. New-file input keeps focus after an invalid path and never overwrites an existing file; a leading `/` remains relative to the selected folder.
-
-## Current limitations
-
-- The integrated terminal is a native embedding of an adapted widget, not a promise of compatibility with every terminal application.
-
-In Focus, clicking files in the tree reuses one temporary tab. Click inside its document or image to keep it open; tree double-clicks do not pin it. Enter/Right-arrow keyboard actions still keep the preview. Unsaved documents remain protected.
-
-AI prompts follow the application language by default. Enable **Separate AI prompt language** in Settings → Interface to reveal the Ukrainian/English selector. This applies to both category and theme prompts; Save/Cancel cover both settings.
-
-Markdown (`.md`/`.markdown`) opens in **Read** mode. Use **Read / Edit** in the same document to switch without saving or losing your draft, undo history or cursor. Read mode supports tables, lists, quotations, highlighted code, relative local raster images, links and heading anchors. Remote images are not fetched. Links open only when clicked; local files open in disco. Read-only categories still prevent edits. Text previews keep the existing 128 KiB bound; larger documents show the bounded beginning.
-
-File zoom: focus the document and use Ctrl+Plus (or Ctrl+=) / Ctrl+Minus, or hold Ctrl and scroll over its content. Text and Markdown zoom from 50–300%; images from 25–800% of Fit. Click the percentage to reset. Zoom stays with each open Focus tab for the session; it changes neither the UI/sidebar nor file contents. Terminal and other text fields keep their keys.
-
-Open one file or folder directly with `disco file.txt` or `disco /path/to/folder` (relative paths use the launching directory; `--` allows names beginning with a dash). A direct file opens in Focus with only that file in the left tree and no category rail or disk scan. Open a folder to use it as the workspace root. Ctrl+L or the pencil beside the breadcrumbs edits the address; Ctrl+F searches the active file in Focus and filenames in Overview. Suggestions include folders and files, including hidden entries; use arrows, Enter to open, Tab to complete, or Esc to cancel. Relative address paths use the current folder; `~/` uses your home. Explicit symlinks resolve to their target. Completion is bounded and runs off the UI thread; unsaved documents keep the Save/Discard/Cancel guard.
-
-Settings → Interface → **Language and file type icons** enables bundled SVG symbols for 59 language/format families (C/C++, Rust, JavaScript/TypeScript, Java, Python, Go, JSON/YAML/TOML and more). The default is off. Names/extensions are matched without case; Dockerfile, Makefile and common dotfiles are recognized. `.h` uses C, `.hpp` uses C++, `.m` uses Objective-C. Unknown files and images keep their generic symbols; custom category artwork is unaffected. Save/Cancel apply normally. Colors are slightly darkened on light themes for legibility; there are no runtime downloads.
-
-File zoom changes by 10 percentage points by default. Set a custom step under Settings → Interface → File zoom step. Ctrl+0 restores 100%; remap Reset file zoom in Shortcuts. An existing Ctrl+0 assignment is preserved, with a free reset shortcut selected during migration.
-
-Direct-file windows respect Show categories. Home and breadcrumbs reuse an existing snapshot, or read only the selected directory if it is outside the snapshot. Unknown folder sizes show —. Scan calculates recursive sizes explicitly; navigation keeps open tabs and drafts.
-
-Document controls use one toolbar: Save/Copy on the left, Markdown Read/Edit on the right beside Reload. Narrow panels use icon actions and shorter mode labels. Zoom out, percentage reset (Fit for images) and zoom in are in the bottom status bar; full document status is available on hover.
-
-### Reading Markdown
-
-The reader uses a separate heading hierarchy, bundled Inter bold, a true monospace code face and physical pixel-aligned font sizes. The active theme controls surfaces and link colors. Tables have bold headers and subtle row rules.
-
-Code blocks grow to their full height and wrap long lines; scroll the document rather than an inner code pane. The vector Copy code button copies the selected code, or the entire block when nothing is selected. `<details>` / `<summary>` sections use native disclosures and render their body only when opened; `open` and nesting are supported up to eight levels. Other HTML remains literal text, without a browser or scripts. Missing local images show their alt text; remote images still require no automatic network requests.
-
-These are preview-only changes: Read/Edit keeps the original Markdown, draft and undo history. Use file zoom for a larger or smaller reading view.
-
-After opening a standalone file, choosing a category or Home loads an existing saved snapshot in the background. This reads cached sizes without starting a new scan, preserves the selected category and keeps the document, draft, cursor and undo state. If no snapshot is available, Scan appears below the explanation inside the empty file tree. A small spinner indicates loading. Explicit scanning and a newly opened path take priority over an older cache request.
-
-The active document automatically follows changes made by Codex, terminal tools or other programs, including atomic saves. This works for standalone CLI files and with category auto-refresh disabled; no folder rescan or cache write is required. Clean buffers update after a short debounce without a blank/loading frame: the previous text remains visible until the new read is ready. The tab, scroll position and zoom stay intact; the selection follows unchanged text when content is inserted or removed above it. Unsaved local edits are kept with a conflict warning; Save cannot silently overwrite an externally replaced file. Once local edits are undone/discarded, the clean buffer can follow the disk again. Hiding or closing the terminal does not disable this behavior.
-
-### Find in file
-
-In Focus, Ctrl+F searches the active tab’s current text, including unsaved edits. A single-line selection seeds the query. Matches are highlighted with a current/total counter; Aa toggles case sensitivity. Enter / F3 moves forward, Shift+Enter / Shift+F3 moves backward, wrapping at the ends; Enter works while the find field has focus. Escape closes the bar and returns to the editor. Matching is literal, Unicode-aware and does not modify text. Markdown switches to its source so code and collapsed details are searchable too. For truncated large-file previews, only the loaded excerpt is searched. A focused terminal retains Ctrl+F for its running program.
-
-The find bar floats at the editor’s top right; opening, closing or leaving it for the text does not resize the document. Escape or × clears the query by default. Settings → Interface → Remember query after closing file search retains the last query for each open tab during the current session; query text is never written to disk.
-
-Ctrl+Z undoes edit actions: each paste, Enter, cut or selection replacement is a separate step. Ordinary typing and repeated deletion may group until cursor/type changes or a pause. Ctrl+Y / Ctrl+Shift+Z redo; a new text edit discards the redo branch. Save, tab switches and Markdown Read/Edit preserve history.
-
-Filename search falls back through selected folder/file parent → current directory/category roots → configured Home. A wider level runs only when the earlier level has no matches; Home fallback can be disabled in Settings. The origin stays fixed until the query is cleared or category changes, so selecting a result cannot retarget a query. Status shows the actual search area and inaccessible paths. Files and folders in unexpanded/unscanned directories are searchable without a snapshot. Clearing the query preserves the selected result and reveals its directory when outside the original tree, without a recursive scan.
-
-Language servers: [setup, completion and installations](language-servers.md).
+Screenshots show native 0.2.3-unstable UI with demonstration data, captured on a private virtual display. [Docker build](docker.md) · [Development](development.md) · [Changelog](../CHANGELOG.md).
