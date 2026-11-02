@@ -28,6 +28,12 @@ pub struct State {
     items: Vec<Completion>,
     selected: usize,
     completion: u64,
+    signature: Option<protocol::SignatureHelp>,
+    signature_selected: usize,
+    signature_request: u64,
+    signature_due: Option<Instant>,
+    docs_request: u64,
+    docs_due: Option<Instant>,
     hover: u64,
     hover_text: String,
     hover_at: Option<(usize, Instant)>,
@@ -35,6 +41,8 @@ pub struct State {
     due: Option<Instant>,
     cursor: usize,
     anchor: Option<egui::Pos2>,
+    completion_rect: Option<egui::Rect>,
+    signature_rect: Option<egui::Rect>,
     accept: bool,
     pending_cursor: Option<usize>,
     pub compile_config: bool,
@@ -55,6 +63,12 @@ impl State {
             items: vec![],
             selected: 0,
             completion: 0,
+            signature: None,
+            signature_selected: 0,
+            signature_request: 0,
+            signature_due: None,
+            docs_request: 0,
+            docs_due: None,
             hover: 0,
             hover_text: String::new(),
             hover_at: None,
@@ -62,6 +76,8 @@ impl State {
             due: None,
             cursor: 0,
             anchor: None,
+            completion_rect: None,
+            signature_rect: None,
             accept: false,
             pending_cursor: None,
             compile_config: true,
@@ -94,6 +110,8 @@ impl State {
         open.dedup();
         let path_changed = self.path.as_deref() != path;
         if path_changed {
+            self.signature = None;
+            self.signature_due = None;
             self.due = None;
         }
         let changed = path_changed || self.text.as_ref() != text;
@@ -113,6 +131,9 @@ impl State {
             self.hover_index = None;
             self.hover_at = None;
             self.completion = 0;
+            self.signature_request = 0;
+            self.docs_request = 0;
+            self.docs_due = None;
             self.hover = 0;
         }
         if self.client.is_none() && usable {
@@ -165,6 +186,8 @@ impl State {
                         }
                         self.items = items;
                         self.selected = 0;
+                        self.docs_due = Some(Instant::now() + Duration::from_millis(120));
+                        ctx.request_repaint_after(Duration::from_millis(120));
                     }
                     Event::Hover {
                         path,
@@ -176,6 +199,39 @@ impl State {
                         && request == self.hover =>
                     {
                         self.hover_text = text
+                    }
+                    Event::Signature {
+                        path,
+                        version,
+                        request,
+                        help,
+                    } if self.path.as_ref() == Some(&path)
+                        && version == self.version
+                        && request == self.signature_request =>
+                    {
+                        self.signature_selected = help
+                            .active_signature
+                            .min(help.signatures.len().saturating_sub(1));
+                        self.signature = (!help.signatures.is_empty()).then_some(help);
+                    }
+                    Event::Resolved {
+                        path,
+                        version,
+                        request,
+                        item,
+                    } if self.path.as_ref() == Some(&path)
+                        && version == self.version
+                        && request == self.docs_request =>
+                    {
+                        self.docs_request = 0;
+                        if let Some(selected) = self.items.get_mut(self.selected) {
+                            if item.get("documentation").is_some() {
+                                selected.raw["documentation"] = item["documentation"].clone();
+                            }
+                            if let Some(detail) = item["detail"].as_str() {
+                                selected.detail = detail.chars().take(512).collect();
+                            }
+                        }
                     }
                     Event::Diagnostics {
                         path,
@@ -206,6 +262,29 @@ impl State {
                 ctx.request_repaint_after(at.saturating_duration_since(Instant::now()));
             }
         }
+        if let Some(at) = self.signature_due {
+            if at <= Instant::now() {
+                self.signature_due = None;
+                self.request(Kind::Signature, self.cursor);
+            } else {
+                ctx.request_repaint_after(at.saturating_duration_since(Instant::now()));
+            }
+        }
+        if let Some(at) = self.docs_due {
+            if at <= Instant::now() {
+                self.docs_due = None;
+                if let (Some(client), Some(path), Some(item)) =
+                    (&mut self.client, &self.path, self.items.get(self.selected))
+                {
+                    if protocol::documentation(&item.raw["documentation"]).is_empty() {
+                        self.docs_request =
+                            client.resolve(path.clone(), self.version, item.raw.clone());
+                    }
+                }
+            } else {
+                ctx.request_repaint_after(at.saturating_duration_since(Instant::now()));
+            }
+        }
     }
     fn request(&mut self, kind: Kind, index: usize) {
         if let (Some(c), Some(p)) = (&mut self.client, &self.path) {
@@ -217,6 +296,8 @@ impl State {
             match kind {
                 Kind::Completion => self.completion = id,
                 Kind::Hover => self.hover = id,
+                Kind::Signature => self.signature_request = id,
+                Kind::Resolve => {}
             }
         }
     }
@@ -247,13 +328,22 @@ impl State {
             self.items.clear();
             self.accept = false;
         }
-        if (!self.items.is_empty() || self.completion != 0 || self.due.is_some())
+        if (!self.items.is_empty()
+            || self.completion != 0
+            || self.due.is_some()
+            || self.signature.is_some()
+            || self.signature_due.is_some())
             && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
         {
             self.items.clear();
             self.completion = 0;
             self.due = None;
             self.accept = false;
+            self.signature = None;
+            self.signature_request = 0;
+            self.signature_due = None;
+            self.docs_request = 0;
+            self.docs_due = None;
         }
         let state = egui::text_edit::TextEditState::load(ctx, id);
         let index = state
@@ -261,7 +351,18 @@ impl State {
             .and_then(|s| s.cursor.char_range())
             .map(|r| usize::from(r.primary.index))
             .unwrap_or(0);
-        let manual = ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::Space));
+        let manual_signature = ctx.input_mut(|i| {
+            i.consume_key(
+                egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+                egui::Key::Space,
+            )
+        });
+        let manual = !manual_signature
+            && ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::Space));
+        if manual_signature {
+            self.cursor = index;
+            self.request(Kind::Signature, index);
+        }
         if manual && !read_only {
             self.cursor = index;
             self.request(Kind::Completion, index);
@@ -281,6 +382,11 @@ impl State {
                     self.accept = true;
                 }
             });
+            if move_by != 0 {
+                self.docs_request = 0;
+                self.docs_due = Some(Instant::now() + Duration::from_millis(120));
+                ctx.request_repaint_after(Duration::from_millis(120));
+            }
             if !self.items.is_empty() {
                 self.selected = (self.selected as isize + move_by)
                     .rem_euclid(self.items.len() as isize) as usize;
@@ -325,6 +431,12 @@ impl State {
             self.completion = 0;
             self.due = None;
         }
+        if (out.response.changed() && text != self.text.as_ref() || index != self.cursor)
+            && self.signature.is_some()
+        {
+            self.signature_due = Some(Instant::now() + Duration::from_millis(60));
+            ui.ctx().request_repaint_after(Duration::from_millis(60));
+        }
         if index != self.cursor {
             self.completion = 0;
             self.due = None;
@@ -358,6 +470,10 @@ impl State {
                 .rev()
                 .take_while(|c| c.is_alphanumeric() || *c == '_')
                 .count();
+            if prefix.ends_with('(') || prefix.ends_with(',') {
+                self.signature_due = Some(Instant::now() + Duration::from_millis(60));
+                ui.ctx().request_repaint_after(Duration::from_millis(60));
+            }
             if identifier >= 2
                 || prefix.ends_with('.')
                 || prefix.ends_with("::")
@@ -450,7 +566,11 @@ impl State {
         // egui handles Escape focus navigation before the next UI pass.
         // Reserve it while completion is visible/pending so it dismisses the
         // popup before any panel navigation can surrender editor focus.
-        if (!self.items.is_empty() || self.completion != 0 || self.due.is_some())
+        if (!self.items.is_empty()
+            || self.completion != 0
+            || self.due.is_some()
+            || self.signature.is_some()
+            || self.signature_due.is_some())
             && let Some(path) = &self.path
         {
             let id = egui::Id::unique(("file-editor", &Some(path.clone())));
@@ -470,6 +590,7 @@ impl State {
             }
         }
         if self.items.is_empty() {
+            self.signature_overlay(ctx);
             return;
         }
         super::trace(format_args!(
@@ -479,9 +600,21 @@ impl State {
             self.anchor
         ));
         if let Some(path) = &self.path {
-            if !ctx.memory(|m| m.has_focus(egui::Id::unique(("file-editor", &Some(path.clone())))))
-            {
-                return;
+            let editor = egui::Id::unique(("file-editor", &Some(path.clone())));
+            if !ctx.memory(|m| m.has_focus(editor)) {
+                let clicking = self.completion_rect.is_some_and(|r| {
+                    ctx.input(|i| {
+                        i.pointer.interact_pos().is_some_and(|p| r.contains(p))
+                            && (i.pointer.any_down()
+                                || i.pointer.any_pressed()
+                                || i.pointer.any_released())
+                    })
+                });
+                if clicking {
+                    ctx.memory_mut(|m| m.request_focus(editor));
+                } else {
+                    return;
+                }
             }
         }
         let Some(at) = self.anchor else { return };
@@ -511,8 +644,36 @@ impl State {
                                         .corner_radius(0),
                                     )
                                     .on_hover_text(format!("{}\n{}", item.label, item.detail));
+                                if r.hovered()
+                                    && self.selected != n
+                                    && ui.input(|i| {
+                                        i.pointer.delta() != egui::Vec2::ZERO
+                                            || i.pointer.any_pressed()
+                                    })
+                                {
+                                    self.selected = n;
+                                    self.docs_request = 0;
+                                    self.docs_due =
+                                        Some(Instant::now() + Duration::from_millis(120));
+                                    ctx.request_repaint_after(Duration::from_millis(120));
+                                }
                                 if n == self.selected {
                                     r.scroll_to_me(Some(egui::Align::Center));
+                                }
+                                ui.interact(
+                                    r.rect,
+                                    egui::Id::unique(("lsp-completion-row", n)),
+                                    egui::Sense::hover(),
+                                );
+                                if r.is_pointer_button_down_on() {
+                                    if let Some(path) = &self.path {
+                                        ctx.memory_mut(|m| {
+                                            m.request_focus(egui::Id::unique((
+                                                "file-editor",
+                                                &Some(path.clone()),
+                                            )))
+                                        });
+                                    }
                                 }
                                 if r.clicked() {
                                     self.selected = n;
@@ -528,7 +689,25 @@ impl State {
                                 }
                             }
                         });
+                    if let Some(item) = self.items.get(self.selected) {
+                        let description = protocol::documentation(&item.raw["documentation"]);
+                        if !item.detail.is_empty() || !description.is_empty() {
+                            ui.separator();
+                            egui::ScrollArea::vertical()
+                                .id_salt("completion-documentation")
+                                .max_height(140.)
+                                .show(ui, |ui| {
+                                    if !item.detail.is_empty() {
+                                        ui.monospace(&item.detail);
+                                    }
+                                    if !description.is_empty() {
+                                        ui.label(description);
+                                    }
+                                });
+                        }
+                    }
                 });
+                self.completion_rect = Some(popup.response.rect);
                 ui.interact(
                     popup.response.rect,
                     egui::Id::unique("lsp-completion-bounds"),
@@ -536,10 +715,178 @@ impl State {
                 );
             });
     }
+    pub fn signature_shortcuts(&mut self, ctx: &egui::Context) {
+        if self.signature.is_none() || !self.items.is_empty() {
+            return;
+        }
+        let Some(path) = &self.path else { return };
+        let editor = egui::Id::unique(("file-editor", &Some(path.clone())));
+        if !ctx.memory(|m| m.has_focus(editor)) {
+            return;
+        }
+        let previous = ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, egui::Key::ArrowLeft));
+        let next = ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, egui::Key::ArrowRight));
+        if previous || next {
+            self.cycle_signature(if previous { -1 } else { 1 });
+            ctx.request_repaint();
+        }
+    }
+    fn cycle_signature(&mut self, step: isize) {
+        if let Some(help) = &self.signature {
+            let n = help.signatures.len();
+            if n > 0 {
+                self.signature_selected =
+                    (self.signature_selected as isize + step).rem_euclid(n as isize) as usize;
+            }
+        }
+    }
+    fn signature_overlay(&mut self, ctx: &egui::Context) {
+        let (Some(help), Some(at), Some(path)) = (&self.signature, self.anchor, &self.path) else {
+            return;
+        };
+        let editor = egui::Id::unique(("file-editor", &Some(path.clone())));
+        if !ctx.memory(|m| m.has_focus(editor)) {
+            let clicking = self.signature_rect.is_some_and(|r| {
+                ctx.input(|i| {
+                    i.pointer.interact_pos().is_some_and(|p| r.contains(p))
+                        && (i.pointer.any_down()
+                            || i.pointer.any_pressed()
+                            || i.pointer.any_released())
+                })
+            });
+            if clicking {
+                ctx.memory_mut(|m| m.request_focus(editor));
+            } else {
+                return;
+            }
+        }
+        let Some(signature) = help.signatures.get(self.signature_selected) else {
+            return;
+        };
+        let active = signature
+            .active_parameter
+            .or(help.active_parameter)
+            .and_then(|n| signature.parameters.get(n));
+        let mut step = 0;
+        egui::Area::new(egui::Id::unique("lsp-signature"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(at)
+            .show(ctx, |ui| {
+                let frame = egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.set_width(560.);
+                    ui.spacing_mut().button_padding = egui::vec2(5., 2.);
+                    ui.spacing_mut().interact_size.y = 22.;
+                    ui.horizontal(|ui| {
+                        let previous = ui
+                            .add_enabled(help.signatures.len() > 1, egui::Button::new("‹"))
+                            .on_hover_text(crate::tr!(
+                                "Попереднє перевантаження · Alt+←",
+                                "Previous overload · Alt+←"
+                            ));
+                        ui.interact(
+                            previous.rect,
+                            egui::Id::unique("lsp-signature-previous"),
+                            egui::Sense::hover(),
+                        );
+                        if previous.is_pointer_button_down_on() {
+                            ctx.memory_mut(|m| m.request_focus(editor));
+                        }
+                        if previous.clicked() {
+                            step = -1;
+                        }
+                        ui.small(format!(
+                            "{} / {}",
+                            self.signature_selected + 1,
+                            help.signatures.len()
+                        ));
+                        let next = ui
+                            .add_enabled(help.signatures.len() > 1, egui::Button::new("›"))
+                            .on_hover_text(crate::tr!(
+                                "Наступне перевантаження · Alt+→",
+                                "Next overload · Alt+→"
+                            ));
+                        ui.interact(
+                            next.rect,
+                            egui::Id::unique("lsp-signature-next"),
+                            egui::Sense::hover(),
+                        );
+                        if next.is_pointer_button_down_on() {
+                            ctx.memory_mut(|m| m.request_focus(editor));
+                        }
+                        if next.clicked() {
+                            step = 1;
+                        }
+                    });
+                    let font = egui::FontId::monospace(12.);
+                    let normal = egui::TextFormat::simple(font.clone(), ui.visuals().text_color());
+                    let mut job = egui::text::LayoutJob::default();
+                    if let Some(range) = active.and_then(|p| p.range.clone()) {
+                        job.append(&signature.label[..range.start], 0., normal.clone());
+                        let mut selected = normal.clone();
+                        selected.color = ui.visuals().selection.stroke.color;
+                        selected.underline = egui::Stroke::new(1., selected.color);
+                        job.append(&signature.label[range.clone()], 0., selected);
+                        job.append(&signature.label[range.end..], 0., normal);
+                    } else {
+                        job.append(&signature.label, 0., normal);
+                    }
+                    ui.label(job);
+                    egui::ScrollArea::vertical()
+                        .id_salt("signature-docs")
+                        .max_height(160.)
+                        .show(ui, |ui| {
+                            if !signature.documentation.is_empty() {
+                                ui.label(&signature.documentation);
+                            }
+                            if let Some(p) = active {
+                                if !p.documentation.is_empty() {
+                                    ui.separator();
+                                    ui.label(&p.documentation);
+                                }
+                            }
+                        });
+                });
+                self.signature_rect = Some(frame.response.rect);
+                ui.interact(
+                    frame.response.rect,
+                    egui::Id::unique("lsp-signature-bounds"),
+                    egui::Sense::hover(),
+                );
+            });
+        if step != 0 {
+            self.cycle_signature(step);
+            ctx.memory_mut(|m| m.request_focus(editor));
+            ctx.request_repaint();
+        }
+    }
     #[cfg(test)]
     pub fn completion_count(&self) -> usize {
         self.items.len()
     }
+    #[cfg(test)]
+    pub fn signature_summary(&self) -> (usize, usize, Option<usize>) {
+        self.signature
+            .as_ref()
+            .map(|h| {
+                (
+                    h.signatures.len(),
+                    self.signature_selected,
+                    h.signatures
+                        .get(self.signature_selected)
+                        .and_then(|s| s.active_parameter)
+                        .or(h.active_parameter),
+                )
+            })
+            .unwrap_or_default()
+    }
+    #[cfg(test)]
+    pub fn completion_documentation(&self) -> String {
+        self.items
+            .get(self.selected)
+            .map(|i| protocol::documentation(&i.raw["documentation"]))
+            .unwrap_or_default()
+    }
+
     pub fn shutdown(&mut self) {
         self.manager.shutdown();
         if let Some(mut c) = self.client.take() {

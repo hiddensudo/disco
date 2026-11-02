@@ -63,6 +63,18 @@ pub enum Event {
         request: u64,
         text: String,
     },
+    Signature {
+        path: PathBuf,
+        version: u64,
+        request: u64,
+        help: protocol::SignatureHelp,
+    },
+    Resolved {
+        path: PathBuf,
+        version: u64,
+        request: u64,
+        item: Value,
+    },
     Diagnostics {
         path: PathBuf,
         version: u64,
@@ -78,6 +90,8 @@ pub enum Event {
 pub enum Kind {
     Completion,
     Hover,
+    Signature,
+    Resolve,
 }
 enum Control {
     Request {
@@ -86,6 +100,12 @@ enum Control {
         index: usize,
         kind: Kind,
         request: u64,
+    },
+    Resolve {
+        path: PathBuf,
+        version: u64,
+        request: u64,
+        item: Value,
     },
     Stop(String, Option<mpsc::Sender<()>>),
     Restart(String),
@@ -141,6 +161,17 @@ impl Client {
             request: self.request,
         });
         self.request
+    }
+    pub fn resolve(&mut self, path: PathBuf, version: u64, item: Value) -> u64 {
+        self.request += 1;
+        let request = self.request;
+        let _ = self.tx.try_send(Control::Resolve {
+            path,
+            version,
+            request,
+            item,
+        });
+        request
     }
     pub fn poll(&self) -> Vec<Event> {
         self.mail.lock().unwrap().drain(..).collect()
@@ -199,6 +230,13 @@ impl Session {
             .ok_or_else(|| format!("Language server not found: {}", launch.command.display()))?;
         let mut child = Command::new(command)
             .args(&launch.args)
+            .args(
+                (launch.id == "clangd"
+                    && !launch.args.iter().any(|a| {
+                        a == "--completion-style" || a.starts_with("--completion-style=")
+                    }))
+                .then_some("--completion-style=bundled"),
+            )
             .current_dir(&root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -277,7 +315,7 @@ impl Session {
             queued: vec![],
         };
         let root = protocol::uri(&s.root)?;
-        s.send(json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":std::process::id(),"clientInfo":{"name":"disco","version":env!("CARGO_PKG_VERSION")},"rootUri":root,"workspaceFolders":[{"uri":root,"name":s.root.file_name().unwrap_or_default().to_string_lossy()}],"capabilities":{"general":{"positionEncodings":["utf-16"]},"workspace":{"configuration":false,"applyEdit":false},"textDocument":{"completion":{"completionItem":{"snippetSupport":false,"documentationFormat":["plaintext"]}},"hover":{"contentFormat":["plaintext"]},"publishDiagnostics":{"versionSupport":true}}},"initializationOptions":if s.launch.id=="rust-analyzer"{json!({"checkOnSave":false,"cargo":{"buildScripts":{"enable":false}},"procMacro":{"enable":false}})}else{Value::Null}}}))?;
+        s.send(json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":std::process::id(),"clientInfo":{"name":"disco","version":env!("CARGO_PKG_VERSION")},"rootUri":root,"workspaceFolders":[{"uri":root,"name":s.root.file_name().unwrap_or_default().to_string_lossy()}],"capabilities":{"general":{"positionEncodings":["utf-16"]},"workspace":{"configuration":false,"applyEdit":false},"textDocument":{"completion":{"completionItem":{"snippetSupport":false,"documentationFormat":["plaintext"],"resolveSupport":{"properties":["documentation","detail"]}}},"hover":{"contentFormat":["plaintext"]},"signatureHelp":{"signatureInformation":{"documentationFormat":["plaintext"],"parameterInformation":{"labelOffsetSupport":true},"activeParameterSupport":true}},"publishDiagnostics":{"versionSupport":true}}},"initializationOptions":if s.launch.id=="rust-analyzer"{json!({"checkOnSave":false,"cargo":{"buildScripts":{"enable":false}},"procMacro":{"enable":false}})}else{Value::Null}}}))?;
         Ok(s)
     }
     fn send(&mut self, v: Value) -> Result<(), String> {
@@ -380,19 +418,54 @@ impl Session {
             "server request {kind:?} version={version} request={request} position={position:?}"
         ));
 
-        let method = if kind == Kind::Completion {
-            "textDocument/completion"
-        } else {
-            "textDocument/hover"
+        let (method, capability) = match kind {
+            Kind::Completion => ("textDocument/completion", "completionProvider"),
+            Kind::Hover => ("textDocument/hover", "hoverProvider"),
+            Kind::Signature => ("textDocument/signatureHelp", "signatureHelpProvider"),
+            Kind::Resolve => return Ok(()),
         };
-        if self.capabilities[if kind == Kind::Completion {
-            "completionProvider"
-        } else {
-            "hoverProvider"
-        }] == Value::Bool(false)
+        if self.capabilities[capability].is_null()
+            || self.capabilities[capability] == Value::Bool(false)
         {
             return Ok(());
         }
+        let params = json!({"textDocument":{"uri":protocol::uri(&path)?},"position":position});
+        self.request_with_params(path, version, kind, request, method, params)
+    }
+    fn resolve(
+        &mut self,
+        path: PathBuf,
+        version: u64,
+        request: u64,
+        item: Value,
+    ) -> Result<(), String> {
+        if !self.ready
+            || self
+                .docs
+                .get(&path)
+                .is_none_or(|d| d.doc.version != version)
+            || self.capabilities["completionProvider"]["resolveProvider"] != true
+        {
+            return Ok(());
+        }
+        self.request_with_params(
+            path,
+            version,
+            Kind::Resolve,
+            request,
+            "completionItem/resolve",
+            item,
+        )
+    }
+    fn request_with_params(
+        &mut self,
+        path: PathBuf,
+        version: u64,
+        kind: Kind,
+        request: u64,
+        method: &str,
+        params: Value,
+    ) -> Result<(), String> {
         let old: Vec<_> = self
             .pending
             .iter()
@@ -415,7 +488,7 @@ impl Session {
                 at: Instant::now(),
             },
         );
-        self.send(json!({"jsonrpc":"2.0","id":id,"method":method,"params":{"textDocument":{"uri":protocol::uri(&self.pending[&id].path)?},"position":position}}))
+        self.send(json!({"jsonrpc":"2.0","id":id,"method":method,"params":params}))
     }
     fn process(
         &mut self,
@@ -498,20 +571,31 @@ impl Session {
                             .map_or(0, Vec::len)
                     ));
                 }
-                let event = if p.kind == Kind::Completion {
-                    Event::Completion {
+                let event = match p.kind {
+                    Kind::Completion => Event::Completion {
                         path: p.path,
                         version: p.version,
                         request: p.request,
                         items: protocol::completion_items(result),
-                    }
-                } else {
-                    Event::Hover {
+                    },
+                    Kind::Hover => Event::Hover {
                         path: p.path,
                         version: p.version,
                         request: p.request,
                         text: protocol::hover_text(result),
-                    }
+                    },
+                    Kind::Signature => Event::Signature {
+                        path: p.path,
+                        version: p.version,
+                        request: p.request,
+                        help: protocol::signature_help(result),
+                    },
+                    Kind::Resolve => Event::Resolved {
+                        path: p.path,
+                        version: p.version,
+                        request: p.request,
+                        item: result.clone(),
+                    },
                 };
                 publish(mail, ctx, event);
             }
@@ -737,6 +821,38 @@ fn run(
                                 &ctx,
                                 Event::Error {
                                     server: s.launch.id.clone(),
+                                    message,
+                                },
+                            );
+                        }
+                        break;
+                    }
+                }
+            }
+            Ok(Control::Resolve {
+                path,
+                version,
+                request,
+                item,
+            }) => {
+                if latest.lock().unwrap().is_some() {
+                    deferred = Some(Control::Resolve {
+                        path,
+                        version,
+                        request,
+                        item,
+                    });
+                    continue;
+                }
+                for session in sessions.values_mut() {
+                    if session.docs.contains_key(&path) {
+                        if let Err(message) = session.resolve(path.clone(), version, request, item)
+                        {
+                            publish(
+                                &mail,
+                                &ctx,
+                                Event::Error {
+                                    server: session.launch.id.clone(),
                                     message,
                                 },
                             );
@@ -1122,5 +1238,183 @@ mod tests {
             eprintln!("{id}: ready={ready} diagnostics={diagnostics}");
             client.shutdown();
         }
+    }
+    #[test]
+    fn clangd_bundles_overloads_and_returns_signature_documentation() {
+        if super::super::catalog::executable(std::path::Path::new("clangd")).is_none() {
+            return;
+        }
+        let root = std::env::temp_dir().join(format!("disco-overloads-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("compile_flags.txt"), "-std=c++20\n").unwrap();
+        let path = root.join("main.cpp");
+        let source = "/** Add two integers.\n * @param first First value.\n * @param second Second value.\n */\nint combine(int first, int second);\n/** Add two decimal values. */\ndouble combine(double first, double second);\n/** Print text. */\nvoid combine(const char *text);\nvoid use() { comb }\n";
+        std::fs::write(&path, source).unwrap();
+        let launch = Launch {
+            id: "clangd".into(),
+            command: PathBuf::from("clangd"),
+            args: vec!["--background-index=false".into()],
+            extensions: vec!["cpp".into()],
+            languages: vec!["cpp".into()],
+            markers: vec!["compile_flags.txt".into()],
+        };
+        let ctx = eframe::egui::Context::default();
+        let mut client = Client::new(&ctx);
+        let sync = |text: &str, version| Sync {
+            launches: vec![launch.clone()],
+            active: Some(Doc {
+                path: path.clone(),
+                text: Arc::from(text),
+                version,
+            }),
+            open: HashSet::from([path.clone()]),
+        };
+        client.sync(sync(source, 1));
+        let until = Instant::now() + Duration::from_secs(8);
+        let mut ready = false;
+        while !ready && Instant::now() < until {
+            for e in client.poll() {
+                if let Event::Sessions(s) = e {
+                    ready = s.first().is_some_and(|s| s.ready);
+                }
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        assert!(ready);
+        let index = source[..source.find("comb }").unwrap() + 4].chars().count();
+        client.request(path.clone(), 1, index, Kind::Completion);
+        let until = Instant::now() + Duration::from_secs(5);
+        let mut items = vec![];
+        while items.is_empty() && Instant::now() < until {
+            for e in client.poll() {
+                if let Event::Completion { items: i, .. } = e {
+                    items = i
+                }
+            }
+            thread::sleep(Duration::from_millis(15));
+        }
+        let grouped: Vec<_> = items
+            .iter()
+            .filter(|i| i.label.contains("combine"))
+            .collect();
+        assert_eq!(
+            grouped.len(),
+            1,
+            "clangd should bundle overloads once signature help is advertised: {:?}",
+            items
+                .iter()
+                .map(|i| (&i.label, &i.detail))
+                .collect::<Vec<_>>()
+        );
+        eprintln!(
+            "bundled: {:?}",
+            grouped
+                .iter()
+                .map(|i| (&i.label, &i.detail, &i.raw["documentation"]))
+                .collect::<Vec<_>>()
+        );
+        let call = source.replace("comb }", "combine(1, ) }");
+        let index = call[..call.rfind("combine(1, ").unwrap() + 11]
+            .chars()
+            .count();
+        client.sync(sync(&call, 2));
+        client.request(path.clone(), 2, index, Kind::Signature);
+        let until = Instant::now() + Duration::from_secs(5);
+        let mut help = None;
+        while help.is_none() && Instant::now() < until {
+            for e in client.poll() {
+                if let Event::Signature { help: h, .. } = e {
+                    help = Some(h)
+                }
+            }
+            thread::sleep(Duration::from_millis(15));
+        }
+        let help = help.expect("signature reply");
+        eprintln!("signatures: {help:?}");
+        assert!(help.signatures.len() >= 2);
+        assert!(
+            help.signatures
+                .iter()
+                .any(|s| s.documentation.contains("Add"))
+        );
+        assert!(
+            help.active_parameter == Some(1)
+                || help
+                    .signatures
+                    .iter()
+                    .any(|s| s.active_parameter == Some(1))
+        );
+        assert!(
+            help.signatures
+                .iter()
+                .any(|s| s.documentation.contains("Second"))
+        );
+        assert!(help.signatures.iter().any(|s| {
+            s.parameters
+                .get(1)
+                .and_then(|p| p.range.clone())
+                .is_some_and(|r| s.label[r].contains("second"))
+        }));
+        client.shutdown();
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn lazy_documentation_responses_are_versioned_and_obsolete_ones_are_ignored() {
+        let launch = Launch {
+            id: "fixture".into(),
+            command: PathBuf::from("sleep"),
+            args: vec!["60".into()],
+            extensions: vec!["txt".into()],
+            languages: vec!["text".into()],
+            markers: vec![],
+        };
+        let mut session = Session::start(launch, std::env::temp_dir()).unwrap();
+        let ctx = eframe::egui::Context::default();
+        let mail = Arc::new(Mutex::new(VecDeque::new()));
+        session.process(json!({"id":1,"result":{"capabilities":{"completionProvider":{"resolveProvider":true}}}}),&mail,&ctx).unwrap();
+        let path = std::env::temp_dir().join("disco-lsp-resolve.txt");
+        session
+            .update(Doc {
+                path: path.clone(),
+                text: Arc::from("first"),
+                version: 1,
+            })
+            .unwrap();
+        session
+            .resolve(path.clone(), 1, 10, json!({"label":"first","data":1}))
+            .unwrap();
+        let old = session.next - 1;
+        session
+            .update(Doc {
+                path: path.clone(),
+                text: Arc::from("second"),
+                version: 2,
+            })
+            .unwrap();
+        session
+            .process(
+                json!({"id":old,"result":{"documentation":"outdated"}}),
+                &mail,
+                &ctx,
+            )
+            .unwrap();
+        assert!(mail.lock().unwrap().is_empty());
+        session
+            .resolve(path, 2, 11, json!({"label":"second","data":2}))
+            .unwrap();
+        let fresh = session.next - 1;
+        session.process(json!({"id":fresh,"result":{"documentation":{"kind":"plaintext","value":"Current documentation"}}}),&mail,&ctx).unwrap();
+        match mail.lock().unwrap().pop_front() {
+            Some(Event::Resolved {
+                version: 2,
+                request: 11,
+                item,
+                ..
+            }) => assert_eq!(
+                protocol::documentation(&item["documentation"]),
+                "Current documentation"
+            ),
+            event => panic!("unexpected resolve event: {event:?}"),
+        };
     }
 }

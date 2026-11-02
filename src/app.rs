@@ -401,6 +401,13 @@ impl eframe::App for Disco {
             self.editor.document.as_ref().map(|d| d.text.as_str()),
             self.tabs.order.clone(),
         );
+        if !self.preferences.open
+            && self.editor.pending.is_none()
+            && self.save_as.is_none()
+            && self.new_file.is_none()
+        {
+            self.languages.signature_shortcuts(ui.ctx());
+        }
         let shown = self.terminal_shown();
         self.terminal.poll(&self.preferences.theme, shown);
         self.path_shortcuts(ui.ctx());

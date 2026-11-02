@@ -4529,3 +4529,197 @@ fn typing_c_identifiers_and_cpp_scope_opens_completion_without_a_shortcut() {
         app.languages.shutdown();
     }
 }
+
+#[test]
+fn overload_docs_and_parameter_help_float_without_changing_the_editor() {
+    if crate::lsp::catalog::executable(Path::new("clangd")).is_none() {
+        return;
+    }
+    let name = "app::ui::interaction_tests::overload_docs_and_parameter_help_float_without_changing_the_editor";
+    let Ok(root) = std::env::var("DISCO_SIGNATURE_UI_FIXTURE") else {
+        let root = std::env::temp_dir().join(format!("disco-signature-ui-{}", std::process::id()));
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::create_dir_all(root.join("project")).unwrap();
+        fs::write(root.join("config/layout.toml"),"language='en'\ntext_scale_version=1\nsave_scan=false\nauto_refresh=false\nanimations=false\n").unwrap();
+        let mut catalog = crate::lsp::catalog::Catalog::builtin();
+        catalog.servers.get_mut("clangd").unwrap().enabled = true;
+        fs::write(
+            root.join("config/lsp.toml"),
+            toml::to_string(&catalog).unwrap(),
+        )
+        .unwrap();
+        fs::write(root.join("project/compile_flags.txt"), "-std=c++20\n").unwrap();
+        fs::write(root.join("project/main.cpp"),"/** Add two integers. */\nint combine(int first, int second);\n/** Add two decimal values. */\ndouble combine(double first, double second);\n/** Print text. */\nvoid combine(const char *text);\nvoid use() {\n    \n}\n").unwrap();
+        let out = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", name, "--nocapture"])
+            .env("DISCO_SIGNATURE_UI_FIXTURE", &root)
+            .env("DISCO_CONFIG_DIR", root.join("config"))
+            .env("XDG_DATA_HOME", root.join("data"))
+            .output()
+            .unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            out.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return;
+    };
+    let root = PathBuf::from(root);
+    let path = root.join("project/main.cpp");
+    let ctx = egui::Context::default();
+    let mut time = 0.;
+    let mut app = Disco::new_with_path(
+        &eframe::CreationContext::_new_kittest(ctx.clone()),
+        Some(path.clone()),
+    );
+    wait_document(&mut app, &ctx, &mut time);
+    app.focus_area(crate::app::workspace_keyboard::Area::Editor, &ctx);
+    let until = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < until
+        && (app.languages.sessions.is_empty() || !app.languages.sessions[0].ready)
+    {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let original = app.editor.document.as_ref().unwrap().text.clone();
+    let id = Id::unique(("file-editor", &app.editor.path));
+    let mut state = egui::TextEdit::load_state(&ctx, id).unwrap();
+    state
+        .cursor
+        .set_char_range(Some(egui::text::CCursorRange::one(
+            egui::text::CCursor::new(
+                original[..original.find("    \n").unwrap() + 4]
+                    .chars()
+                    .count(),
+            ),
+        )));
+    state.store(&ctx, id);
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Text("comb".into())],
+    );
+    let until = Instant::now() + Duration::from_secs(5);
+    while app.languages.completion_count() == 0 && Instant::now() < until {
+        frame(
+            &mut app,
+            &ctx,
+            &mut time,
+            vec![egui::Event::Ime(egui::ImeEvent::Preedit {
+                text: String::new(),
+                active_range_chars: None,
+            })],
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    frame(&mut app, &ctx, &mut time, vec![]);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert_eq!(app.languages.completion_count(), 1);
+    assert!(
+        app.languages
+            .completion_documentation()
+            .contains("Add two integers")
+    );
+    let viewport = ctx
+        .read_response(Id::unique("preview-viewport"))
+        .unwrap()
+        .rect;
+    click(
+        &mut app,
+        &ctx,
+        &mut time,
+        Id::unique(("lsp-completion-row", 0usize)),
+    );
+    assert_eq!(
+        app.editor.document.as_ref().unwrap().text,
+        original.replace("    \n", "    combine\n")
+    );
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Text("(".into())],
+    );
+    let until = Instant::now() + Duration::from_secs(5);
+    while app.languages.signature_summary().0 == 0 && Instant::now() < until {
+        frame(
+            &mut app,
+            &ctx,
+            &mut time,
+            vec![egui::Event::Ime(egui::ImeEvent::Preedit {
+                text: String::new(),
+                active_range_chars: None,
+            })],
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(app.languages.signature_summary().0, 3);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert!(
+        ctx.read_response(Id::unique("lsp-signature-bounds"))
+            .unwrap()
+            .rect
+            .is_positive()
+    );
+    assert_eq!(
+        ctx.read_response(Id::unique("preview-viewport"))
+            .unwrap()
+            .rect,
+        viewport
+    );
+    let draft = app.editor.document.as_ref().unwrap().text.clone();
+    let selected = app.languages.signature_summary().1;
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        egui::Key::ArrowRight,
+        egui::Modifiers::ALT,
+    );
+    assert_eq!(app.languages.signature_summary().1, (selected + 1) % 3);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, draft);
+    let current = app.languages.signature_summary().1;
+    click(&mut app, &ctx, &mut time, Id::unique("lsp-signature-next"));
+    assert_eq!(app.languages.signature_summary().1, (current + 1) % 3);
+    assert_eq!(app.editor.document.as_ref().unwrap().text, draft);
+
+    frame(
+        &mut app,
+        &ctx,
+        &mut time,
+        vec![egui::Event::Text("1,".into())],
+    );
+    let until = Instant::now() + Duration::from_secs(5);
+    while app.languages.signature_summary().2 != Some(1) && Instant::now() < until {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(app.languages.signature_summary().2, Some(1));
+    assert_eq!(app.languages.signature_summary().0, 2);
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        egui::Key::Space,
+        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+    );
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert_eq!(
+        app.languages.completion_count(),
+        0,
+        "parameter-help shortcut must not open the completion list"
+    );
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        egui::Key::Escape,
+        egui::Modifiers::NONE,
+    );
+    assert_eq!(app.languages.signature_summary().0, 0);
+    assert_eq!(fs::read_to_string(&path).unwrap(), original);
+    app.languages.shutdown();
+}

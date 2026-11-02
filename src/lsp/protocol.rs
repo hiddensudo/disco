@@ -234,6 +234,99 @@ pub fn hover_text(v: &Value) -> String {
     collect(&v["contents"], &mut lines);
     lines.join("\n\n").chars().take(8192).collect()
 }
+
+/// Plain text only: servers own the content; the UI never fetches remote markup.
+pub fn documentation(value: &Value) -> String {
+    value
+        .as_str()
+        .or_else(|| value.get("value").and_then(Value::as_str))
+        .unwrap_or_default()
+        .chars()
+        .take(8192)
+        .collect()
+}
+#[derive(Clone, Debug, Default)]
+pub struct Parameter {
+    pub range: Option<std::ops::Range<usize>>,
+    pub documentation: String,
+}
+#[derive(Clone, Debug, Default)]
+pub struct Signature {
+    pub label: String,
+    pub documentation: String,
+    pub parameters: Vec<Parameter>,
+    pub active_parameter: Option<usize>,
+}
+#[derive(Clone, Debug, Default)]
+pub struct SignatureHelp {
+    pub signatures: Vec<Signature>,
+    pub active_signature: usize,
+    pub active_parameter: Option<usize>,
+}
+fn utf16_byte(text: &str, offset: u64) -> Option<usize> {
+    let mut n = 0;
+    for (b, c) in text.char_indices() {
+        if n == offset {
+            return Some(b);
+        }
+        n += c.len_utf16() as u64;
+    }
+    (n == offset).then_some(text.len())
+}
+pub fn signature_help(value: &Value) -> SignatureHelp {
+    let signatures: Vec<_> = value["signatures"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .take(64)
+        .filter_map(|s| {
+            let label = s["label"].as_str()?.chars().take(4096).collect::<String>();
+            let parameters = s["parameters"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .take(64)
+                .map(|p| {
+                    let range = if let Some(a) = p["label"].as_array() {
+                        a.first()
+                            .and_then(Value::as_u64)
+                            .and_then(|a| utf16_byte(&label, a))
+                            .zip(
+                                a.get(1)
+                                    .and_then(Value::as_u64)
+                                    .and_then(|b| utf16_byte(&label, b)),
+                            )
+                            .filter(|(a, b)| a <= b)
+                            .map(|(a, b)| a..b)
+                    } else {
+                        p["label"]
+                            .as_str()
+                            .and_then(|p| label.find(p).map(|a| a..a + p.len()))
+                    };
+                    Parameter {
+                        range,
+                        documentation: documentation(&p["documentation"]),
+                    }
+                })
+                .collect();
+            Some(Signature {
+                label,
+                documentation: documentation(&s["documentation"]),
+                parameters,
+                active_parameter: s["activeParameter"]
+                    .as_u64()
+                    .and_then(|n| usize::try_from(n).ok()),
+            })
+        })
+        .collect();
+    SignatureHelp {
+        active_signature: value["activeSignature"].as_u64().unwrap_or(0) as usize,
+        active_parameter: value["activeParameter"]
+            .as_u64()
+            .and_then(|n| usize::try_from(n).ok()),
+        signatures,
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -275,5 +368,25 @@ mod tests {
             apply_completion("std::vec", 8, &item).unwrap(),
             ("std::vector".into(), 11)
         );
+    }
+    #[test]
+    fn signature_parameters_use_utf16_and_documentation_is_bounded_plain_text() {
+        let help = signature_help(
+            &serde_json::json!({"signatures":[{"label":"f(🦀, int x)","documentation":{"kind":"markdown","value":"Description"},"parameters":[{"label":[2,4],"documentation":"Crab"},{"label":"int x"}],"activeParameter":1}],"activeSignature":99,"activeParameter":0}),
+        );
+        let sig = &help.signatures[0];
+        assert_eq!(sig.documentation, "Description");
+        assert_eq!(&sig.label[sig.parameters[0].range.clone().unwrap()], "🦀");
+        assert_eq!(
+            &sig.label[sig.parameters[1].range.clone().unwrap()],
+            "int x"
+        );
+        assert_eq!(sig.active_parameter, Some(1));
+        let invalid = signature_help(
+            &serde_json::json!({"signatures":[{"label":"f(🦀)","parameters":[{"label":[3,4]}]}]}),
+        );
+        assert!(invalid.signatures[0].parameters[0].range.is_none());
+        assert!(signature_help(&Value::Null).signatures.is_empty());
+        assert_eq!(documentation(&Value::String("x".repeat(20000))).len(), 8192);
     }
 }
