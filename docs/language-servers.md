@@ -75,6 +75,12 @@ clangd can narrow the available signatures as you enter arguments. Inspecting an
 
 Descriptions come from the server, usually source/header comments; they may be incomplete or absent. disco presents common Doxygen tags as readable descriptions and parameter rows. It does not fetch documentation pages or generate AI explanations. Hover over code or diagnostic markers for additional information; the document status shows the diagnostic count.
 
+## Go to definition
+
+Place the cursor on a symbol and press **F12**, or **Ctrl+click** it. The target opens in a kept Focus tab at the server-provided position; other drafts stay open. No disk scan is started. Multiple results open a chooser (↑/↓, Enter or click; Escape closes). No result is reported in the status bar.
+
+Results depend on the server, project configuration and index. In particular, clangd’s background index is off by default, so implementations in unopened translation units may be unavailable; the server may return a declaration instead. This is separate from navigating compiler diagnostics.
+
 ## If suggestions do not appear
 
 | Check | Action |
@@ -113,6 +119,6 @@ Managed packages live in `$XDG_DATA_HOME/disco/lsp` (normally `~/.local/share/di
 
 Supported: plain-text completion with additional edits, lazy completion documentation, hover, signature help and push diagnostics. Accepting a suggestion is one undoable edit; it does not itself save the file. Existing auto-save rules still apply.
 
-Not implemented: snippets, go-to-definition, rename, formatting, code actions, workspace edits, semantic tokens, debugger or integrated AI completion. The editor’s 128 KiB / 2,000-line limits still apply. clangd’s background index and clang-tidy are disabled by default; Rust build scripts, proc macros and check-on-save are disabled by default. Versionless server diagnostics cannot provide the same stale-result guarantees as versioned messages.
+Not implemented: snippets, rename, formatting, code actions, workspace edits, semantic tokens, debugger or integrated AI completion. The editor’s 128 KiB / 2,000-line limits still apply. clangd’s background index and clang-tidy are disabled by default; Rust build scripts, proc macros and check-on-save are disabled by default. Versionless server diagnostics cannot provide the same stale-result guarantees as versioned messages.
 
 Developer details and resource measurements: [LSP investigation](investigations/lsp-resources.md). Screenshots show native 0.2.3-unstable UI with the included example, captured on a private virtual display.

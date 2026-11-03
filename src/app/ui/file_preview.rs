@@ -281,6 +281,27 @@ impl Disco {
                             let gutter_left = ui.cursor().min.x;
                             ui.allocate_space(Vec2::new(30., 0.));
                             let editor_id = egui::Id::unique(("file-editor", &path));
+                            let jump = self.editor.jump.take().and_then(|position| {
+                                let offset = crate::lsp::protocol::byte_offset(&doc.text, position);
+                                if offset.is_none() {
+                                    self.message = crate::tr!(
+                                        "Позиція поза завантаженим текстом",
+                                        "Location is outside the loaded text"
+                                    )
+                                    .into();
+                                }
+                                offset.map(|byte| doc.text[..byte].chars().count())
+                            });
+                            if let Some(index) = jump {
+                                let mut state = egui::TextEdit::load_state(ui.ctx(), editor_id)
+                                    .unwrap_or_default();
+                                state
+                                    .cursor
+                                    .set_char_range(Some(egui::text::CCursorRange::one(
+                                        egui::text::CCursor::new(index),
+                                    )));
+                                state.store(ui.ctx(), editor_id);
+                            }
                             self.languages.before(
                                 ui.ctx(),
                                 editor_id,
@@ -321,6 +342,22 @@ impl Disco {
                             drop(buffer);
                             self.languages
                                 .after(ui, &mut output, &doc.text, read_only || busy);
+                            if let Some(index) = jump {
+                                output.response.request_focus();
+                                let rect = output
+                                    .galley
+                                    .pos_from_cursor(egui::text::CCursor::new(index))
+                                    .translate(output.galley_pos.to_vec2());
+                                ui.scroll_to_rect(rect, Some(egui::Align::Center));
+                            }
+                            #[cfg(test)]
+                            ui.ctx().data_mut(|d| {
+                                d.insert_temp(
+                                    egui::Id::unique("code-editor-galley"),
+                                    (output.galley.clone(), output.galley_pos),
+                                )
+                            });
+
                             text_changed = output.response.changed();
                             let blank_gutter = Rect::from_min_max(
                                 Pos2::new(

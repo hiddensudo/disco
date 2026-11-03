@@ -390,3 +390,53 @@ mod tests {
         assert_eq!(documentation(&Value::String("x".repeat(20000))).len(), 8192);
     }
 }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Location {
+    pub path: PathBuf,
+    pub range: Range,
+}
+/// Definition may return a single Location, Locations, LocationLinks or null.
+pub fn locations(value: &Value) -> Vec<Location> {
+    let values: Vec<&Value> = value
+        .as_array()
+        .map_or_else(|| vec![value], |v| v.iter().take(256).collect());
+    let mut result = Vec::new();
+    for value in values {
+        let target = value.get("targetUri").or_else(|| value.get("uri"));
+        let range = value
+            .get("targetSelectionRange")
+            .or_else(|| value.get("range"));
+        if let (Some(path), Some(range)) = (
+            target.and_then(Value::as_str).and_then(path),
+            range.and_then(|r| serde_json::from_value::<Range>(r.clone()).ok()),
+        ) {
+            if path.is_absolute()
+                && (range.start.line, range.start.character)
+                    <= (range.end.line, range.end.character)
+            {
+                let location = Location { path, range };
+                if !result.contains(&location) {
+                    result.push(location);
+                }
+            }
+        }
+    }
+    result
+}
+#[cfg(test)]
+mod location_tests {
+    use super::*;
+    #[test]
+    fn definition_accepts_locations_and_links_but_only_local_valid_targets() {
+        let range =
+            serde_json::json!({"start":{"line":2,"character":4},"end":{"line":2,"character":8}});
+        let location = serde_json::json!({"uri":"file:///tmp/a%20b.cpp","range":range});
+        assert_eq!(locations(&location)[0].path, PathBuf::from("/tmp/a b.cpp"));
+        let values = serde_json::json!([location, {"targetUri":"file:///tmp/header.hpp","targetSelectionRange":range,"targetRange":{"start":{"line":0,"character":0},"end":{"line":99,"character":0}}}, {"uri":"https://example.com/code","range":range}, {"uri":"file:///tmp/bad","range":{"start":{"line":8,"character":0},"end":{"line":1,"character":0}}}]);
+        let parsed = locations(&values);
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[1].range.start.line, 2);
+        assert!(locations(&Value::Null).is_empty());
+    }
+}

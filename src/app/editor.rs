@@ -83,6 +83,7 @@ pub(super) struct Editor {
     pub origin: Option<Category>,
     pub document: Option<Document>,
     pub focused: bool,
+    pub jump: Option<crate::lsp::protocol::Position>,
     external_changed: bool,
     pub(super) refreshing: bool,
     pub focus_on_load: bool,

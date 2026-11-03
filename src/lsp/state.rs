@@ -29,6 +29,11 @@ pub struct State {
     selected: usize,
     revealed_selection: Option<usize>,
     completion: u64,
+    definition_request: u64,
+    definitions: Vec<protocol::Location>,
+    definition_selected: usize,
+    pub navigate: Option<protocol::Location>,
+    pub navigation_notice: Option<String>,
     signature: Option<protocol::SignatureHelp>,
     signature_selected: usize,
     signature_request: u64,
@@ -65,6 +70,11 @@ impl State {
             selected: 0,
             revealed_selection: None,
             completion: 0,
+            definition_request: 0,
+            definitions: vec![],
+            definition_selected: 0,
+            navigate: None,
+            navigation_notice: None,
             signature: None,
             signature_selected: 0,
             signature_request: 0,
@@ -128,6 +138,9 @@ impl State {
             self.path = path.map(Path::to_path_buf);
             self.text = Arc::from(text);
             self.items.clear();
+            self.definitions.clear();
+            self.navigate = None;
+            self.definition_request = 0;
             self.diagnostics.clear();
             self.hover_text.clear();
             self.hover_index = None;
@@ -236,6 +249,27 @@ impl State {
                             }
                         }
                     }
+                    Event::Definition {
+                        path,
+                        version,
+                        request,
+                        locations,
+                    } if self.path.as_ref() == Some(&path)
+                        && version == self.version
+                        && request == self.definition_request =>
+                    {
+                        self.definition_request = 0;
+                        if locations.len() == 1 {
+                            self.navigate = locations.into_iter().next();
+                        } else if locations.is_empty() {
+                            self.navigation_notice = Some(
+                                crate::tr!("Визначення не знайдено", "No definition found").into(),
+                            );
+                        } else {
+                            self.definitions = locations;
+                            self.definition_selected = 0;
+                        }
+                    }
                     Event::Diagnostics {
                         path,
                         version,
@@ -251,6 +285,10 @@ impl State {
                         self.sessions = s;
                     }
                     Event::Error { server, message } => {
+                        if self.definition_request != 0 {
+                            self.navigation_notice = Some(format!("{server}: {message}"));
+                            self.definition_request = 0;
+                        }
                         self.notice = format!("{server}: {message}")
                     }
                     _ => {}
@@ -300,6 +338,7 @@ impl State {
                 Kind::Completion => self.completion = id,
                 Kind::Hover => self.hover = id,
                 Kind::Signature => self.signature_request = id,
+                Kind::Definition => self.definition_request = id,
                 Kind::Resolve => {}
             }
         }
@@ -335,10 +374,15 @@ impl State {
             || self.completion != 0
             || self.due.is_some()
             || self.signature.is_some()
-            || self.signature_due.is_some())
+            || self.signature_due.is_some()
+            || !self.definitions.is_empty()
+            || self.definition_request != 0)
             && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
         {
             self.items.clear();
+            self.definitions.clear();
+            self.definition_request = 0;
+            self.navigate = None;
             self.completion = 0;
             self.due = None;
             self.accept = false;
@@ -354,6 +398,28 @@ impl State {
             .and_then(|s| s.cursor.char_range())
             .map(|r| usize::from(r.primary.index))
             .unwrap_or(0);
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F12)) {
+            self.items.clear();
+            self.definitions.clear();
+            self.request(Kind::Definition, index);
+        }
+        if !self.definitions.is_empty() {
+            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+                self.definitions.clear();
+            } else {
+                let up =
+                    ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp));
+                let down =
+                    ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown));
+                self.definition_selected =
+                    (self.definition_selected as isize + isize::from(down) - isize::from(up))
+                        .rem_euclid(self.definitions.len() as isize) as usize;
+                if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)) {
+                    self.navigate = self.definitions.get(self.definition_selected).cloned();
+                    self.definitions.clear();
+                }
+            }
+        }
         let manual_signature = ctx.input_mut(|i| {
             i.consume_key(
                 egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
@@ -503,6 +569,14 @@ impl State {
             .filter(|p| out.response.rect.contains(*p) && ui.clip_rect().contains(*p))
         {
             let cursor = usize::from(out.galley.cursor_from_pos(pointer - out.galley_pos).index);
+            if ui.input(|i| i.modifiers.ctrl && !i.modifiers.alt && !i.modifiers.shift) {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                if ui.input(|i| i.pointer.primary_clicked()) {
+                    self.items.clear();
+                    self.definitions.clear();
+                    self.request(Kind::Definition, cursor);
+                }
+            }
             if self.hover_at.is_none_or(|(i, _)| i != cursor) {
                 self.hover_at = Some((cursor, Instant::now()));
                 self.hover_text.clear();
@@ -573,7 +647,9 @@ impl State {
             || self.completion != 0
             || self.due.is_some()
             || self.signature.is_some()
-            || self.signature_due.is_some())
+            || self.signature_due.is_some()
+            || !self.definitions.is_empty()
+            || self.definition_request != 0)
             && let Some(path) = &self.path
         {
             let id = egui::Id::unique(("file-editor", &Some(path.clone())));
@@ -591,6 +667,10 @@ impl State {
                     )
                 });
             }
+        }
+        if !self.definitions.is_empty() {
+            self.definition_overlay(ctx);
+            return;
         }
         if self.items.is_empty() {
             self.revealed_selection = None;
@@ -741,6 +821,66 @@ impl State {
                     egui::Sense::hover(),
                 );
             });
+    }
+    fn definition_overlay(&mut self, ctx: &egui::Context) {
+        let Some(at) = self.anchor else { return };
+        if let Some(path) = &self.path {
+            let editor = egui::Id::unique(("file-editor", &Some(path.clone())));
+            if !ctx.memory(|m| m.has_focus(editor)) {
+                let clicking = self.completion_rect.is_some_and(|r| {
+                    ctx.input(|i| {
+                        i.pointer.interact_pos().is_some_and(|p| r.contains(p))
+                            && (i.pointer.any_down() || i.pointer.any_released())
+                    })
+                });
+                if clicking {
+                    ctx.memory_mut(|m| m.request_focus(editor));
+                } else {
+                    self.definitions.clear();
+                    return;
+                }
+            }
+        }
+        let mut chosen = None;
+        egui::Area::new(egui::Id::unique("lsp-definitions"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(at)
+            .show(ctx, |ui| {
+                let popup = egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.set_width(480.);
+                    ui.strong(crate::tr!("Обери визначення", "Choose definition"));
+                    egui::ScrollArea::vertical()
+                        .max_height(220.)
+                        .show(ui, |ui| {
+                            for (n, location) in self.definitions.iter().enumerate() {
+                                let label = format!(
+                                    "{}:{}:{}",
+                                    location.path.display(),
+                                    location.range.start.line + 1,
+                                    location.range.start.character + 1
+                                );
+                                let r = ui.add(
+                                    egui::Button::selectable(n == self.definition_selected, label)
+                                        .truncate(),
+                                );
+                                if n == self.definition_selected
+                                    && self.revealed_selection != Some(n)
+                                {
+                                    r.scroll_to_me(None);
+                                    self.revealed_selection = Some(n);
+                                }
+                                if r.clicked() {
+                                    chosen = Some(location.clone());
+                                }
+                            }
+                        });
+                });
+                self.completion_rect = Some(popup.response.rect);
+            });
+        if chosen.is_some() {
+            self.navigate = chosen;
+            self.definitions.clear();
+        }
     }
     pub fn signature_shortcuts(&mut self, ctx: &egui::Context) {
         if self.signature.is_none() || !self.items.is_empty() {
@@ -1021,6 +1161,65 @@ fn render_documentation(ui: &mut egui::Ui, text: &str) {
 mod presentation_tests {
     use super::*;
 
+    #[test]
+    fn multiple_definitions_accept_keyboard_selection_and_escape() {
+        let ctx = egui::Context::default();
+        let mut state = State::new(std::env::temp_dir().join("disco-definitions-unused"));
+        let path = PathBuf::from("/tmp/source.cpp");
+        state.path = Some(path.clone());
+        state.anchor = Some(egui::pos2(50., 80.));
+        let locations = vec![
+            protocol::Location {
+                path: "/tmp/a.hpp".into(),
+                range: protocol::Range::default(),
+            },
+            protocol::Location {
+                path: "/tmp/b.hpp".into(),
+                range: protocol::Range::default(),
+            },
+        ];
+        state.definitions = locations.clone();
+        let id = egui::Id::unique(("file-editor", &Some(path)));
+        let frame = |state: &mut State, key: Option<egui::Key>| {
+            let events = key
+                .map(|key| {
+                    vec![egui::Event::Key {
+                        key,
+                        physical_key: None,
+                        pressed: true,
+                        repeat: false,
+                        modifiers: egui::Modifiers::NONE,
+                    }]
+                })
+                .unwrap_or_default();
+            ctx.run_ui(
+                egui::RawInput {
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    ui.interact(
+                        egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(20., 20.)),
+                        id,
+                        egui::Sense::focusable_noninteractive(),
+                    );
+                    ui.ctx().memory_mut(|m| m.request_focus(id));
+                    state.before(ui.ctx(), id, "", false);
+                    state.overlay(ui.ctx());
+                },
+            )
+            .drop_without_applying_deltas();
+        };
+        frame(&mut state, None);
+        frame(&mut state, Some(egui::Key::ArrowDown));
+        frame(&mut state, Some(egui::Key::Enter));
+        assert_eq!(state.navigate, Some(locations[1].clone()));
+        state.navigate = None;
+        state.definitions = locations;
+        frame(&mut state, None);
+        frame(&mut state, Some(egui::Key::Escape));
+        assert!(state.definitions.is_empty() && state.navigate.is_none());
+    }
     #[test]
     fn doxygen_is_readable_and_unrecognized_prose_is_preserved() {
         crate::i18n::with_language(crate::i18n::Language::En, || {

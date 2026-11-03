@@ -19,6 +19,7 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+mod code_navigation;
 mod document_find;
 mod document_zoom;
 mod editor;
@@ -401,6 +402,18 @@ impl eframe::App for Disco {
             self.editor.document.as_ref().map(|d| d.text.as_str()),
             self.tabs.order.clone(),
         );
+        if !self.preferences.open
+            && self.editor.pending.is_none()
+            && self.save_as.is_none()
+            && self.new_file.is_none()
+        {
+            if let Some(location) = self.languages.navigate.take() {
+                self.open_code_location(location, ui.ctx());
+            }
+            if let Some(message) = self.languages.navigation_notice.take() {
+                self.message = message;
+            }
+        }
         if !self.preferences.open
             && self.editor.pending.is_none()
             && self.save_as.is_none()

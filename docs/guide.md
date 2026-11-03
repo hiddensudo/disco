@@ -171,6 +171,7 @@ Text preview: UTF-8 or UTF-16 with BOM, up to **128 KiB / 2,000 lines**; truncat
 | Ctrl+L | Edit address |
 | Ctrl+F, F3 / Shift+F3 | Find in Focus; next/previous match |
 | Ctrl+Plus / Minus, Ctrl+wheel, Ctrl+0 | File zoom / reset |
+| F12 / Ctrl+click | Go to definition (LSP) |
 | Ctrl+Space / Ctrl+Shift+Space | Completion / parameter help |
 | Alt+← / → in signature help | Inspect overloads |
 | Ctrl+Alt+F / V / T | Focus / Overview / Terminal defaults |

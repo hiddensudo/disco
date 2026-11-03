@@ -69,6 +69,12 @@ pub enum Event {
         request: u64,
         help: protocol::SignatureHelp,
     },
+    Definition {
+        path: PathBuf,
+        version: u64,
+        request: u64,
+        locations: Vec<protocol::Location>,
+    },
     Resolved {
         path: PathBuf,
         version: u64,
@@ -92,6 +98,7 @@ pub enum Kind {
     Hover,
     Signature,
     Resolve,
+    Definition,
 }
 enum Control {
     Request {
@@ -315,7 +322,7 @@ impl Session {
             queued: vec![],
         };
         let root = protocol::uri(&s.root)?;
-        s.send(json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":std::process::id(),"clientInfo":{"name":"disco","version":env!("CARGO_PKG_VERSION")},"rootUri":root,"workspaceFolders":[{"uri":root,"name":s.root.file_name().unwrap_or_default().to_string_lossy()}],"capabilities":{"general":{"positionEncodings":["utf-16"]},"workspace":{"configuration":false,"applyEdit":false},"textDocument":{"completion":{"completionItem":{"snippetSupport":false,"documentationFormat":["plaintext"],"resolveSupport":{"properties":["documentation","detail"]}}},"hover":{"contentFormat":["plaintext"]},"signatureHelp":{"signatureInformation":{"documentationFormat":["plaintext"],"parameterInformation":{"labelOffsetSupport":true},"activeParameterSupport":true}},"publishDiagnostics":{"versionSupport":true}}},"initializationOptions":if s.launch.id=="rust-analyzer"{json!({"checkOnSave":false,"cargo":{"buildScripts":{"enable":false}},"procMacro":{"enable":false}})}else{Value::Null}}}))?;
+        s.send(json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":std::process::id(),"clientInfo":{"name":"disco","version":env!("CARGO_PKG_VERSION")},"rootUri":root,"workspaceFolders":[{"uri":root,"name":s.root.file_name().unwrap_or_default().to_string_lossy()}],"capabilities":{"general":{"positionEncodings":["utf-16"]},"workspace":{"configuration":false,"applyEdit":false},"textDocument":{"completion":{"completionItem":{"snippetSupport":false,"documentationFormat":["plaintext"],"resolveSupport":{"properties":["documentation","detail"]}}},"definition":{"linkSupport":true},"hover":{"contentFormat":["plaintext"]},"signatureHelp":{"signatureInformation":{"documentationFormat":["plaintext"],"parameterInformation":{"labelOffsetSupport":true},"activeParameterSupport":true}},"publishDiagnostics":{"versionSupport":true}}},"initializationOptions":if s.launch.id=="rust-analyzer"{json!({"checkOnSave":false,"cargo":{"buildScripts":{"enable":false}},"procMacro":{"enable":false}})}else{Value::Null}}}))?;
         Ok(s)
     }
     fn send(&mut self, v: Value) -> Result<(), String> {
@@ -422,11 +429,19 @@ impl Session {
             Kind::Completion => ("textDocument/completion", "completionProvider"),
             Kind::Hover => ("textDocument/hover", "hoverProvider"),
             Kind::Signature => ("textDocument/signatureHelp", "signatureHelpProvider"),
+            Kind::Definition => ("textDocument/definition", "definitionProvider"),
             Kind::Resolve => return Ok(()),
         };
         if self.capabilities[capability].is_null()
             || self.capabilities[capability] == Value::Bool(false)
         {
+            if kind == Kind::Definition {
+                return Err(crate::tr!(
+                    "Сервер не підтримує перехід до визначення",
+                    "Server does not support go to definition"
+                )
+                .into());
+            }
             return Ok(());
         }
         let params = json!({"textDocument":{"uri":protocol::uri(&path)?},"position":position});
@@ -589,6 +604,12 @@ impl Session {
                         version: p.version,
                         request: p.request,
                         help: protocol::signature_help(result),
+                    },
+                    Kind::Definition => Event::Definition {
+                        path: p.path,
+                        version: p.version,
+                        request: p.request,
+                        locations: protocol::locations(result),
                     },
                     Kind::Resolve => Event::Resolved {
                         path: p.path,
@@ -1118,7 +1139,7 @@ mod tests {
         let pid = s.child.id();
         let ctx = eframe::egui::Context::default();
         let mail = Arc::new(Mutex::new(VecDeque::new()));
-        s.process(json!({"id":1,"result":{"capabilities":{"hoverProvider":true,"completionProvider":{}}}}),&mail,&ctx).unwrap();
+        s.process(json!({"id":1,"result":{"capabilities":{"hoverProvider":true,"completionProvider":{},"definitionProvider":true}}}),&mail,&ctx).unwrap();
         let path = std::env::temp_dir().join("disco-lsp-stale.txt");
         s.update(Doc {
             path: path.clone(),
@@ -1128,6 +1149,8 @@ mod tests {
         .unwrap();
         s.request(path.clone(), 1, 2, Kind::Completion, 1).unwrap();
         let old = s.next - 1;
+        s.request(path.clone(), 1, 2, Kind::Definition, 3).unwrap();
+        let old_definition = s.next - 1;
         s.update(Doc {
             path: path.clone(),
             text: Arc::from("new"),
@@ -1140,6 +1163,8 @@ mod tests {
             &ctx,
         )
         .unwrap();
+        assert!(mail.lock().unwrap().is_empty());
+        s.process(json!({"id":old_definition,"result":{"uri":"file:///tmp/obsolete.hpp","range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}}}}),&mail,&ctx).unwrap();
         assert!(mail.lock().unwrap().is_empty());
         s.process(json!({"method":"textDocument/publishDiagnostics","params":{"uri":protocol::uri(&path).unwrap(),"version":1,"diagnostics":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"message":"old"}]}}),&mail,&ctx).unwrap();
         assert!(mail.lock().unwrap().is_empty());

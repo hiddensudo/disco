@@ -4723,3 +4723,165 @@ fn overload_docs_and_parameter_help_float_without_changing_the_editor() {
     assert_eq!(fs::read_to_string(&path).unwrap(), original);
     app.languages.shutdown();
 }
+
+#[test]
+fn definition_f12_and_ctrl_click_open_utf16_target_and_keep_the_source_draft() {
+    if crate::lsp::catalog::executable(Path::new("clangd")).is_none() {
+        return;
+    }
+    let name = "app::ui::interaction_tests::definition_f12_and_ctrl_click_open_utf16_target_and_keep_the_source_draft";
+    let Ok(root) = std::env::var("DISCO_DEFINITION_UI_FIXTURE") else {
+        let root = std::env::temp_dir().join(format!("disco-definition-ui-{}", std::process::id()));
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::create_dir_all(root.join("project")).unwrap();
+        fs::write(root.join("config/layout.toml"),"language='en'\ntext_scale_version=1\nsave_scan=false\nauto_refresh=false\nanimations=false\n").unwrap();
+        let mut catalog = crate::lsp::catalog::Catalog::builtin();
+        catalog.servers.get_mut("clangd").unwrap().enabled = true;
+        fs::write(
+            root.join("config/lsp.toml"),
+            toml::to_string(&catalog).unwrap(),
+        )
+        .unwrap();
+        fs::write(root.join("project/compile_flags.txt"), "-std=c++20\n").unwrap();
+        fs::write(
+            root.join("project/helpers.hpp"),
+            "// helper\n/* 🪩 */ inline int twice(int value) { return value * 2; }\n",
+        )
+        .unwrap();
+        fs::write(root.join("project/main.cpp"),"#include \"helpers.hpp\"\nint main() {\n    int value = twice(21);\n    return value;\n}\n").unwrap();
+        let out = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", name, "--nocapture"])
+            .env("DISCO_DEFINITION_UI_FIXTURE", &root)
+            .env("DISCO_CONFIG_DIR", root.join("config"))
+            .env("XDG_DATA_HOME", root.join("data"))
+            .output()
+            .unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            out.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return;
+    };
+    let root = PathBuf::from(root);
+    let source = root.join("project/main.cpp");
+    let target = root.join("project/helpers.hpp");
+    let ctx = egui::Context::default();
+    let mut time = 0.;
+    let mut app = Disco::new_with_path(
+        &eframe::CreationContext::_new_kittest(ctx.clone()),
+        Some(source.clone()),
+    );
+    wait_document(&mut app, &ctx, &mut time);
+    app.editor
+        .document
+        .as_mut()
+        .unwrap()
+        .text
+        .push_str("// local draft\n");
+    let draft = app.editor.document.as_ref().unwrap().text.clone();
+    let index = draft[..draft.find("twice").unwrap() + 2].chars().count();
+    let id = Id::unique(("file-editor", &app.editor.path));
+    let mut state = egui::TextEdit::load_state(&ctx, id).unwrap();
+    state
+        .cursor
+        .set_char_range(Some(egui::text::CCursorRange::one(
+            egui::text::CCursor::new(index),
+        )));
+    state.store(&ctx, id);
+    app.focus_area(crate::app::workspace_keyboard::Area::Editor, &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    press_key(
+        &mut app,
+        &ctx,
+        &mut time,
+        egui::Key::F12,
+        egui::Modifiers::NONE,
+    );
+    let until = Instant::now() + Duration::from_secs(8);
+    while app.editor.path.as_ref() != Some(&target) && Instant::now() < until {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(15));
+    }
+    assert_eq!(
+        app.editor.path.as_ref(),
+        Some(&target),
+        "{} / {}",
+        app.message,
+        app.languages.notice
+    );
+    wait_document(&mut app, &ctx, &mut time);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    let text = &app.editor.document.as_ref().unwrap().text;
+    let expected = text[..text.find("twice").unwrap()].chars().count();
+    let state =
+        egui::TextEdit::load_state(&ctx, Id::unique(("file-editor", &app.editor.path))).unwrap();
+    assert_eq!(state.cursor.char_range().unwrap().primary.index.0, expected);
+    assert_eq!(
+        app.tabs.inactive[&source]
+            .editor
+            .document
+            .as_ref()
+            .unwrap()
+            .text,
+        draft
+    );
+    assert!(!app.scan.busy && !crate::snapshot::file().exists());
+    app.activate_tab(&source, &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    app.focus_area(crate::app::workspace_keyboard::Area::Editor, &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    let (galley, pos) = ctx
+        .data(|d| {
+            d.get_temp::<(std::sync::Arc<egui::Galley>, Pos2)>(Id::unique("code-editor-galley"))
+        })
+        .unwrap();
+    let pointer = galley
+        .pos_from_cursor(egui::text::CCursor::new(index))
+        .translate(pos.to_vec2())
+        .center();
+    for pressed in [true, false] {
+        time += 0.05;
+        ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1360., 800.))),
+                time: Some(time),
+                events: vec![
+                    egui::Event::ModifiersChanged(egui::Modifiers::CTRL),
+                    egui::Event::PointerMoved(pointer),
+                    egui::Event::PointerButton {
+                        pos: pointer,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::CTRL,
+                    },
+                ],
+                ..Default::default()
+            },
+            |ui| eframe::App::ui(&mut app, ui, &mut eframe::Frame::_new_kittest()),
+        )
+        .drop_without_applying_deltas();
+    }
+    let until = Instant::now() + Duration::from_secs(5);
+    while app.editor.path.as_ref() != Some(&target) && Instant::now() < until {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(15));
+    }
+    assert_eq!(
+        app.editor.path.as_ref(),
+        Some(&target),
+        "Ctrl+click should follow the symbol"
+    );
+    assert_eq!(
+        app.tabs.inactive[&source]
+            .editor
+            .document
+            .as_ref()
+            .unwrap()
+            .text,
+        draft
+    );
+    assert!(!fs::read_to_string(source).unwrap().contains("local draft"));
+}

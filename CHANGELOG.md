@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- **Go to definition:** F12 or Ctrl+click requests LSP definition, opens its UTF-16 location in a kept Focus tab without scanning, and preserves other drafts. Multiple targets have a chooser; stale replies and non-file URIs are rejected.
+
 - **Per-root scan cache:** independent snapshots preserve broad scans after narrower/unrelated scans. Category/Home navigation loads a matching workspace asynchronously. The legacy last snapshot is archived before replacement; profile writers are serialized and cancelled scans never replace complete entries. No cross-profile imports or automatic merging of independent scan dates.
 
 - **Language servers:** opt-in settings for system clangd and managed Rust/Python/JavaScript/TypeScript servers. Automatic/manual completion, hover, diagnostics, shared background sessions, explicit install/update/rollback/remove and resource information. See the [illustrated setup guide](docs/language-servers.md).
