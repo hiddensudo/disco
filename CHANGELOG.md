@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- **Per-root scan cache:** independent snapshots preserve broad scans after narrower/unrelated scans. Category/Home navigation loads a matching workspace asynchronously. The legacy last snapshot is archived before replacement; profile writers are serialized and cancelled scans never replace complete entries. No cross-profile imports or automatic merging of independent scan dates.
+
 - **Language servers:** opt-in settings for system clangd and managed Rust/Python/JavaScript/TypeScript servers. Automatic/manual completion, hover, diagnostics, shared background sessions, explicit install/update/rollback/remove and resource information. See the [illustrated setup guide](docs/language-servers.md).
 - **Function help:** clangd groups overloads into one completion. Accept the name and type `(` to inspect signatures with ‹/› or Alt+Left/Right; Ctrl+Shift+Space opens parameter help manually. Descriptions and current-argument highlighting float over the document. Stable list scrolling and readable Doxygen descriptions replace jumping rows and raw tags.
 - **Direct paths:** `disco file.txt` opens a standalone document without scanning; `disco /path/to/project` opens and scans that folder as a workspace. Ctrl+L edits the path with asynchronous file/folder suggestions. Direct-file windows retain the category rail; Home and breadcrumbs reuse cached folders or list a single directory without recursively scanning.

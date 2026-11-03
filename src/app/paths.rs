@@ -23,7 +23,8 @@ pub(super) struct Paths {
 }
 impl Disco {
     pub(in crate::app) fn leave_path_browser(&mut self) {
-        if self.scan.report.is_none() && self.preferences.layout.save_scan && !self.demo {
+        if self.preferences.layout.save_scan && !self.demo {
+            self.paths.snapshot.cancel();
             self.paths.snapshot.needed = true;
         }
         self.paths.standalone = None;

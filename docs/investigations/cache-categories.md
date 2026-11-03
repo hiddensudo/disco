@@ -1,3 +1,5 @@
+> Update, 2026-11-03: per-root snapshots now preserve older workspaces. The single last-scan behavior investigated below describes the earlier implementation; the [current guide](../guide.md#browse-scan-and-search-filenames) explains archive selection. Profiles remain separate.
+
 # Empty categories after switching between cached workspaces
 
 DSC-033 investigation, 2026-10-31. Diagnostics and regression tests run without opening a desktop window. Private profile copies and their metadata/hashes remain outside the repository.

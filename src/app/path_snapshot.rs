@@ -11,7 +11,7 @@ type Loaded = Result<Option<(SavedScan, Index)>, String>;
 #[derive(Default)]
 pub(super) struct Cache {
     pub needed: bool,
-    pub rx: Option<Receiver<Loaded>>,
+    pub rx: Option<Receiver<(u64, Loaded)>>,
 }
 impl Cache {
     pub fn loading(&self) -> bool {
@@ -24,29 +24,44 @@ impl Cache {
 }
 impl Disco {
     pub(in crate::app) fn poll_path_snapshot(&mut self, ctx: &egui::Context) {
-        if self.scan.busy || self.scan.report.is_some() || self.paths.standalone.is_some() {
+        if self.scan.busy || self.paths.standalone.is_some() {
             self.paths.snapshot.cancel();
             return;
         }
         if self.scan.restore_requested_root.is_some() {
             // The ordinary startup worker is already reading this same file.
-            self.paths.snapshot.needed = false;
             return;
         }
         if self.paths.snapshot.needed && self.paths.snapshot.rx.is_none() {
             self.paths.snapshot.needed = false;
             let (tx, rx) = mpsc::channel();
             self.paths.snapshot.rx = Some(rx);
+            let targets = if let Some(path) = &self.paths.directory {
+                vec![path.clone()]
+            } else if self.browser.category == crate::index::Category::All {
+                vec![
+                    self.browser
+                        .table_root
+                        .and_then(|id| self.scan.report.as_ref()?.folders.get(id))
+                        .map(|f| f.path.clone())
+                        .unwrap_or_else(|| self.browser.root.clone().into()),
+                ]
+            } else if let Some(c) = self.collections.config.get(self.browser.category) {
+                c.folders.clone()
+            } else {
+                vec![]
+            };
+            let requested_revision = self.scan.report_revision;
             let ctx = ctx.clone();
             std::thread::spawn(move || {
                 crate::scan::background_priority();
-                let result = crate::snapshot::load().map(|saved| {
+                let result = crate::snapshot::load_for(&targets).map(|saved| {
                     saved.map(|saved| {
                         let index = Index::new(&saved.report);
                         (saved, index)
                     })
                 });
-                let _ = tx.send(result);
+                let _ = tx.send((requested_revision, result));
                 ctx.request_repaint();
             });
             return;
@@ -59,17 +74,38 @@ impl Disco {
             .and_then(|rx| match rx.try_recv() {
                 Ok(result) => Some(result),
                 Err(mpsc::TryRecvError::Empty) => None,
-                Err(mpsc::TryRecvError::Disconnected) => Some(Err(crate::tr!(
-                    "Не вдалося прочитати збережений знімок",
-                    "Could not read the saved snapshot"
-                )
-                .into())),
+                Err(mpsc::TryRecvError::Disconnected) => Some((
+                    self.scan.report_revision,
+                    Err(crate::tr!(
+                        "Не вдалося прочитати збережений знімок",
+                        "Could not read the saved snapshot"
+                    )
+                    .into()),
+                )),
             });
-        let Some(result) = result else { return };
+        let Some((revision, result)) = result else {
+            return;
+        };
+        if revision != self.scan.report_revision {
+            self.paths.snapshot.cancel();
+            return;
+        }
         self.paths.snapshot.rx = None;
         match result {
             Ok(Some((saved, index))) => {
                 let root = saved.report.folders[0].path.clone();
+                if self
+                    .scan
+                    .report
+                    .as_ref()
+                    .is_some_and(|r| r.folders[0].path == root)
+                {
+                    return;
+                }
+                self.browser.history.clear();
+                self.browser.expanded.clear();
+                self.browser.table_root = None;
+                self.browser.selected.clear();
                 self.scan.index = index;
                 self.scan.report = Some(Arc::new(saved.report));
                 self.scan.report_revision = self.scan.report_revision.wrapping_add(1);
@@ -265,6 +301,75 @@ mod tests {
         assert_eq!(fs::read(crate::snapshot::file()).unwrap(), before);
     }
     #[test]
+    fn categories_and_home_select_per_root_cache_without_losing_a_dirty_document() {
+        let name = "app::path_snapshot::tests::categories_and_home_select_per_root_cache_without_losing_a_dirty_document";
+        let Ok(root) = std::env::var("DISCO_ARCHIVE_UI_FIXTURE") else {
+            let root =
+                std::env::temp_dir().join(format!("disco-archive-ui-{}", std::process::id()));
+            for dir in ["config", "broad/narrow/sub", "loose"] {
+                fs::create_dir_all(root.join(dir)).unwrap();
+            }
+            fs::write(root.join("config/layout.toml"), "language='en'\ntext_scale_version=1\nsave_scan=true\nauto_refresh=false\nanimations=false\n").unwrap();
+            fs::write(root.join("loose/note.txt"), "draft baseline").unwrap();
+            let out = Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", name, "--nocapture"])
+                .env("DISCO_ARCHIVE_UI_FIXTURE", &root)
+                .env("DISCO_CONFIG_DIR", root.join("config"))
+                .env("XDG_DATA_HOME", root.join("data"))
+                .output()
+                .unwrap();
+            fs::remove_dir_all(root).unwrap();
+            assert!(
+                out.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            );
+            return;
+        };
+        let root = PathBuf::from(root);
+        for path in [root.join("broad"), root.join("broad/narrow")] {
+            let report =
+                crate::scan::scan(&path, &crate::scan::Control::default(), |_| {}).unwrap();
+            crate::snapshot::save(&report).unwrap();
+        }
+        let cache = fs::read(crate::snapshot::file()).unwrap();
+        let ctx = egui::Context::default();
+        let mut time = 0.;
+        let mut app = Disco::new_with_path(
+            &eframe::CreationContext::_new_kittest(ctx.clone()),
+            Some(root.join("loose/note.txt")),
+        );
+        wait(&mut app, &ctx, &mut time, |a| a.editor.document.is_some());
+        app.editor
+            .document
+            .as_mut()
+            .unwrap()
+            .text
+            .push_str(" local changes");
+        let draft = app.editor.document.as_ref().unwrap().text.clone();
+        category(&mut app, "broad", &root.join("broad"));
+        category(&mut app, "narrow", &root.join("broad/narrow"));
+        for (id, target) in [("broad", "broad"), ("narrow", "broad/narrow")] {
+            app.select_collection_keyboard(id);
+            wait(&mut app, &ctx, &mut time, |a| !a.paths.snapshot.loading());
+            assert_eq!(
+                app.scan.report.as_ref().unwrap().folders[0].path,
+                root.join(target)
+            );
+            assert_eq!(app.editor.document.as_ref().unwrap().text, draft);
+            assert!(!app.scan.busy && !app.scoped.busy());
+        }
+        app.navigate_path(root.join("broad"));
+        wait(&mut app, &ctx, &mut time, |a| !a.paths.snapshot.loading());
+        assert_eq!(
+            app.scan.report.as_ref().unwrap().folders[0].path,
+            root.join("broad")
+        );
+        assert_eq!(app.editor.document.as_ref().unwrap().text, draft);
+        assert_eq!(fs::read(crate::snapshot::file()).unwrap(), cache);
+    }
+    #[test]
     fn cli_categories_restore_saved_sizes_keep_drafts_and_offer_a_scoped_empty_action() {
         let Ok(root) = std::env::var("DISCO_LAZY_SNAPSHOT_FIXTURE") else {
             let root =
@@ -401,7 +506,9 @@ mod tests {
             &root.join("workspace/practice"),
         );
         normal.select_collection_keyboard("startup-fixture");
-        wait(&mut normal, &ctx, &mut time, |a| a.scan.report.is_some());
+        wait(&mut normal, &ctx, &mut time, |a| {
+            a.scan.report.is_some() && !a.paths.snapshot.loading()
+        });
         assert_eq!(normal.browser.category, selected);
         assert!(!normal.scan.index.roots(selected).is_empty());
         assert!(!normal.paths.snapshot.loading());
@@ -409,6 +516,7 @@ mod tests {
         let saved = crate::snapshot::load().unwrap().unwrap();
         let index = Index::new(&saved.report);
         fs::remove_file(crate::snapshot::file()).unwrap();
+        fs::remove_dir_all(crate::snapshot::file().parent().unwrap().join("scans")).unwrap();
         let mut empty = Disco::new_with_path(
             &eframe::CreationContext::_new_kittest(ctx.clone()),
             Some(source.clone()),
@@ -463,7 +571,7 @@ mod tests {
             },
             &ctx,
         );
-        assert!(tx.send(Ok(Some((saved, index)))).is_err());
+        assert!(tx.send((0, Ok(Some((saved, index))))).is_err());
         assert!(!empty.paths.snapshot.loading());
         assert!(empty.scan.report.is_none());
         empty.select_collection_keyboard("empty-fixture");

@@ -235,8 +235,141 @@ fn load_from(path: &Path) -> Result<Option<SavedScan>, String> {
 }
 
 pub fn save(report: &Report) -> Result<u64, String> {
-    save_to(&file(), report)
+    save_profile(&file(), report)
 }
+#[derive(Serialize, Deserialize)]
+struct RootRecord {
+    #[serde(with = "path_bytes")]
+    root: PathBuf,
+    saved_at: u64,
+}
+fn archive_dir(last: &Path, root: &Path) -> PathBuf {
+    use std::os::unix::ffi::OsStrExt;
+    last.parent()
+        .unwrap()
+        .join("scans")
+        .join(blake3::hash(root.as_os_str().as_bytes()).to_hex().as_str())
+}
+fn archive(
+    last: &Path,
+    report: &Report,
+    saved_at: u64,
+    disk: Option<crate::refresh::DiskSample>,
+) -> Result<(), String> {
+    let root = &report.folders[0].path;
+    let dir = archive_dir(last, root);
+    write_to(&dir.join("snapshot.bin.gz"), report, saved_at, disk)?;
+    let record = serde_json::to_vec(&RootRecord {
+        root: root.clone(),
+        saved_at,
+    })
+    .map_err(|e| e.to_string())?;
+    // Writers are serialized for this profile; readers see only complete records.
+    let temp = dir.join(".root.tmp");
+    fs::write(&temp, record).map_err(|e| e.to_string())?;
+    fs::rename(temp, dir.join("root.json")).map_err(|e| e.to_string())?;
+    Ok(())
+}
+fn save_profile(last: &Path, report: &Report) -> Result<u64, String> {
+    if !report.complete || report.folders.is_empty() {
+        return Err(crate::tr!(
+            "Частковий скан не замінює попередній знімок",
+            "A partial scan cannot replace the previous snapshot"
+        )
+        .into());
+    }
+    let parent = last.parent().ok_or("Missing cache folder")?;
+    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    let lock = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .mode(0o600)
+        .open(parent.join(".snapshots.lock"))
+        .map_err(|e| e.to_string())?;
+    use std::os::fd::AsRawFd;
+    if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } != 0 {
+        return Err(std::io::Error::last_os_error().to_string());
+    }
+    // Keep the old single-file snapshot before the first newer root replaces it.
+    // A damaged legacy file must not prevent saving a valid new scan.
+    if let Ok(Some(previous)) = load_cached(last) {
+        let target = archive_dir(last, &previous.report.folders[0].path).join("snapshot.bin.gz");
+        if !target.exists() {
+            archive(last, &previous.report, previous.saved_at, previous.disk)?;
+        }
+    }
+    let saved_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_secs();
+    archive(
+        last,
+        report,
+        saved_at,
+        crate::refresh::DiskSample::capture(&report.folders[0].path),
+    )?;
+    // Retain the ordinary last-workspace entry point and compatibility with old builds.
+    save_to(last, report)
+}
+
+/// Choose one cached workspace for the requested paths, without scanning or
+/// combining independent timestamps into an invented complete filesystem scan.
+pub fn load_for(targets: &[PathBuf]) -> Result<Option<SavedScan>, String> {
+    load_for_at(&file(), targets)
+}
+fn load_for_at(last: &Path, targets: &[PathBuf]) -> Result<Option<SavedScan>, String> {
+    if targets.is_empty() {
+        return load_cached(last);
+    }
+    let score = |root: &Path, date: u64| {
+        let covered = targets.iter().filter(|p| p.starts_with(root)).count();
+        let partial = targets.iter().filter(|p| root.starts_with(p)).count();
+        (covered, partial, root.components().count(), date)
+    };
+    let mut candidates = Vec::new();
+    if let Ok(entries) = fs::read_dir(last.parent().unwrap().join("scans")) {
+        for entry in entries.take(4096).flatten() {
+            let dir = entry.path();
+            let meta = dir.join("root.json");
+            if fs::metadata(&meta).is_ok_and(|m| m.len() <= 1_048_576) {
+                if let Ok(bytes) = fs::read(&meta) {
+                    if let Ok(record) = serde_json::from_slice::<RootRecord>(&bytes) {
+                        if archive_dir(last, &record.root) == dir {
+                            let rank = score(&record.root, record.saved_at);
+                            if rank.0 + rank.1 > 0 {
+                                candidates.push((rank, record.root, dir.join("snapshot.bin.gz")));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let legacy = load_cached(last);
+    if let Ok(Some(s)) = &legacy {
+        let root = &s.report.folders[0].path;
+        let rank = score(root, s.saved_at);
+        if rank.0 + rank.1 > 0 {
+            candidates.push((rank, root.clone(), last.to_path_buf()));
+        }
+    }
+    candidates.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.2.cmp(&b.2)));
+    let mut error = None;
+    for (_, root, path) in candidates {
+        match load_from(&path) {
+            Ok(Some(s)) if s.report.folders[0].path == root => return Ok(Some(s)),
+            Err(e) => error = Some(e),
+            _ => {}
+        }
+    }
+    match error {
+        Some(e) => Err(e),
+        None => legacy.map(|_| None),
+    }
+}
+
 fn save_to(path: &Path, report: &Report) -> Result<u64, String> {
     if !report.complete || report.folders.is_empty() || report.folders.len() > 1_000_000 {
         return Err(crate::tr!(
@@ -320,6 +453,68 @@ mod tests {
     use super::*;
     use crate::scan::{Control, scan};
     use std::os::unix::ffi::OsStringExt;
+    #[test]
+    fn per_root_archives_preserve_legacy_and_independent_concurrent_scans() {
+        let dir = std::env::temp_dir().join(format!("disco-root-archive-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("tree/practice/sub")).unwrap();
+        fs::create_dir_all(dir.join("other")).unwrap();
+        let broad = scan(&dir.join("tree"), &Control::default(), |_| {}).unwrap();
+        let narrow = scan(&dir.join("tree/practice"), &Control::default(), |_| {}).unwrap();
+        let other = scan(&dir.join("other"), &Control::default(), |_| {}).unwrap();
+        let last = dir.join("cache/last-scan.bin.gz");
+        save_to(&last, &broad).unwrap(); // A pre-upgrade profile.
+        let original = fs::read(&last).unwrap();
+        let path = last.clone();
+        let a = std::thread::spawn(move || save_profile(&path, &narrow).unwrap());
+        let path = last.clone();
+        let b = std::thread::spawn(move || save_profile(&path, &other).unwrap());
+        a.join().unwrap();
+        b.join().unwrap();
+        let restored = load_for_at(&last, &[dir.join("tree")]).unwrap().unwrap();
+        assert_eq!(restored.report.folders[0].path, dir.join("tree"));
+        assert_eq!(
+            fs::read(archive_dir(&last, &dir.join("tree")).join("snapshot.bin.gz")).unwrap(),
+            original
+        );
+        for root in ["tree/practice", "other"] {
+            assert_eq!(
+                load_for_at(&last, &[dir.join(root)])
+                    .unwrap()
+                    .unwrap()
+                    .report
+                    .folders[0]
+                    .path,
+                dir.join(root)
+            );
+        }
+        assert!(
+            load_for_at(&last, &[dir.join("unrelated")])
+                .unwrap()
+                .is_none()
+        );
+        let mut cancelled = restored.report.clone();
+        cancelled.complete = false;
+        assert!(save_profile(&last, &cancelled).is_err());
+        // A damaged narrow archive falls back to its intact broader workspace.
+        fs::write(
+            archive_dir(&last, &dir.join("tree/practice")).join("snapshot.bin.gz"),
+            b"damaged",
+        )
+        .unwrap();
+        // Remove only the compatibility last file so it cannot mask corruption.
+        fs::remove_file(&last).unwrap();
+        assert_eq!(
+            load_for_at(&last, &[dir.join("tree/practice")])
+                .unwrap()
+                .unwrap()
+                .report
+                .folders[0]
+                .path,
+            dir.join("tree")
+        );
+        fs::remove_dir_all(dir).unwrap();
+    }
     #[test]
     fn last_snapshot_is_one_root_not_a_union_or_archive() {
         let root =
