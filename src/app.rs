@@ -511,8 +511,19 @@ impl eframe::App for Disco {
                 .show(ui, |ui| self.drive_header(ui));
         }
         egui::Panel::bottom("selection")
+            .exact_size(
+                if self.preferences.layout.preview_mode == settings::PreviewMode::Focus
+                    && self.browser.view != View::Trash
+                {
+                    26.
+                } else {
+                    42.
+                },
+            )
+            .resizable(false)
             .frame(egui::Frame::new().fill(color(&t.panel)))
             .show(ui, |ui| self.footer(ui));
+        self.problems_panel(ui);
         // Overview keeps the inspector at full height. The terminal is allocated
         // before categories, so its bottom panel spans the rail and file list.
         let overview = self.preferences.layout.preview_mode == settings::PreviewMode::Overview

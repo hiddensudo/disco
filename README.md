@@ -71,7 +71,7 @@ The bottom-left **···** menu contains Large files, Cleanup and Duplicates. De
 - Restore items from Trash and see its size separately; Trash refreshes without rescanning folders.
 - Read Markdown with full-height code blocks; find text in a floating panel and zoom with Ctrl+wheel.
 - Follow external file edits from terminal tools while protecting local drafts.
-- Enable language servers for completion, diagnostics and parameter help; see the [illustrated LSP guide](docs/language-servers.md).
+- Enable language servers for completion, parameter help, F12 navigation and a bottom Problems panel; see the [illustrated LSP guide](docs/language-servers.md).
 - Choose dark/light presets, create a theme and set prompt language independently from the UI.
 
 Open a file with `disco README.md` or a workspace with `disco /path/to/project`. **Ctrl+L** edits the path with file/folder suggestions. Opening a file needs no scan; explicitly opening a workspace folder starts its scan.

@@ -442,13 +442,20 @@ impl Disco {
                 rect.top(),
                 Stroke::new(1., color(&t.border)),
             );
+            self.problems_button(
+                ui,
+                Rect::from_min_size(rect.min + Vec2::new(6., 2.), Vec2::new(56., 22.)),
+            );
             let status = self
                 .scope_status_text()
                 .unwrap_or_else(|| self.message.clone());
             ui.painter()
-                .with_clip_rect(rect.shrink2(Vec2::new(12., 0.)))
+                .with_clip_rect(Rect::from_min_max(
+                    rect.min + Vec2::new(72., 0.),
+                    rect.max - Vec2::new(12., 0.),
+                ))
                 .text(
-                    rect.left_center() + Vec2::new(12., 0.),
+                    rect.left_center() + Vec2::new(72., 0.),
                     Align2::LEFT_CENTER,
                     &status,
                     FontId::proportional(11.),
@@ -508,22 +515,34 @@ impl Disco {
                 });
             },
         );
-        ui.painter().text(
-            r.min + Vec2::new(58., 21.),
-            Align2::LEFT_CENTER,
-            crate::tr!(
-                "Вибрано: {} ({} елементів)",
-                "Selected: {} ({} items)",
-                display_size(total),
-                if self.browser.view == View::Trash {
-                    self.recycle.selected.len()
-                } else {
-                    self.browser.selected.len()
-                }
-            ),
+        self.problems_button(
+            ui,
+            Rect::from_min_size(r.min + Vec2::new(275., 8.), Vec2::new(56., 26.)),
+        );
+        let selected = crate::tr!(
+            "Вибрано: {} ({} елементів)",
+            "Selected: {} ({} items)",
+            display_size(total),
+            if self.browser.view == View::Trash {
+                self.recycle.selected.len()
+            } else {
+                self.browser.selected.len()
+            }
+        );
+        let selected_rect = Rect::from_min_size(r.min + Vec2::new(58., 5.), Vec2::new(205., 32.));
+        super::widgets::row_text(
+            ui,
+            selected_rect,
+            selected.clone(),
             FontId::proportional(14.),
             color(&t.muted),
         );
+        ui.interact(
+            selected_rect,
+            egui::Id::unique("selection-summary"),
+            Sense::hover(),
+        )
+        .on_hover_text(selected);
         if self.demo {
             ui.painter().text(
                 r.min + Vec2::new(390., 21.),

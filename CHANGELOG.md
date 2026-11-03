@@ -4,6 +4,8 @@ Release history for disco, including earlier development checkpoints.
 
 ## 0.2.3-unstable — in development
 
+- **Problems panel:** bottom-left warning-triangle toggle, diagnostic count and a resizable bottom dock. Lists messages and file/line positions from open synchronized tabs, supports click/Enter navigation and full-message hover, and coexists with the terminal in Overview and Focus. Closed files and stopped/disabled servers clear their diagnostics.
+
 - **Go to definition:** F12 or Ctrl+click requests LSP definition, opens its UTF-16 location in a kept Focus tab without scanning, and preserves other drafts. Multiple targets have a chooser; stale replies and non-file URIs are rejected.
 
 - **Per-root scan cache:** independent snapshots preserve broad scans after narrower/unrelated scans. Category/Home navigation loads a matching workspace asynchronously. The legacy last snapshot is archived before replacement; profile writers are serialized and cancelled scans never replace complete entries. No cross-profile imports or automatic merging of independent scan dates.
@@ -23,7 +25,7 @@ Release history for disco, including earlier development checkpoints.
 - **Interface:** compact 8 px tree indentation, independent 80–120% sidebar scale, and a new UI 100% baseline matching the former 85%. Compact title controls have optional labels. Shortcut recording waits for a main key, supports modifier combinations and rejects conflicts without losing valid bindings.
 - **Cached scans:** categories above a narrow snapshot show known descendants and missing coverage. CLI-file category changes restore saved data asynchronously with loading indicators and an in-tree Scan action. Snapshot diagnostics explain the active profile/root; the [investigation](docs/investigations/cache-categories.md) documents one-last-scan replacement and separate profiles.
 - **Packaging:** development installs are named disco and replace the old duplicate launcher. Docker/BuildKit builds native Linux bundles without host Rust/dev packages, with caches, checksums, dependency reports and CI artifacts.
-- **Documentation:** reorganized English/Ukrainian guides, 34 current native screenshots and a ready-to-open C++ example. See [English](docs/guide.md) / [Українська](docs/guide.uk.md).
+- **Documentation:** reorganized English/Ukrainian guides, native cropped screenshots and a ready-to-open C++ example. See [English](docs/guide.md) / [Українська](docs/guide.uk.md).
 
 ## 0.2.2 — 2026-10-29
 

@@ -6,6 +6,7 @@ Captures run on a private Xvfb display with software rendering. Input is sent on
 
 | Images | Shown action |
 | --- | --- |
+| `definition*`, `problems*` | F12 into another file; bottom panel collecting two open documents while the terminal stays alive |
 | `lsp-settings*` | Enable language, check installation, inspect the running project |
 | `lsp-completion*` | `comb` → one entry with three overloads |
 | `lsp-signature*` | Accept → `(` → Alt+Right; overload 2/3 |

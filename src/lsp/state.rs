@@ -10,6 +10,7 @@ use eframe::egui::{
     text_edit::TextEditOutput,
 };
 use std::{
+    collections::{BTreeMap, HashMap},
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant},
@@ -25,6 +26,9 @@ pub struct State {
     revision: u64,
     open: Vec<PathBuf>,
     pub diagnostics: Vec<Diagnostic>,
+    pub problems: BTreeMap<PathBuf, Vec<Diagnostic>>,
+    pub problems_open: bool,
+    document_versions: HashMap<PathBuf, u64>,
     items: Vec<Completion>,
     selected: usize,
     revealed_selection: Option<usize>,
@@ -66,6 +70,9 @@ impl State {
             revision: u64::MAX,
             open: vec![],
             diagnostics: vec![],
+            problems: BTreeMap::new(),
+            problems_open: false,
+            document_versions: HashMap::new(),
             items: vec![],
             selected: 0,
             revealed_selection: None,
@@ -118,8 +125,21 @@ impl State {
         });
         let path = path.filter(|_| usable);
         let text = text.unwrap_or_default();
+        if let Some(path) = path {
+            open.push(path.to_path_buf());
+        }
         open.sort();
         open.dedup();
+        self.document_versions.retain(|p, _| {
+            open.contains(p)
+                && launches.iter().any(|s| {
+                    p.extension()
+                        .and_then(|e| e.to_str())
+                        .is_some_and(|e| s.extensions.iter().any(|x| x == e))
+                })
+        });
+        self.problems
+            .retain(|p, _| self.document_versions.contains_key(p));
         let path_changed = self.path.as_deref() != path;
         if path_changed {
             self.signature = None;
@@ -136,6 +156,10 @@ impl State {
             ));
             self.version += 1;
             self.path = path.map(Path::to_path_buf);
+            if let Some(path) = &self.path {
+                self.document_versions.insert(path.clone(), self.version);
+                self.problems.remove(path);
+            }
             self.text = Arc::from(text);
             self.items.clear();
             self.definitions.clear();
@@ -267,6 +291,7 @@ impl State {
                             );
                         } else {
                             self.definitions = locations;
+                            self.revealed_selection = None;
                             self.definition_selected = 0;
                         }
                     }
@@ -274,8 +299,15 @@ impl State {
                         path,
                         version,
                         items,
-                    } if self.path.as_ref() == Some(&path) && version == self.version => {
-                        self.diagnostics = items
+                    } if self.document_versions.get(&path) == Some(&version) => {
+                        if self.path.as_ref() == Some(&path) {
+                            self.diagnostics = items.clone();
+                        }
+                        if items.is_empty() {
+                            self.problems.remove(&path);
+                        } else {
+                            self.problems.insert(path, items);
+                        }
                     }
                     Event::Sessions(s) => {
                         self.compile_config = s
@@ -283,6 +315,21 @@ impl State {
                             .find(|s| self.path.as_ref().is_some_and(|p| p.starts_with(&s.root)))
                             .is_none_or(|s| s.compile_config);
                         self.sessions = s;
+                        self.problems.retain(|path, _| {
+                            self.sessions.iter().any(|session| {
+                                path.starts_with(&session.root)
+                                    && self
+                                        .manager
+                                        .catalog
+                                        .servers
+                                        .get(&session.server)
+                                        .is_some_and(|server| {
+                                            path.extension().and_then(|e| e.to_str()).is_some_and(
+                                                |ext| server.extensions.iter().any(|e| e == ext),
+                                            )
+                                        })
+                            })
+                        });
                     }
                     Event::Error { server, message } => {
                         if self.definition_request != 0 {
@@ -294,6 +341,13 @@ impl State {
                     _ => {}
                 }
             }
+        }
+        if self
+            .path
+            .as_ref()
+            .is_none_or(|p| !self.problems.contains_key(p))
+        {
+            self.diagnostics.clear();
         }
         if let Some(at) = self.due {
             if at <= Instant::now() {

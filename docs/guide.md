@@ -24,7 +24,7 @@ Click a breadcrumb to navigate, or **…** for hidden ancestors. Back/forward, B
 
 Choose a folder with the drive/path control, then **Scan** to calculate folder sizes. You can pause or cancel. **F5 / Refresh** rereads the current scope/category; unrelated subtrees and drafts stay intact. A small spinner distinguishes loading a directory, restoring a snapshot and scanning.
 
-The last complete scan is restored when enabled. **Each scanned root now keeps its own snapshot.** Scanning a small folder preserves wider and unrelated cached roots. Category/Home navigation selects a matching cached workspace in the background, preferring coverage and a more specific root. Independent scans are not combined into a fictional single scan; a category spanning unrelated roots may still have missing coverage. An unscanned tree offers Scan below its explanation. Choosing a category can load an existing snapshot without scanning. See [cache troubleshooting](investigations/cache-categories.md) if expected cached sizes are missing.
+The last complete scan is restored when enabled. **Each scanned root now keeps its own snapshot.** Scanning a small folder preserves wider and unrelated cached roots. Category/Home navigation selects a matching cached workspace in the background, preferring coverage and a more specific root. Automatic categories without explicit folder paths prefer the broadest cached root. Independent scans are not combined into a fictional single scan; a category spanning unrelated roots may still have missing coverage. An unscanned tree offers Scan below its explanation. Choosing a category can load an existing snapshot without scanning. See [cache troubleshooting](investigations/cache-categories.md) if expected cached sizes are missing.
 
 Filename search uses the selected folder/file parent, then the current directory/category roots, then configured Home if allowed. It expands only when the earlier level has no matches. The origin stays fixed while typing and selecting results; clear the query to begin from a new place. Search works in unexpanded and unscanned directories, with up to 2,000 displayed results. Status names the search area. Clearing a result outside the original tree reveals its directory without scanning.
 
@@ -86,6 +86,8 @@ Read mode supports headings, lists, tables, quotations, links, heading anchors, 
 Enable a language server to add completion, descriptions, diagnostics and parameter help. Syntax highlighting alone does not enable suggestions. See the illustrated **[LSP setup and usage guide](language-servers.md)**, including a ready-to-open C++ example.
 
 The important distinction: a grouped completion’s overload count is only a count. Accept the name, type **`(`**, then use **‹ / ›** or **Alt+← / Alt+→** in the signature panel. **Ctrl+Shift+Space** requests that panel manually.
+
+The bottom-left **warning triangle** opens the resizable Problems panel. It collects LSP diagnostics from open tabs, including inactive ones; click a message to jump to its file and line. [Illustrated controls](language-servers.md#problems-panel).
 
 ## Terminal
 
@@ -155,7 +157,7 @@ The bottom-left **···** menu opens Large files, Cleanup and Duplicates. Delet
 | `~/.cache/disco/last-scan.bin.gz` | Last workspace, retained for startup/compatibility |
 | `~/.cache/disco/scans/<root-hash>/` | Independent snapshots and root metadata |
 
-`XDG_CONFIG_HOME` / `XDG_CACHE_HOME` are supported. An installation using `--config-dir ~/.config/disco-unstable` has a **separate profile/cache**; the app is still named disco. Do not mistake a different profile for erased data. See the [theme catalog](../assets/themes.toml), [color file](../assets/themes/paper.toml) and [category schema](../categories.example.toml). Legacy `theme.toml` is retained as a migration backup. Keep imported `icons/` when sharing categories.
+`XDG_CONFIG_HOME` / `XDG_CACHE_HOME` are supported. An installation using `--config-dir ~/.config/disco-unstable` has a **separate profile/cache**; the app is still named disco. With `--config-dir`, its scan cache lives in `<profile>/cache/`. Do not mistake a different profile for erased data. See the [theme catalog](../assets/themes.toml), [color file](../assets/themes/paper.toml) and [category schema](../categories.example.toml). Legacy `theme.toml` is retained as a migration backup. Keep imported `icons/` when sharing categories.
 
 Text preview: UTF-8 or UTF-16 with BOM, up to **128 KiB / 2,000 lines**; truncated fragments are read-only. Images: PNG/JPEG/WebP/BMP/TIFF, up to **32 MiB / 12 megapixels**, retained at up to 2048 px. Unsupported content explains its limit. Scans use allocated blocks, stay on one filesystem and do not follow symlinks. Terminal compatibility depends on the running program.
 

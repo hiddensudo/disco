@@ -17,6 +17,7 @@ mod keyboard;
 mod navigation;
 pub(in crate::app) mod preferences;
 mod preview;
+mod problems;
 mod style;
 mod tools;
 mod trash;

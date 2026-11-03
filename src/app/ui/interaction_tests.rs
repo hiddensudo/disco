@@ -4885,3 +4885,182 @@ fn definition_f12_and_ctrl_click_open_utf16_target_and_keep_the_source_draft() {
     );
     assert!(!fs::read_to_string(source).unwrap().contains("local draft"));
 }
+
+#[test]
+fn problems_bottom_panel_collects_open_files_navigates_and_preserves_terminal_and_drafts() {
+    if crate::lsp::catalog::executable(Path::new("clangd")).is_none() {
+        return;
+    }
+    let name = "app::ui::interaction_tests::problems_bottom_panel_collects_open_files_navigates_and_preserves_terminal_and_drafts";
+    let Ok(root) = std::env::var("DISCO_PROBLEMS_UI_FIXTURE") else {
+        let root = std::env::temp_dir().join(format!("disco-problems-ui-{}", std::process::id()));
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::create_dir_all(root.join("project")).unwrap();
+        fs::write(root.join("config/layout.toml"),"language='en'\ntext_scale_version=1\nsave_scan=false\nauto_refresh=false\nanimations=false\n").unwrap();
+        let mut catalog = crate::lsp::catalog::Catalog::builtin();
+        catalog.servers.get_mut("clangd").unwrap().enabled = true;
+        fs::write(
+            root.join("config/lsp.toml"),
+            toml::to_string(&catalog).unwrap(),
+        )
+        .unwrap();
+        fs::write(root.join("project/compile_flags.txt"), "-std=c++20\n").unwrap();
+        fs::write(
+            root.join("project/a.cpp"),
+            "int main() {\n    return missing_a;\n}\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("project/b.cpp"),
+            "int second() {\n    return missing_b;\n}\n",
+        )
+        .unwrap();
+        let out = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", name, "--nocapture"])
+            .env("DISCO_PROBLEMS_UI_FIXTURE", &root)
+            .env("DISCO_CONFIG_DIR", root.join("config"))
+            .env("XDG_DATA_HOME", root.join("data"))
+            .output()
+            .unwrap();
+        fs::remove_dir_all(root).unwrap();
+        assert!(
+            out.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return;
+    };
+    let root = PathBuf::from(root);
+    let a = root.join("project/a.cpp");
+    let b = root.join("project/b.cpp");
+    let ctx = egui::Context::default();
+    let mut time = 0.;
+    let mut app = Disco::new_with_path(
+        &eframe::CreationContext::_new_kittest(ctx.clone()),
+        Some(a.clone()),
+    );
+    wait_document(&mut app, &ctx, &mut time);
+    let until = Instant::now() + Duration::from_secs(8);
+    while !app.languages.problems.contains_key(&a) && Instant::now() < until {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(15));
+    }
+    assert!(
+        app.languages.problems.contains_key(&a),
+        "{}",
+        app.languages.notice
+    );
+    let range = app.languages.problems[&a][0].range;
+    app.open_code_location(
+        crate::lsp::protocol::Location {
+            path: b.clone(),
+            range: crate::lsp::protocol::Range::default(),
+        },
+        &ctx,
+    );
+    wait_document(&mut app, &ctx, &mut time);
+    app.editor
+        .document
+        .as_mut()
+        .unwrap()
+        .text
+        .push_str("// local draft\n");
+    let draft = app.editor.document.as_ref().unwrap().text.clone();
+    let until = Instant::now() + Duration::from_secs(5);
+    while !app.languages.problems.contains_key(&b) && Instant::now() < until {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(15));
+    }
+    assert!(app.languages.problems.contains_key(&a) && app.languages.problems.contains_key(&b));
+    let viewport = ctx
+        .read_response(Id::unique("preview-viewport"))
+        .unwrap()
+        .rect;
+    click(&mut app, &ctx, &mut time, Id::unique("toggle-problems"));
+    let panel = ctx
+        .read_response(Id::unique("problems-panel-bounds"))
+        .unwrap()
+        .rect;
+    let footer = ctx
+        .read_response(Id::unique("focus-statusbar"))
+        .unwrap()
+        .rect;
+    assert!(panel.bottom() <= footer.top() + 1. && panel.width() > 1300.);
+    assert!(
+        ctx.read_response(Id::unique("preview-viewport"))
+            .unwrap()
+            .rect
+            .height()
+            < viewport.height()
+    );
+    app.toggle_terminal(&ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert!(app.terminal.exists());
+    let terminal_pid = app.terminal.pid();
+    let terminal = ctx
+        .read_response(Id::unique("terminal-panel-bounds"))
+        .unwrap()
+        .rect;
+    assert!(terminal.bottom() <= panel.top() + 1.);
+    click(
+        &mut app,
+        &ctx,
+        &mut time,
+        Id::unique(("problem-row", 0usize)),
+    );
+    wait_document(&mut app, &ctx, &mut time);
+    assert_eq!(app.editor.path.as_ref(), Some(&a));
+    let doc = &app.editor.document.as_ref().unwrap().text;
+    let byte = crate::lsp::protocol::byte_offset(doc, range.start).unwrap();
+    let cursor = egui::TextEdit::load_state(&ctx, Id::unique(("file-editor", &app.editor.path)))
+        .unwrap()
+        .cursor
+        .char_range()
+        .unwrap()
+        .primary
+        .index
+        .0;
+    assert_eq!(cursor, doc[..byte].chars().count());
+    assert_eq!(
+        app.tabs.inactive[&b].editor.document.as_ref().unwrap().text,
+        draft
+    );
+    assert!(app.terminal.exists());
+    click(&mut app, &ctx, &mut time, Id::unique("close-problems"));
+    assert!(!app.languages.problems_open && app.terminal.exists());
+    assert_eq!(app.terminal.pid(), terminal_pid);
+    app.set_preview_mode(PreviewMode::Overview, &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    click(&mut app, &ctx, &mut time, Id::unique("toggle-problems"));
+    let bottom = ctx
+        .read_response(Id::unique("problems-panel-bounds"))
+        .unwrap()
+        .rect;
+    let terminal = ctx
+        .read_response(Id::unique("terminal-panel-bounds"))
+        .unwrap()
+        .rect;
+    assert!(
+        terminal.bottom() <= bottom.top() + 1.,
+        "Overview terminal must dock above Problems"
+    );
+    assert_eq!(app.terminal.pid(), terminal_pid);
+    click(&mut app, &ctx, &mut time, Id::unique("close-problems"));
+    app.set_preview_mode(PreviewMode::Focus, &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    app.close_tab_now(&a, &ctx);
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert!(!app.languages.problems.contains_key(&a));
+    app.languages.client.as_ref().unwrap().stop("clangd");
+    let until = Instant::now() + Duration::from_secs(5);
+    while !app.languages.sessions.is_empty() && Instant::now() < until {
+        frame(&mut app, &ctx, &mut time, vec![]);
+        std::thread::sleep(Duration::from_millis(15));
+    }
+    frame(&mut app, &ctx, &mut time, vec![]);
+    assert!(app.languages.problems.is_empty());
+    assert_eq!(app.editor.document.as_ref().unwrap().text, draft);
+    assert!(!app.scan.busy && !crate::snapshot::file().exists());
+}

@@ -79,7 +79,17 @@ Descriptions come from the server, usually source/header comments; they may be i
 
 Place the cursor on a symbol and press **F12**, or **Ctrl+click** it. The target opens in a kept Focus tab at the server-provided position; other drafts stay open. No disk scan is started. Multiple results open a chooser (↑/↓, Enter or click; Escape closes). No result is reported in the status bar.
 
+![F12 opens helpers.hpp at the definition and retains definition.cpp](screenshots/definition.png)
+
 Results depend on the server, project configuration and index. In particular, clangd’s background index is off by default, so implementations in unopened translation units may be unavailable; the server may return a declaration instead. This is separate from navigating compiler diagnostics.
+
+## Problems panel
+
+Click the **triangle with an exclamation mark and a count in the bottom-left status bar**. A resizable panel opens below the workspace, in both Overview and Focus. It can stay open with the terminal; closing it with × does not end the terminal session.
+
+![Bottom Problems panel with diagnostics from two open files and the status-bar toggle](screenshots/problems.png)
+
+Each row shows the server message and `file:line:column`. Click it (or focus it and press Enter) to open that position in a kept tab; hover for the full message/path. Drag the panel’s top edge to change its height. The count includes diagnostics from **open, synchronized documents**, including inactive tabs, not a full-project scan. Closed documents and stopped/disabled servers are removed; new edits invalidate old versioned results until the server reports again. A server that omits diagnostic versions cannot offer the same strict stale-result guarantee.
 
 ## If suggestions do not appear
 
