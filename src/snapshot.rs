@@ -320,10 +320,12 @@ pub fn load_for(targets: &[PathBuf]) -> Result<Option<SavedScan>, String> {
     load_for_at(&file(), targets)
 }
 fn load_for_at(last: &Path, targets: &[PathBuf]) -> Result<Option<SavedScan>, String> {
-    if targets.is_empty() {
-        return load_cached(last);
-    }
     let score = |root: &Path, date: u64| {
+        // Automatic categories have no explicit roots: retain the broadest
+        // available workspace rather than falling back to the last narrow scan.
+        if targets.is_empty() {
+            return (1, 1, usize::MAX - root.components().count(), date);
+        }
         let covered = targets.iter().filter(|p| p.starts_with(root)).count();
         let partial = targets.iter().filter(|p| root.starts_with(p)).count();
         (covered, partial, root.components().count(), date)
@@ -488,6 +490,10 @@ mod tests {
                 dir.join(root)
             );
         }
+        assert_ne!(
+            load_for_at(&last, &[]).unwrap().unwrap().report.folders[0].path,
+            dir.join("tree/practice")
+        );
         assert!(
             load_for_at(&last, &[dir.join("unrelated")])
                 .unwrap()
